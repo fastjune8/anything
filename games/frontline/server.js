@@ -4,11 +4,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { WEAPONS, calcDamage, SPAWNS, GOAL, MAX_HP, RESPAWN_MS, MATCH_RESTART_MS, MATCH_TIME_MS, ROOM_MAX, BOT_FILL } from './public/js/shared.js';
+import { GOAL, MAX_HP, RESPAWN_MS, MATCH_RESTART_MS, MATCH_TIME_MS, ROOM_MAX, BOT_FILL, CHAT_MAX_LEN } from './shared/constants.js';
+import { WEAPONS, calcDamage } from './shared/weapons.js';
+import { SPAWNS } from './shared/spawns.js';
 import { Bot, BOT_NAMES } from './bots.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC = path.join(ROOT, 'public');
+const CLIENT_DIR = path.join(ROOT, 'client');
+const SHARED_DIR = path.join(ROOT, 'shared');
 const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
 const PORT = Number(process.env.PORT) || 3000;
 const APP_ENV = process.env.APP_ENV || 'dev'; // dev | staging | prod
@@ -41,7 +44,8 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ env: APP_ENV, version: VERSION, uptime: Math.round((Date.now() - STARTED_AT) / 1000), rooms: list.length, humans }));
     return;
   }
-  let base = PUBLIC, rel = url;
+  let base = CLIENT_DIR, rel = url;
+  if (url.startsWith('/shared/')) { base = SHARED_DIR; rel = url.slice('/shared'.length); }
   if (url.startsWith('/vendor/three/')) { base = THREE_DIR; rel = url.slice('/vendor/three'.length); }
   if (rel === '/') rel = '/index.html';
   const file = path.join(base, rel);
@@ -58,7 +62,6 @@ const server = http.createServer((req, res) => {
 
 // ───────── 게임 상태: 방(Room) 단위 FFA ─────────
 const TICK_MS = 50;
-const CHAT_MAX_LEN = 120;
 const GOAL_KILLS = Number(process.env.GOAL) || GOAL;
 const RESTART_MS = process.env.RESTART_SECONDS ? Number(process.env.RESTART_SECONDS) * 1000 : MATCH_RESTART_MS;
 const MATCH_MS = process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : MATCH_TIME_MS;

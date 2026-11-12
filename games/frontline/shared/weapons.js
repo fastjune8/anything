@@ -1,12 +1,4 @@
-// 서버와 클라이언트가 함께 쓰는 게임 규칙 데이터
-export const GOAL = 20;          // 승리에 필요한 킬 수 (FFA)
-export const MAX_HP = 100;
-export const RESPAWN_MS = 3000;
-export const MATCH_RESTART_MS = 10000;
-export const MATCH_TIME_MS = 5 * 60 * 1000; // 시간 제한 (킬 수 미달이면 최다 킬이 승리)
-export const ROOM_MAX = 8;       // 방 최대 인원 (사람 + 봇)
-export const BOT_FILL = 6;       // 사람이 적으면 봇으로 이 인원까지 채운다
-
+// 무기 데이터와 피해 계산 (서버와 클라이언트 공용)
 // 각도 단위는 도(degree), 거리 m, 시간 s
 export const WEAPONS = [
   {
@@ -73,7 +65,3 @@ export function calcDamage(wi, part, dist) {
   }
   return d;
 }
-
-// 부활 지점 [x, z] — 맵은 원점 대칭
-const HALF = [[0, -54], [-30, -53], [-47, -46], [30, -53], [48, -48], [-52, -14], [52, -24]];
-export const SPAWNS = [...HALF, ...HALF.map(([x, z]) => [-x, -z])];

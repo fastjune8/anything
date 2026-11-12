@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { WEAPONS, MAX_HP, RESPAWN_MS, ROOM_MAX } from './shared.js';
-import { buildWorld, rayWorld, rayBox, normalOf } from './world.js';
+import { MAX_HP, RESPAWN_MS, ROOM_MAX } from '/shared/constants.js';
+import { WEAPONS } from '/shared/weapons.js';
+import { rayWorld, rayBox, normalOf } from '/shared/collision.js';
+import { buildWorld } from './world.js';
 import { buildGun, buildSoldier } from './guns.js';
 import { Sfx } from './audio.js';
 

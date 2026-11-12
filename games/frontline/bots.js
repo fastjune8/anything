@@ -1,7 +1,7 @@
 // 서버 전용: 봇 길찾기(내비 그리드 + A*)와 전투 AI
-import { buildLayout, MAP_HALF } from './public/js/layout.js';
-import { rayWorld } from './public/js/collision.js';
-import { WEAPONS, calcDamage } from './public/js/shared.js';
+import { buildLayout, MAP_HALF } from './shared/layout.js';
+import { rayWorld } from './shared/collision.js';
+import { WEAPONS, calcDamage } from './shared/weapons.js';
 
 const { colliders: COLLIDERS } = buildLayout();
 

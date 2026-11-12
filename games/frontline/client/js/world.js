@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { buildLayout } from './layout.js';
+import { buildLayout } from '/shared/layout.js';
 
 // ───────── 절차적 텍스처 ─────────
 function rng(seed) {
@@ -306,6 +306,3 @@ export function buildWorld(scene, renderer) {
 
   return { colliders: layout.colliders, sunDir };
 }
-
-// 레이캐스트는 THREE 없이 서버에서도 쓰도록 collision.js 로 분리
-export { normalOf, rayBox, rayWorld } from './collision.js';
