@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
+# 라이브 서버에 배포한다. 개발/테스트는 로컬(npm run dev)에서 하고, 가끔 한 번씩 이 스크립트로 반영한다.
 # 사용법:
-#   ./deploy/deploy.sh staging                  스테이징에 배포 (유저 영향 없음)
 #   ./deploy/deploy.sh prod                     라이브에 배포 (확인 절차 있음)
 #   ./deploy/deploy.sh prod --rollback          직전 버전으로 되돌리기
-#   ./deploy/deploy.sh <env> --status           서버 상태만 보기 (아무것도 바꾸지 않음)
+#   ./deploy/deploy.sh prod --status            서버 상태만 보기 (아무것도 바꾸지 않음)
 # 옵션: --skip-tests  테스트 생략 / --yes  확인 질문 생략 / --even-if-users  접속자가 있어도 진행
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -23,9 +23,8 @@ for a in "$@"; do
 done
 
 case "$TARGET" in
-  prod)    HOST=$PROD_HOST;    PORT=$PROD_PORT;    DIR=$PROD_DIR;    SERVICE=$PROD_SERVICE;    LIMITS="" ;;
-  staging) HOST=$STAGING_HOST; PORT=$STAGING_PORT; DIR=$STAGING_DIR; SERVICE=$STAGING_SERVICE; LIMITS=$'MemoryMax=150M\nCPUQuota=30%\nNice=10' ;;
-  *) echo "사용법: $0 <staging|prod> [--rollback|--status] [--skip-tests] [--yes] [--even-if-users]"; exit 1 ;;
+  prod) HOST=$PROD_HOST; PORT=$PROD_PORT; DIR=$PROD_DIR; SERVICE=$PROD_SERVICE ;;
+  *) echo "사용법: $0 prod [--rollback|--status] [--skip-tests] [--yes] [--even-if-users]"; exit 1 ;;
 esac
 
 SSH_BASE=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o LogLevel=ERROR)
@@ -93,7 +92,6 @@ Environment=APP_ENV=$TARGET
 ExecStart=/usr/bin/env node server/index.js
 Restart=always
 RestartSec=2
-$LIMITS
 
 [Install]
 WantedBy=multi-user.target"
@@ -134,7 +132,7 @@ if [ "$OK" = 1 ]; then
 else
   echo "!! 새 버전이 응답하지 않습니다. 최근 로그:"
   remote "journalctl -u $SERVICE -n 15 --no-pager" || true
-  if [ "$TARGET" = prod ]; then
+  if [ -n "$TARGET" ]; then
     echo "!! 라이브이므로 직전 버전으로 자동 복구합니다."
     remote "sudo systemctl stop $SERVICE; rsync -a --delete ~/$DIR.prev/ ~/$DIR/; sudo systemctl start $SERVICE"
     sleep 3; echo "복구 후 상태: $(live_status)"
