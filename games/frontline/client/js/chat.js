@@ -3,6 +3,7 @@
 import { inp, net } from './state.js';
 import { $ } from './util.js';
 
+const MAX_LINES = 40;
 const chatEl = $('chat'), chatIn = $('chatIn'), chatLog = $('chatLog');
 
 export function openChat() {
@@ -23,8 +24,7 @@ export function addChatLine(name, text, mine) {
   who.textContent = name; if (mine) who.className = 'me';
   line.append(who, document.createTextNode(` ${text}`));
   chatLog.append(line);
-  while (chatLog.children.length > 8) chatLog.firstChild.remove();
-  setTimeout(() => line.remove(), 10500);
+  while (chatLog.children.length > MAX_LINES) chatLog.firstChild.remove(); // 기록은 지우지 않고 유지 (닫힌 상태에서는 최근 몇 줄만 흐리게 보인다)
 }
 
 chatIn.addEventListener('keydown', e => {

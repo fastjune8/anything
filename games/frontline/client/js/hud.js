@@ -1,9 +1,9 @@
 // 화면 표시(HUD): 체력/탄약/조준선/피격 표시, 킬 피드, 순위표, 종료 화면
 import { WEAPONS } from '/shared/weapons.js';
-import { camera } from './scene.js';
+import { camera, canvas } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, inv, wp, game, roster, currentSpread } from './state.js';
-import { $, DEG, clamp, esc } from './util.js';
+import { $, DEG, NOLOCK, clamp, esc } from './util.js';
 import { cache, setText, setDisplay, setClass } from './dom.js';
 
 const hudEl = $('hud'), crossEl = $('cross'), hitEl = $('hitm'), vigEl = $('vig'), dirEl = $('dmgdir');
@@ -96,6 +96,16 @@ export function updateHud(dt) {
   const rb = $('rbar');
   setDisplay(rb, !!wp.reload && me.alive);
   if (wp.reload) rb.firstElementChild.style.width = `${clamp(wp.reload.t / wp.reload.total, 0, 1) * 100}%`;
+
+  // 스폰 무적 남은 시간
+  const invLeft = game.invUntil - performance.now();
+  setDisplay($('inv'), me.alive && invLeft > 0);
+  if (invLeft > 0) setText($('inv'), `무적 ${(invLeft / 1000).toFixed(1)}초 · 사격하면 해제`);
+
+  // 마우스 잠금이 풀렸는데 설정 창이 떠 있지 않으면, 클릭하라는 안내만 작게 보여 준다
+  const needClick = !NOLOCK && document.pointerLockElement !== canvas && $('pause').style.display !== 'flex' && game.matchState !== 'ended';
+  setDisplay($('banner'), needClick);
+  if (needClick) setText($('banner'), '화면을 클릭하면 계속합니다');
 
   updateScoreboard();
   setDisplay($('dead'), !me.alive && game.matchState === 'playing', 'flex');

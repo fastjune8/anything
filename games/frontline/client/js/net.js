@@ -1,5 +1,5 @@
 // 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
-import { RESPAWN_MS } from '/shared/constants.js';
+import { RESPAWN_MS, MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { addChatLine } from './chat.js';
 import { impact, addTracer } from './fx.js';
@@ -61,10 +61,10 @@ function onMessage(m) {
       feed('<span class="w">새 경기 시작</span>');
       break;
     case 'spawn':
-      if (m.id === me.id) placeMe(m.p);
+      if (m.id === me.id) { placeMe(m.p); game.invUntil = performance.now() + (m.inv || 0); }
       else {
         const r = remotes.get(m.id);
-        if (r) { r.alive = true; r.hasPos = true; r.deadT = 0; r.tpos.fromArray(m.p); r.pos.fromArray(m.p); }
+        if (r) { r.alive = true; r.hasPos = true; r.deadT = 0; r.hp = MAX_HP; r.invUntil = performance.now() + (m.inv || 0); r.tpos.fromArray(m.p); r.pos.fromArray(m.p); }
       }
       break;
     case 's': { // 다른 사람의 위치/시선
@@ -80,7 +80,7 @@ function onMessage(m) {
       sfx.shot(w, a.dist, a.pan);
       if (w.bolt) sfx.mech('bolt', a.att, a.pan, 0.5);
       const r = remotes.get(m.id);
-      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; }
+      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; } // 쏜 사람은 무적이 풀린다
       for (const e of m.e || []) {
         const end = new V3(e[0], e[1], e[2]);
         addTracer(o, end);
@@ -103,7 +103,7 @@ function onMessage(m) {
         _v.copy(me.pos); _v.y += 1.2; impact(_v, -1);
       } else {
         const r = remotes.get(m.to);
-        if (r) { _v.copy(r.pos); _v.y += lerp(1.25, 0.8, r.crouch); impact(_v, 6); }
+        if (r) { r.hp = m.hp; _v.copy(r.pos); _v.y += lerp(1.25, 0.8, r.crouch); impact(_v, 6); }
       }
       break;
     case 'hp': me.hp = m.hp; break;
@@ -119,7 +119,7 @@ function onMessage(m) {
         setText($('deadBy'), `${kn} 의 ${w ? w.name : ''}${m.head ? ' · 헤드샷' : ''}`);
       } else {
         const r = remotes.get(m.victim);
-        if (r) r.alive = false;
+        if (r) { r.alive = false; r.hp = 0; }
       }
       break;
     }

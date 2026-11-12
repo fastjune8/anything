@@ -70,10 +70,11 @@ export class Bot {
     const w = WEAPONS[this.weapon];
 
     // 1) 시야: 가장 가까운 보이는 적
+    const now = Date.now();
     let best = null, bestD = Infinity;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     for (const o of this.room.players.values()) {
-      if (o === p || !o.alive || !o.pos) continue;
+      if (o === p || !o.alive || !o.pos || o.invulnUntil > now) continue; // 무적인 상대는 노리지 않는다
       const dx = o.pos[0] - this.x, dz = o.pos[2] - this.z, d = Math.hypot(dx, dz);
       if (d > VIEW || d >= bestD) continue;
       if (d > 6 && (dx * fx + dz * fz) / d < Math.cos(FOV_HALF)) continue;
@@ -184,6 +185,7 @@ export class Bot {
         ends.push([+(ox + dx * rw.t).toFixed(2), +(oy + dy * rw.t).toFixed(2), +(oz + dz * rw.t).toFixed(2), rw.n >= 0 ? rw.n : 2]);
       }
     }
+    this.p.invulnUntil = 0;
     this.room.broadcast({ t: 'shot', id: this.p.id, w: wi, o: muzzle, e: ends });
     if (dmg > 0) this.room.applyDamage(this.p, target, wi, Math.round(dmg), head);
   }

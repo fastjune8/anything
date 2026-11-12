@@ -11,7 +11,7 @@ const HANDLERS = {
     m.id = me.id; room.broadcast(m, me);
   },
   // 사격 / 재장전 → 소리와 이펙트용으로 다른 사람에게 전달
-  shot(me, m, room) { if (me.alive) { m.id = me.id; room.broadcast(m, me); } },
+  shot(me, m, room) { if (me.alive) { me.invulnUntil = 0; m.id = me.id; room.broadcast(m, me); } }, // 쏘면 스폰 무적 해제
   rl(me, m, room) { if (me.alive) { m.id = me.id; room.broadcast(m, me); } },
   hit: (me, m, room) => room.onHit(me, m),
   chat: (me, m, room) => room.onChat(me, m),

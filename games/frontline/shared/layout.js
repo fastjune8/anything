@@ -156,6 +156,27 @@ export function buildLayout() {
     barrel(B, -46, -33, 0x35506b);
     barrel(B, 28.5, -8, 0x7a2a1e);
 
+    // 외곽 엄폐물 (스폰 지점 주변과 가장자리 통로가 뻥 뚫려 있던 문제 보완)
+    container(B, -12, -50, true, 0x596066);
+    container(B, 14, -50, false, 0x8a3324);
+    container(B, 40, -50, true, 0x3f6b45);
+    container(B, -54, -26, false, 0x9a7a1e);
+    container(B, 54, -40, false, 0x2f5d8a);
+    container(B, 46, -27, true, 0x596066);
+    container(B, -56, -2, false, 0x3f6b45);
+    sandbags(B, -39, -49, 4, false);
+    sandbags(B, 24, -44, 4, true);
+    sandbags(B, -22, -38, 4, true);
+    barrier(B, -48, -36, true);
+    barrier(B, 50, -30, true);
+    barrier(B, -36, -32, false);
+    barrier(B, 3, -44, false);
+    barrier(B, 40, -42, true);
+    crate(B, -48, -18, 1.4); crate(B, -46.6, -18.4, 1.0);
+    crate(B, -20, -48, 1.2);
+    crate(B, 56, -18, 1.3);
+    crate(B, 27, -52, 1.2); crate(B, 28.2, -51.6, 0.9);
+
     // 나무
     T(-54, -55, 1.2); T(54, -52, 1.0); T(-55, -30, 1.1); T(55, -12, 1.3);
     T(-10, -56, 1.0); T(20, -56, 1.15); T(-42, -15, 0.9); T(4, -47, 1.0);

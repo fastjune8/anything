@@ -3,21 +3,21 @@
 export const WEAPONS = [
   {
     id: 'm4', name: 'M4A1', cls: '돌격소총', auto: true, rpm: 800,
-    dmg: 26, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.2,
+    dmg: 22, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.2,
     hip: 2.0, ads: 0.12, bloom: 0.12, bloomMax: 1.4, recoilV: 0.55, recoilH: 0.25,
     adsFov: 48, adsTime: 0.2, falloff: [35, 80, 0.7], move: 0.95, draw: 0.45,
     snd: { f: 1900, dur: 0.16, vol: 0.8, thump: 130 },
   },
   {
     id: 'ak', name: 'AK-47', cls: '돌격소총', auto: true, rpm: 600,
-    dmg: 33, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.5,
+    dmg: 28, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.5,
     hip: 2.4, ads: 0.18, bloom: 0.18, bloomMax: 1.8, recoilV: 0.85, recoilH: 0.4,
     adsFov: 50, adsTime: 0.22, falloff: [40, 90, 0.72], move: 0.93, draw: 0.5,
     snd: { f: 1400, dur: 0.2, vol: 0.9, thump: 105 },
   },
   {
     id: 'mp5', name: 'MP5', cls: '기관단총', auto: true, rpm: 800,
-    dmg: 21, head: 1.8, pellets: 1, mag: 30, reserve: 150, reload: 1.9,
+    dmg: 18, head: 1.8, pellets: 1, mag: 30, reserve: 150, reload: 1.9,
     hip: 1.4, ads: 0.3, bloom: 0.09, bloomMax: 1.1, recoilV: 0.38, recoilH: 0.2,
     adsFov: 55, adsTime: 0.15, falloff: [15, 40, 0.55], move: 1.0, draw: 0.35,
     snd: { f: 2400, dur: 0.11, vol: 0.6, thump: 160 },
@@ -38,7 +38,7 @@ export const WEAPONS = [
   },
   {
     id: 'm249', name: 'M249', cls: '경기관총', auto: true, rpm: 750,
-    dmg: 28, head: 2.0, pellets: 1, mag: 100, reserve: 200, reload: 5.2,
+    dmg: 24, head: 2.0, pellets: 1, mag: 100, reserve: 200, reload: 5.2,
     hip: 3.2, ads: 0.35, bloom: 0.1, bloomMax: 1.6, recoilV: 0.6, recoilH: 0.38,
     adsFov: 50, adsTime: 0.35, falloff: [45, 100, 0.75], move: 0.82, draw: 0.8,
     snd: { f: 1500, dur: 0.18, vol: 0.9, thump: 95 },

@@ -8,7 +8,7 @@ import { remoteHit } from './remotes.js';
 import { guns, showGun } from './viewmodel.js';
 import { showHit } from './hud.js';
 import { sfx } from './sfx.js';
-import { me, inv, wp, inp, game, net, adsInput, currentSpread, PITCH_MAX } from './state.js';
+import { me, inv, wp, inp, game, net, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
 import { V3, UP, DEG, lerp, clamp } from './util.js';
 
 const _o = new V3(), _d = new V3(), _f = new V3(), _r = new V3(), _u = new V3(), _mz = new V3();
@@ -46,12 +46,20 @@ function fire() {
     net.send({ t: 'hit', w: wp.cur, hits });
     showHit(hits.some(h => h[0] === 'head'));
   }
-  // 반동
-  const mul = (1 - 0.3 * wp.adsT) * (me.crouch ? 0.8 : 1);
-  const rv = w.recoilV * DEG * mul;
-  me.pitch = Math.min(PITCH_MAX, me.pitch + rv * 0.45); wp.kickP += rv * 0.55;
-  const rh = (Math.random() * 2 - 1) * w.recoilH * DEG * mul;
-  me.yaw += rh * 0.5; wp.kickY += rh * 0.5;
+  game.invUntil = 0; // 쏘면 스폰 무적 해제
+
+  // 반동: 연사할수록 총구가 더 들리고 좌우로 쏠린다. 움직이거나 공중이면 커지고, 앉거나 정조준하면 줄어든다.
+  const n = wp.burstN;
+  if (n === 0) wp.burstSeed = Math.random() * Math.PI * 2;
+  const ramp = w.auto ? 1 + Math.min(n, 10) * 0.07 : 1;
+  const stance = (1 - 0.3 * wp.adsT) * (me.crouch ? 0.8 : 1) * (1 + Math.min(1, hSpeed() / 4.6) * 0.25) * (me.onGround ? 1 : 1.3);
+  const rv = w.recoilV * DEG * stance * ramp * (0.9 + Math.random() * 0.2);
+  me.pitch = Math.min(PITCH_MAX, me.pitch + rv * 0.55); wp.kickP += rv * 0.45; // 55% 는 돌아오지 않아 직접 눌러 줘야 한다
+  // 좌우: 처음 몇 발은 거의 곧게, 이후 한쪽으로 쏠렸다 반대로 넘어가는 흐름 + 약간의 무작위
+  const drift = Math.sin(n * 0.55 + wp.burstSeed) * Math.min(1, n / 3);
+  const rh = (drift * 0.75 + (Math.random() * 2 - 1) * 0.45) * w.recoilH * DEG * stance * ramp;
+  me.yaw += rh * 0.6; wp.kickY += rh * 0.4;
+  wp.burstN = n + 1; wp.sinceShot = 0;
   wp.bloom = Math.min(w.bloomMax, wp.bloom + w.bloom);
   wp.vmKick = 1; wp.flashT = 0.045;
   guns[wp.cur].flash.rotation.z = Math.random() * Math.PI;
@@ -83,6 +91,9 @@ export function updateWeapon(dt, active) {
   wp.cooldown = Math.max(0, wp.cooldown - dt);
   wp.drawT = Math.max(0, wp.drawT - dt);
   wp.bloom = Math.max(0, wp.bloom - dt * (w.bloomMax || 1) * 3.2);
+  // 사격을 멈추면 연사 카운트가 빠르게 풀린다 (끊어 쏘면 반동이 다시 작아진다)
+  wp.sinceShot += dt;
+  if (wp.sinceShot > Math.max(0.18, 96 / w.rpm)) wp.burstN = Math.max(0, wp.burstN - dt * 14);
 
   const rl = wp.reload;
   if (rl) {
@@ -132,7 +143,7 @@ export function updateWeapon(dt, active) {
 }
 
 // ───── 부활/새 경기 때 상태 초기화 ─────
-function resetLoadout() { WEAPONS.forEach((w, i) => { inv[i].ammo = w.mag; inv[i].reserve = w.reserve; }); wp.reload = null; wp.cooldown = 0; wp.bloom = 0; }
+function resetLoadout() { WEAPONS.forEach((w, i) => { inv[i].ammo = w.mag; inv[i].reserve = w.reserve; }); wp.reload = null; wp.cooldown = 0; wp.bloom = 0; wp.burstN = 0; }
 export function placeMe(p) {
   me.pos.set(p[0], p[1], p[2]); me.vel.set(0, 0, 0);
   me.yaw = Math.atan2(p[0], p[2]) || 0; me.pitch = 0; wp.kickP = wp.kickY = 0;

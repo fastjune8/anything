@@ -58,5 +58,30 @@ console.log('\n[명중 검증: resolveHits]');
   check(unknownPart.dmg === Math.round(calcDamage(awm, 'body', 5)) && !unknownPart.head, '알 수 없는 부위는 body 로 처리한다');
 }
 
+console.log('\n[스폰 지점]');
+{
+  const { Room } = await import('../server/room.js');
+  const { SPAWNS } = await import('../shared/spawns.js');
+  const { isBlocked, findPath } = await import('../server/bots/nav.js');
+  check(SPAWNS.every(s => !isBlocked(s[0], s[1])), `스폰 지점 ${SPAWNS.length}곳이 모두 장애물과 겹치지 않는다`);
+  check(SPAWNS.every(s => findPath(s[0], s[1], 0, 0)), '모든 스폰 지점에서 맵 중앙까지 길이 이어진다');
+
+  const room = new Room({ number: 1 });
+  const p = room.newPlayer(0, 'me', null);
+  const foe = room.newPlayer(1, 'foe', null); foe.alive = true; foe.pos = [0, 0, -54];
+  room.players.set(0, p); room.players.set(1, foe);
+  const seen = new Set(); let repeats = 0, tooClose = 0;
+  for (let i = 0; i < 300; i++) {
+    const s = room.pickSpawn(p);
+    if (s === p.lastSpawn) repeats++;
+    if (Math.hypot(s[0] - foe.pos[0], s[1] - foe.pos[2]) < 25) tooClose++;
+    p.lastSpawn = s; seen.add(s);
+  }
+  room.destroy();
+  check(seen.size >= 12, '태어나는 곳이 고르게 무작위다', `300번 중 ${seen.size}곳 사용`);
+  check(repeats === 0, '직전에 태어난 곳에서 연달아 태어나지 않는다');
+  check(tooClose === 0, '적과 25m 안쪽인 지점에서는 태어나지 않는다');
+}
+
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
 process.exit(failed() ? 1 : 0);

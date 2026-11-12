@@ -15,11 +15,13 @@ function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && 
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
-  if (game.joined) setDisplay($('pause'), !on, 'flex'); // 잠금이 풀리면 일시정지 화면
+  // 잠금이 풀리면 설정(일시정지) 창을 띄우되, 죽어 있을 때는 띄우지 않는다 (죽을 때마다 창이 뜨던 문제)
+  if (game.joined) setDisplay($('pause'), !on && me.alive, 'flex');
   if (!on) { inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false; if (inp.chatOpen) closeChat(); }
 });
 $('pause').addEventListener('click', e => { if (!e.target.closest('.opt')) lock(); });
 canvas.addEventListener('click', () => { if (game.joined && !isActive()) lock(); });
+$('banner').addEventListener('click', lock);
 
 addEventListener('keydown', e => {
   if ((e.code === 'Enter' || e.code === 'NumpadEnter') && isActive()) { e.preventDefault(); openChat(); }

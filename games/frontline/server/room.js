@@ -1,5 +1,5 @@
 // 방(Room) 하나 = 한 판의 FFA 경기. 플레이어/봇 관리, 피해·킬 처리, 경기 진행을 맡는다.
-import { MAX_HP, RESPAWN_MS, ROOM_MAX } from '../shared/constants.js';
+import { MAX_HP, RESPAWN_MS, ROOM_MAX, SPAWN_PROTECT_MS } from '../shared/constants.js';
 import { SPAWNS } from '../shared/spawns.js';
 import { Bot } from './bots/bot.js';
 import { BOT_NAMES } from './bots/names.js';
@@ -8,6 +8,7 @@ import { resolveHits } from './combat.js';
 import { PORT, TICK_MS, GOAL_KILLS, MATCH_MS, RESTART_MS, botFill, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
+const SAFE_SPAWN_DIST = 25; // 이 거리(m) 안에 적이 있는 스폰 지점은 피한다
 
 export class Room {
   // number: 방 번호(로그용), onDestroy: 사람이 모두 나가 방이 사라질 때 호출
@@ -24,7 +25,7 @@ export class Room {
 
   humans() { return [...this.players.values()].filter(p => !p.bot); }
   freeId() { for (let i = 0; i < ROOM_MAX; i++) if (!this.players.has(i)) return i; return -1; }
-  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive }; }
+  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp }; }
   scoreList() { return [...this.players.values()].map(p => [p.id, p.kills, p.deaths]); }
 
   broadcast(msg, except) {
@@ -42,7 +43,7 @@ export class Room {
   }
 
   newPlayer(id, name, ws) {
-    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, room: this };
+    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, invulnUntil: 0, lastSpawn: null, room: this };
   }
 
   // ───────── 입장 / 퇴장 ─────────
@@ -103,28 +104,31 @@ export class Room {
   }
 
   // ───────── 스폰 ─────────
-  // 다른 플레이어에게서 먼 지점 상위 3곳 중 하나
+  // 살아있는 다른 플레이어와 충분히 떨어진 지점 중에서 무작위. 직전에 태어난 곳은 피한다.
   pickSpawn(p) {
     const others = [...this.players.values()].filter(o => o !== p && o.alive && o.pos);
-    if (!others.length) return SPAWNS[(Math.random() * SPAWNS.length) | 0];
-    const ranked = SPAWNS
-      .map(s => ({ s, d: Math.min(...others.map(o => Math.hypot(s[0] - o.pos[0], s[1] - o.pos[2]))) }))
-      .sort((a, b) => b.d - a.d);
-    return ranked[Math.floor(Math.random() * 3)].s;
+    const dist = s => (others.length ? Math.min(...others.map(o => Math.hypot(s[0] - o.pos[0], s[1] - o.pos[2]))) : Infinity);
+    const fresh = SPAWNS.filter(s => s !== p.lastSpawn);
+    let pool = fresh.filter(s => dist(s) >= SAFE_SPAWN_DIST);
+    if (pool.length < 3) pool = [...fresh].sort((x, y) => dist(y) - dist(x)).slice(0, 3); // 다 가까우면 그나마 먼 3곳
+    return pool[(Math.random() * pool.length) | 0];
   }
 
   spawn(p) {
     const s = this.pickSpawn(p);
     p.hp = MAX_HP; p.alive = true; p.lastHurt = 0; p.crouch = 0;
-    p.pos = [s[0], 0, s[1]];
+    p.pos = [s[0], 0, s[1]]; p.lastSpawn = s;
+    p.invulnUntil = Date.now() + SPAWN_PROTECT_MS;
     clearTimeout(p.respawnTimer);
     if (p.bot) p.bot.reset(p.pos);
-    this.broadcast({ t: 'spawn', id: p.id, p: p.pos });
+    this.broadcast({ t: 'spawn', id: p.id, p: p.pos, inv: SPAWN_PROTECT_MS });
   }
 
   // ───────── 전투 ─────────
   applyDamage(attacker, victim, wi, dmg, head) {
     if (this.state !== 'playing' || attacker === victim || !attacker.alive || !victim.alive) return;
+    attacker.invulnUntil = 0;                       // 공격하면 내 무적은 풀린다
+    if (victim.invulnUntil > Date.now()) return;    // 스폰 직후 무적
     victim.hp = Math.max(0, victim.hp - dmg);
     victim.lastHurt = Date.now();
     this.broadcast({ t: 'dmg', to: victim.id, from: attacker.id, hp: victim.hp, dmg, head });

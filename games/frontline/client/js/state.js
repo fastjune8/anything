@@ -22,6 +22,7 @@ export const wp = {
   reload: null,                          // 재장전 중이면 진행 정보
   kickP: 0, kickY: 0, vmKick: 0, flashT: 0, // 반동
   bobPhase: 0, swayX: 0, swayY: 0, stepDist: 0, sprinting: false,
+  burstN: 0, burstSeed: 0, sinceShot: 9,  // 연사 중 몇 발째인지 (반동이 점점 커진다)
 };
 
 // ───── 입력 (inp = input) ─────
@@ -34,7 +35,7 @@ export const inp = {
 export const adsInput = () => inp.adsHeld || inp.keys.has('KeyT'); // 우클릭 또는 T키
 
 // ───── 경기 ─────
-export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20 };
+export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20, invUntil: 0 }; // invUntil: 내 스폰 무적이 끝나는 시각
 export const roster = new Map(); // id → { id, name, bot, k, d } (나 포함 방 전체)
 
 // ───── 네트워크 연결 (실제 연결/수신은 net.js) ─────
