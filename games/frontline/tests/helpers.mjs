@@ -17,7 +17,7 @@ export const failed = () => failures;
 // 임시 서버를 빈 포트에서 띄운다 (라이브/개발 서버와 절대 겹치지 않도록 무작위 포트)
 export async function startServer(extraEnv = {}) {
   const port = 3200 + Math.floor(Math.random() * 700);
-  const child = spawn(process.execPath, ['server.js'], {
+  const child = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';

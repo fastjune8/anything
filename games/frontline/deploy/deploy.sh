@@ -90,7 +90,7 @@ User=$SSH_USER
 WorkingDirectory=/home/$SSH_USER/$DIR
 Environment=PORT=$PORT
 Environment=APP_ENV=$TARGET
-ExecStart=/usr/bin/env node server.js
+ExecStart=/usr/bin/env node server/index.js
 Restart=always
 RestartSec=2
 $LIMITS

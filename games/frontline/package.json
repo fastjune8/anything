@@ -5,20 +5,24 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch server.js",
+    "start": "node server/index.js",
+    "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch server/index.js",
     "test": "node tests/protocol.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
     "test:all": "node tests/protocol.test.mjs && node tests/browser.test.mjs",
     "deploy:staging": "./deploy/deploy.sh staging",
     "deploy:prod": "./deploy/deploy.sh prod",
-    "rollback:prod": "./deploy/deploy.sh prod --rollback"
+    "rollback:prod": "./deploy/deploy.sh prod --rollback",
+    "lint": "eslint .",
+    "check": "eslint . && node tests/protocol.test.mjs"
   },
   "dependencies": {
     "three": "0.170.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
     "playwright-core": "^1.65.0"
   }
 }
