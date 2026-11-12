@@ -83,40 +83,5 @@ console.log('\n[스폰 지점]');
   check(tooClose === 0, '적과 25m 안쪽인 지점에서는 태어나지 않는다');
 }
 
-console.log('\n[마우스 튐 필터]');
-{
-  const { createMouseFilter } = await import('../client/js/mousefilter.js');
-  // 이벤트 목록을 8ms 간격으로 넣고, 실제로 반영된 이동량의 합을 돌려준다
-  const run = (f, events, gap = 8, t0 = 0) => { let sx = 0, sy = 0, t = t0; for (const [dx, dy] of events) { const r = f.apply(dx, dy, t); if (r) { sx += r[0]; sy += r[1]; } t += gap; } return [sx, sy, t]; };
-  const sum = events => events.reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
-  const warm = f => run(f, Array.from({ length: 30 }, () => [4, -2]));
-
-  { const f = createMouseFilter(); const ev = Array.from({ length: 50 }, (_, i) => [3 + (i % 5), -2]);
-    check(String(run(f, ev).slice(0, 2)) === String(sum(ev)), '평소 움직임은 한 픽셀도 바뀌지 않는다'); }
-
-  { const f = createMouseFilter(); const [, , t] = warm(f);
-    const ev = [[5, 0], [380, 0], [4, 0], [5, 0]];
-    check(run(f, ev, 8, t)[0] === 14, '천천히 움직이다 혼자 튄 값(380px)은 버리고 나머지는 그대로', `합 ${run(createMouseFilter(), ev)[0]}`); }
-
-  { const f = createMouseFilter(); const [, , t] = warm(f);
-    const ev = [[20, 0], [45, 0], [80, 0], [120, 0], [180, 0], [240, 0], [300, 0], [260, 0], [120, 0], [30, 0]];
-    check(run(f, ev, 8, t)[0] === sum(ev)[0], '점점 빨라지는 빠른 휘두르기는 이동량이 그대로다 (감도 일정)'); }
-
-  { const f = createMouseFilter(); const [, , t] = warm(f);
-    const ev = [[260, 10], [280, 12], [250, 8], [90, 0]];
-    check(run(f, ev, 8, t)[0] === sum(ev)[0], '정지 상태에서 급히 휘둘러도 이동량을 잃지 않는다 (한 박자 늦게 모두 반영)'); }
-
-  { const f = createMouseFilter(); const [, , t] = warm(f);
-    check(run(f, [[300, 0], [-6, 0], [-5, 0]], 8, t)[0] === -11, '튄 값 다음에 반대 방향이 오면 튄 값만 버린다'); }
-
-  { const f = createMouseFilter(); const [, , t] = warm(f);
-    f.apply(300, 0, t);
-    const late = f.apply(200, 0, t + 400);
-    check(late === null || late[0] <= 200, '튄 값 뒤 한참(0.4초) 지나 온 값과는 합치지 않는다'); }
-
-  { const f = createMouseFilter(); f.reset();
-    check(f.apply(50, 50, 0) === null && String(f.apply(5, 5, 8)) === '5,5', '마우스 잠금 직후 첫 값만 버린다'); }
-}
-
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
 process.exit(failed() ? 1 : 0);

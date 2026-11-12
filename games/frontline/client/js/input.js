@@ -7,19 +7,14 @@ import { me, wp, inp, game, PITCH_MAX } from './state.js';
 import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
 import { setDisplay } from './dom.js';
 import { startReload, switchTo } from './weapon.js';
-import { createMouseFilter } from './mousefilter.js';
-
-const mouseFilter = createMouseFilter();
 
 // 게임 입력을 받아도 되는 상태인가 (접속 중 + 채팅 안 열림 + 마우스 잠금됨)
 export const isActive = () => game.joined && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
 
-// 마우스 잠금 (운영체제 설정이 반영된 일반 입력을 쓴다. 원본 입력은 감도 체감이 달라져서 쓰지 않는다)
 function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
-  if (on) mouseFilter.reset();
   // 잠금이 풀리면 설정(일시정지) 창을 띄우되, 죽어 있을 때는 띄우지 않는다 (죽을 때마다 창이 뜨던 문제)
   if (game.joined) setDisplay($('pause'), !on && me.alive, 'flex');
   if (!on) { inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false; if (inp.chatOpen) closeChat(); }
@@ -52,9 +47,8 @@ addEventListener('mouseup', e => { if (e.button === 0) inp.fireHeld = false; els
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas || !me.alive || inp.chatOpen) return;
-  const moved = mouseFilter.apply(e.movementX, e.movementY, performance.now()); // 혼자 튀는 값만 제거
-  if (!moved) return;
-  const [dx, dy] = moved;
+  // 일부 브라우저에서 간헐적으로 튀는 값 방지
+  const dx = clamp(e.movementX, -400, 400), dy = clamp(e.movementY, -400, 400);
   const k = 0.0022 * inp.sens * Math.tan(camera.fov * DEG / 2) / Math.tan(BASE_FOV * DEG / 2);
   me.yaw -= dx * k;
   me.pitch = clamp(me.pitch - dy * k, -PITCH_MAX, PITCH_MAX);
