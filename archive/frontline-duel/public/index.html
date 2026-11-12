@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRONTLINE DUEL</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<style>
+  :root { --ui: #e9ecef; --dim: rgba(233,236,239,.6); --accent: #ffb43a; --danger: #ff4b3a; --panel: rgba(12,14,16,.72); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0d; color: var(--ui);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif; user-select: none; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #hud.on { display: block; }
+
+  /* 조준선 */
+  #cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: opacity .08s; }
+  #cross i { position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+  #cross .h { width: 9px; height: 2px; top: -1px; }
+  #cross .v { width: 2px; height: 9px; left: -1px; }
+  #cross .c { width: 2px; height: 2px; left: -1px; top: -1px; opacity: .8; }
+  #hitm { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; opacity: 0; }
+  #hitm::before, #hitm::after { content: ""; position: absolute; left: 12px; top: -2px; width: 2px; height: 30px;
+    background: linear-gradient(#fff 0 9px, transparent 9px 21px, #fff 21px); }
+  #hitm::before { transform: rotate(45deg); } #hitm::after { transform: rotate(-45deg); }
+  #hitm.head::before, #hitm.head::after { background: linear-gradient(var(--danger) 0 9px, transparent 9px 21px, var(--danger) 21px); }
+
+  /* 스코프 */
+  #scope { position: absolute; inset: 0; display: none;
+    background: radial-gradient(circle at center, transparent 0, transparent 39.6vh, #000 40vh); }
+  #scope::before, #scope::after { content: ""; position: absolute; background: #000; }
+  #scope::before { left: calc(50% - 40vh); right: calc(50% - 40vh); top: 50%; height: 1px; }
+  #scope::after { top: 10vh; bottom: 10vh; left: 50%; width: 1px; }
+  #scope b { position: absolute; left: 50%; top: 50%; width: 80vh; height: 80vh; margin: -40vh;
+    border-radius: 50%; box-shadow: inset 0 0 9vh 2vh rgba(0,0,0,.75); }
+
+  /* 피격 */
+  #vig { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(170,10,0,.6) 100%); }
+  #dmgdir { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px; opacity: 0; }
+  #dmgdir::before { content: ""; position: absolute; left: 50%; top: 0; width: 110px; height: 14px; margin-left: -55px;
+    border-radius: 60px 60px 0 0 / 14px 14px 0 0; background: linear-gradient(rgba(255,60,40,.95), rgba(255,60,40,0)); }
+
+  /* 상단 점수 */
+  #score { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch;
+    background: var(--panel); border-radius: 6px; overflow: hidden; font-size: 13px; }
+  #score .side { padding: 6px 14px; min-width: 130px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  #score .side.me { border-bottom: 2px solid var(--accent); }
+  #score .side.en { border-bottom: 2px solid var(--danger); flex-direction: row-reverse; }
+  #score .n { font-size: 22px; font-weight: 700; }
+  #score .nm { color: var(--dim); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #score .mid { padding: 6px 12px; font-size: 11px; color: var(--dim); display: flex; align-items: center; border-inline: 1px solid rgba(255,255,255,.08); }
+  #banner { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); background: var(--panel);
+    padding: 8px 16px; border-radius: 6px; font-size: 13px; text-align: center; line-height: 1.6; display: none; pointer-events: auto; user-select: text; }
+  #banner b { color: var(--accent); }
+
+  /* 킬 로그 */
+  #feed { position: absolute; top: 14px; right: 16px; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; font-size: 13px; }
+  #feed div { background: var(--panel); padding: 5px 10px; border-radius: 4px; animation: fadeout 5s forwards; }
+  #feed .w { color: var(--dim); margin: 0 6px; font-size: 11px; }
+  #feed .hs { color: var(--danger); margin-left: 6px; font-size: 11px; }
+  #feed .a { color: var(--accent); } #feed .e { color: #ff8a7d; }
+  @keyframes fadeout { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* 하단 */
+  #hp { position: absolute; left: 24px; bottom: 22px; width: 250px; }
+  #hp .row { display: flex; align-items: baseline; gap: 8px; text-shadow: 0 1px 3px #000; }
+  #hp .v { font-size: 36px; font-weight: 700; line-height: 1; }
+  #hp .l { font-size: 11px; color: var(--dim); letter-spacing: .12em; }
+  #hp .bar { height: 5px; margin-top: 7px; background: rgba(255,255,255,.16); border-radius: 3px; overflow: hidden; }
+  #hp .bar i { display: block; height: 100%; width: 100%; background: var(--ui); transition: width .15s, background .15s; }
+
+  #ammo { position: absolute; right: 24px; bottom: 22px; text-align: right; text-shadow: 0 1px 3px #000; }
+  #ammo .cur { font-size: 46px; font-weight: 700; line-height: 1; }
+  #ammo .cur.low { color: var(--danger); }
+  #ammo .res { font-size: 20px; color: var(--dim); margin-left: 6px; }
+  #ammo .wn { font-size: 15px; font-weight: 600; margin-top: 4px; }
+  #ammo .wc { font-size: 11px; color: var(--dim); letter-spacing: .08em; }
+  #slots { position: absolute; right: 24px; bottom: 124px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; text-align: right; }
+  #slots div { color: var(--dim); padding: 2px 8px; border-right: 2px solid transparent; text-shadow: 0 1px 2px #000; }
+  #slots div.on { color: #fff; border-right-color: var(--accent); background: linear-gradient(90deg, transparent, rgba(0,0,0,.45)); }
+  #slots div.empty { opacity: .45; }
+  #slots span { margin-right: 8px; opacity: .7; }
+
+  #hint { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); font-size: 14px; font-weight: 600;
+    text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity .15s; }
+  #rbar { position: absolute; left: 50%; top: calc(50% + 46px); width: 120px; height: 3px; margin-left: -60px;
+    background: rgba(255,255,255,.2); border-radius: 2px; overflow: hidden; display: none; }
+  #rbar i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+  /* 사망 / 종료 */
+  #dead, #endscr { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+  #dead { background: rgba(60,0,0,.38); }
+  #dead h2 { margin: 0; font-size: 44px; letter-spacing: .2em; color: var(--danger); }
+  #dead p, #endscr p { margin: 0; font-size: 15px; color: var(--ui); }
+  #endscr { background: rgba(0,0,0,.72); }
+  #endscr h1 { margin: 0; font-size: 72px; letter-spacing: .12em; }
+  #endscr h1.win { color: var(--accent); } #endscr h1.lose { color: var(--danger); }
+  #endscr .fs { font-size: 28px; font-weight: 700; }
+
+  /* 메뉴 / 일시정지 */
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: linear-gradient(rgba(8,10,12,.78), rgba(8,10,12,.9)); z-index: 10; overflow: auto; }
+  .card { width: min(720px, 100%); background: rgba(20,23,26,.92); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 28px 32px; }
+  .card h1 { margin: 0; font-size: 34px; letter-spacing: .16em; font-weight: 800; }
+  .card h1 em { font-style: normal; color: var(--accent); }
+  .card .sub { color: var(--dim); font-size: 13px; margin: 6px 0 22px; }
+  .rowf { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=text] { flex: 1; min-width: 160px; padding: 12px 14px; font-size: 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18);
+    background: rgba(0,0,0,.35); color: #fff; outline: none; user-select: text; }
+  input[type=text]:focus { border-color: var(--accent); }
+  button { padding: 12px 26px; font-size: 15px; font-weight: 700; border: 0; border-radius: 6px; background: var(--accent); color: #1a1205; cursor: pointer; }
+  button:hover { filter: brightness(1.1); } button:disabled { opacity: .5; cursor: default; }
+  #msg { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--danger); }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 22px; margin-top: 18px; font-size: 13px; }
+  .keys div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid rgba(255,255,255,.06); padding: 4px 0; }
+  .keys kbd { font: inherit; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .keys span { color: var(--dim); }
+  .opt { display: flex; align-items: center; gap: 12px; margin-top: 16px; font-size: 13px; color: var(--dim); }
+  .opt input { flex: 1; accent-color: var(--accent); }
+  .opt output { width: 40px; text-align: right; color: var(--ui); }
+  #pause { display: none; cursor: pointer; }
+  #pause .card { text-align: left; }
+  #pause h2 { margin: 0 0 4px; font-size: 22px; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div id="vig"></div>
+  <div id="scope"><b></b></div>
+  <div id="cross"><i class="h l"></i><i class="h r"></i><i class="v t"></i><i class="v b"></i><i class="c"></i></div>
+  <div id="hitm"></div>
+  <div id="dmgdir"></div>
+  <div id="rbar"><i></i></div>
+
+  <div id="score">
+    <div class="side me"><span class="nm" id="nmMe">나</span><span class="n mono" id="scMe">0</span></div>
+    <div class="mid" id="goal">10킬 선승</div>
+    <div class="side en"><span class="nm" id="nmEn">—</span><span class="n mono" id="scEn">0</span></div>
+  </div>
+  <div id="banner"></div>
+  <div id="feed"></div>
+
+  <div id="hp">
+    <div class="row"><span class="v mono" id="hpV">100</span><span class="l">HP</span></div>
+    <div class="bar"><i id="hpB"></i></div>
+  </div>
+  <div id="slots"></div>
+  <div id="ammo">
+    <div><span class="cur mono" id="amC">30</span><span class="res mono" id="amR">/ 120</span></div>
+    <div class="wn" id="wN">M4A1</div>
+    <div class="wc" id="wC">돌격소총 · 연사</div>
+  </div>
+  <div id="hint"></div>
+
+  <div id="dead"><h2>전사</h2><p id="deadBy"></p><p id="deadT"></p></div>
+  <div id="endscr"><h1 id="endT">승리</h1><div class="fs mono" id="endS"></div><p id="endR"></p></div>
+</div>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1>FRONTLINE <em>DUEL</em></h1>
+    <div class="sub">같은 네트워크의 두 플레이어가 맞붙는 1대1 전장 · 먼저 10킬을 달성하면 승리</div>
+    <div class="rowf">
+      <input type="text" id="name" maxlength="14" placeholder="콜사인 (이름)" autocomplete="off">
+      <button id="join">전장 입장</button>
+    </div>
+    <div id="msg"></div>
+    <div class="keys">
+      <div><span>이동</span><kbd>W A S D</kbd></div>
+      <div><span>사격</span><kbd>마우스 좌클릭</kbd></div>
+      <div><span>정조준 / 스코프</span><kbd>우클릭 · T</kbd></div>
+      <div><span>재장전</span><kbd>R</kbd></div>
+      <div><span>무기 교체</span><kbd>1–7 · 휠 · Q</kbd></div>
+      <div><span>달리기</span><kbd>Shift</kbd></div>
+      <div><span>앉기</span><kbd>C</kbd></div>
+      <div><span>점프</span><kbd>Space</kbd></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pause">
+  <div class="card">
+    <h2>일시정지</h2>
+    <div class="sub" style="margin-bottom:0">화면을 클릭하면 전투로 돌아갑니다 (경기는 계속 진행 중)</div>
+    <div class="opt" id="optSens"><span>마우스 감도</span><input type="range" id="sens" min="0.2" max="3" step="0.05" value="1"><output id="sensV">1.00</output></div>
+    <div class="opt" id="optVol"><span>음량</span><input type="range" id="vol" min="0" max="1" step="0.05" value="0.6"><output id="volV">0.60</output></div>
+  </div>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

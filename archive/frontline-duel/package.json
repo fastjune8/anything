@@ -1,0 +1,14 @@
+{
+  "name": "frontline-duel",
+  "version": "1.0.0",
+  "description": "로컬 네트워크 1대1 FPS",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "three": "0.170.0",
+    "ws": "^8.18.0"
+  }
+}

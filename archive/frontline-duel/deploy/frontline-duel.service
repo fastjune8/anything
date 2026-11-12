@@ -1,0 +1,14 @@
+[Unit]
+Description=Frontline Duel game server
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/frontline-duel
+Environment=PORT=3000
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
