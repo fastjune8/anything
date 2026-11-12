@@ -799,6 +799,7 @@ function onMessage(m) {
       }
       break;
     case 'hp': me.hp = m.hp; break;
+    case 'chat': addChatLine(String(m.name), String(m.text), m.id === me.id); break;
     case 'kill': {
       applyScores(m.sc);
       const mine = m.killer === me.id, iDie = m.victim === me.id, w = WEAPONS[m.w];
@@ -834,13 +835,45 @@ function sendState(dt) {
 }
 
 // ───────── 입력 ─────────
-const isActive = () => joined && (NOLOCK || document.pointerLockElement === canvas);
+// ───────── 채팅 ─────────
+// 채팅창이 열려 있는 동안에는 isActive() 가 false → 이동/사격/무기교체 입력이 모두 꺼진다.
+let chatOpen = false;
+const chatEl = $('chat'), chatIn = $('chatIn'), chatLog = $('chatLog');
+function openChat() {
+  chatOpen = true; keys.clear(); fireHeld = adsHeld = fireFresh = false;
+  chatEl.classList.add('open'); chatIn.value = ''; chatIn.focus();
+}
+function closeChat() { chatOpen = false; chatEl.classList.remove('open'); chatIn.blur(); }
+function sendChat() {
+  const text = chatIn.value.trim();
+  if (text) net.send({ t: 'chat', text });
+  closeChat();
+}
+function addChatLine(name, text, mine) {
+  // textContent 계열만 사용해서 HTML 이 주입될 수 없게 한다
+  const line = document.createElement('div'), who = document.createElement('b');
+  who.textContent = name; if (mine) who.className = 'me';
+  line.append(who, document.createTextNode(` ${text}`));
+  chatLog.append(line);
+  while (chatLog.children.length > 8) chatLog.firstChild.remove();
+  setTimeout(() => line.remove(), 10500);
+}
+chatIn.addEventListener('keydown', e => {
+  e.stopPropagation(); // 게임 단축키로 전달되지 않게
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(); } // 한글 조합 중 Enter 는 제외
+  else if (e.key === 'Escape') closeChat();
+});
+
+const isActive = () => joined && !chatOpen && (NOLOCK || document.pointerLockElement === canvas);
+addEventListener('keydown', e => {
+  if ((e.code === 'Enter' || e.code === 'NumpadEnter') && isActive()) { e.preventDefault(); openChat(); }
+});
 function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
   if (joined) setDisplay($('pause'), !on, 'flex');
-  if (!on) { keys.clear(); fireHeld = adsHeld = fireFresh = false; }
+  if (!on) { keys.clear(); fireHeld = adsHeld = fireFresh = false; if (chatOpen) closeChat(); }
 });
 $('pause').addEventListener('click', e => { if (!e.target.closest('.opt')) lock(); });
 canvas.addEventListener('click', () => { if (joined && !isActive()) lock(); });
@@ -864,7 +897,7 @@ addEventListener('mousedown', e => {
 addEventListener('mouseup', e => { if (e.button === 0) fireHeld = false; else if (e.button === 2) adsHeld = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
-  if (document.pointerLockElement !== canvas || !me.alive) return;
+  if (document.pointerLockElement !== canvas || !me.alive || chatOpen) return;
   // 일부 브라우저에서 간헐적으로 튀는 값 방지
   const dx = clamp(e.movementX, -400, 400), dy = clamp(e.movementY, -400, 400);
   const k = 0.0022 * sens * Math.tan(camera.fov * DEG / 2) / Math.tan(BASE_FOV * DEG / 2);
@@ -948,6 +981,6 @@ fetch('/status').then(r => r.json()).then(st => {
 }).catch(() => {});
 
 // 디버그 / 자동 테스트 훅
-window.__g = { me, remotes, roster, inv, net, get cur() { return cur; }, get state() { return matchState; }, switchTo, startReload,
+window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return cur; }, get state() { return matchState; }, switchTo, startReload,
   input(o) { if ('fire' in o) { fireHeld = o.fire; if (o.fire) fireFresh = true; } if ('ads' in o) adsHeld = o.ads; if (o.key) keys.add(o.key); if (o.keyUp) keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }

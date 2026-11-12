@@ -73,6 +73,17 @@
   #feed .a { color: var(--accent); } #feed .e { color: #ff8a7d; }
   @keyframes fadeout { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 
+  /* 채팅 */
+  #chat { position: absolute; left: 14px; bottom: 112px; width: min(380px, 60vw); font-size: 13px; }
+  #chatLog { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+  #chatLog div { background: var(--panel); padding: 4px 9px; border-radius: 4px; max-width: 100%; overflow-wrap: anywhere; animation: fadeout 10s forwards; }
+  #chatLog b { color: var(--dim); font-weight: 600; margin-right: 2px; }
+  #chatLog b.me { color: var(--accent); }
+  #chat.open #chatLog div { animation: none; opacity: 1; }
+  #chatIn { display: none; width: 100%; margin-top: 6px; padding: 7px 10px; border-radius: 4px; border: 1px solid var(--accent);
+    background: rgba(12,14,16,.88); color: var(--ui); font: inherit; outline: none; user-select: text; -webkit-user-select: text; pointer-events: auto; }
+  #chat.open #chatIn { display: block; }
+
   /* 하단 */
   #hp { position: absolute; left: 24px; bottom: 22px; width: 250px; }
   #hp .row { display: flex; align-items: baseline; gap: 8px; text-shadow: 0 1px 3px #000; }
@@ -151,6 +162,7 @@
   <div id="lb"></div>
   <div id="banner"></div>
   <div id="feed"></div>
+  <div id="chat"><div id="chatLog"></div><input id="chatIn" type="text" maxlength="120" placeholder="메시지 입력 · Enter 전송 · Esc 취소" autocomplete="off"></div>
 
   <div id="hp">
     <div class="row"><span class="v mono" id="hpV">100</span><span class="l">HP</span></div>
@@ -186,6 +198,7 @@
       <div><span>달리기</span><kbd>Shift</kbd></div>
       <div><span>앉기</span><kbd>C</kbd></div>
       <div><span>점프</span><kbd>Space</kbd></div>
+      <div><span>채팅</span><kbd>Enter</kbd></div>
     </div>
   </div>
 </div>

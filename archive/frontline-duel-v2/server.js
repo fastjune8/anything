@@ -58,6 +58,7 @@ const server = http.createServer((req, res) => {
 
 // ───────── 게임 상태: 방(Room) 단위 FFA ─────────
 const TICK_MS = 50;
+const CHAT_MAX_LEN = 120;
 const GOAL_KILLS = Number(process.env.GOAL) || GOAL;
 const RESTART_MS = process.env.RESTART_SECONDS ? Number(process.env.RESTART_SECONDS) * 1000 : MATCH_RESTART_MS;
 const MATCH_MS = process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : MATCH_TIME_MS;
@@ -126,7 +127,8 @@ class Room {
   // 사람이 적으면 봇으로 BOT_FILL 명까지 채우고, 사람이 늘면 봇을 뺀다
   balanceBots() {
     const humans = this.humans().length;
-    const want = Math.max(0, Math.min(BOT_FILL - humans, ROOM_MAX - humans));
+    const fill = process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : BOT_FILL; // 테스트용 재정의
+    const want = Math.max(0, Math.min(fill - humans, ROOM_MAX - humans));
     let bots = [...this.players.values()].filter(p => p.bot);
     while (bots.length < want) { this.addBot(); bots = [...this.players.values()].filter(p => p.bot); }
     while (bots.length > want) this.removeBot(bots.pop());
@@ -206,6 +208,18 @@ class Room {
       const d = Math.round(g.dmg);
       if (d > 0) this.applyDamage(p, v, wi, d, g.head);
     }
+  }
+
+  // 채팅: 방 안 모든 플레이어에게 전달. 길이 제한 + 도배 방지.
+  onChat(p, m) {
+    if (typeof m.text !== 'string') return;
+    const text = m.text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+    if (!text) return;
+    const now = Date.now();
+    p.chatTimes = (p.chatTimes || []).filter(t => now - t < 5000);
+    if (p.chatTimes.length >= 4 || (p.chatTimes.length && now - p.chatTimes[p.chatTimes.length - 1] < 400)) return; // 5초에 4개, 연속 400ms 미만은 무시
+    p.chatTimes.push(now);
+    this.broadcast({ t: 'chat', id: p.id, name: p.name, text });
   }
 
   endMatch() {
@@ -288,6 +302,7 @@ wss.on('connection', ws => {
         if (me.alive) { m.id = me.id; room.broadcast(m, me); }
         break;
       case 'hit': room.onHit(me, m); break;
+      case 'chat': room.onChat(me, m); break;
     }
   });
 

@@ -57,6 +57,41 @@ try {
   b.ws.close(); await sleep(800);
   check([...a.players.values()].filter(p => p.bot).length === botsBefore, '사람이 나가면 봇이 다시 채워진다');
 
+  console.log('\n[채팅]');
+  const c = connect(srv.port, 'chat-c'); await c.open; await c.waitFor('welcome');
+  a.msgs.length = 0; c.msgs.length = 0;
+  a.send({ t: 'chat', text: '안녕하세요' });
+  const gotC = await c.waitFor('chat', m => m.text === '안녕하세요', 2000);
+  check(!!gotC && gotC.name === 'tester-a' && gotC.id === a.me, '채팅이 같은 방의 다른 플레이어에게 이름과 함께 전달된다');
+  check(!!a.find('chat', m => m.text === '안녕하세요'), '보낸 사람에게도 같은 메시지가 돌아온다');
+  await sleep(450);
+  a.send({ t: 'chat', text: 'x'.repeat(300) });
+  const longMsg = await c.waitFor('chat', m => m.text.startsWith('xxx'), 2000);
+  check(longMsg && longMsg.text.length === 120, '120자를 넘는 메시지는 잘린다', `${longMsg && longMsg.text.length}자`);
+  await sleep(450);
+  a.send({ t: 'chat', text: 'a\u0000b\nc\u0007d   e' });
+  const clean = await c.waitFor('chat', m => m.text.startsWith('a'), 2000);
+  check(clean && clean.text === 'a b c d e', '제어문자/줄바꿈/연속 공백이 정리된다', JSON.stringify(clean && clean.text));
+  await sleep(450);
+  a.send({ t: 'chat', text: '<img src=x onerror=alert(1)>' });
+  const html = await c.waitFor('chat', m => m.text.includes('<img'), 2000);
+  check(html && html.text === '<img src=x onerror=alert(1)>', 'HTML 은 그대로 문자로 전달된다 (표시할 때 클라이언트가 textContent 로 처리)');
+  c.msgs.length = 0;
+  a.send({ t: 'chat', text: '   ' }); a.send({ t: 'chat', text: 123 }); a.send({ t: 'chat' });
+  await sleep(800);
+  check(c.count('chat') === 0, '빈 메시지/문자열이 아닌 값은 무시된다');
+  // 도배 방지: 연달아 보내면 첫 번째만, 그리고 5초에 4개까지
+  const d = connect(srv.port, 'chat-d'); await d.open; await d.waitFor('welcome');
+  c.msgs.length = 0;
+  for (let i = 0; i < 10; i++) d.send({ t: 'chat', text: `spam${i}` });
+  await sleep(700);
+  check(c.msgs.filter(m => m.t === 'chat' && m.text.startsWith('spam')).length === 1, '연속으로 도배하면 첫 메시지만 전달된다');
+  c.msgs.length = 0;
+  for (let i = 0; i < 7; i++) { d.send({ t: 'chat', text: `cap${i}` }); await sleep(450); }
+  const capped = c.msgs.filter(m => m.t === 'chat' && m.text.startsWith('cap')).length;
+  check(capped <= 3, '5초 안에는 총 4개까지만 전달된다', `${capped}개 (앞서 1개 사용)`);
+  c.ws.close(); d.ws.close(); await sleep(600);
+
   console.log('\n[경기 종료와 재시작]');
   const end = await a.waitFor('end', () => true, 15000);
   check(!!end, '시간이 지나면 경기가 종료된다');
