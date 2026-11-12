@@ -1,0 +1,24 @@
+{
+  "name": "frontline-duel",
+  "version": "2.0.0",
+  "description": "FRONTLINE DUEL — 봇이 섞이는 웹 FPS 자유 대전",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch server.js",
+    "test": "node tests/protocol.test.mjs",
+    "test:browser": "node tests/browser.test.mjs",
+    "test:all": "node tests/protocol.test.mjs && node tests/browser.test.mjs",
+    "deploy:staging": "./deploy/deploy.sh staging",
+    "deploy:prod": "./deploy/deploy.sh prod",
+    "rollback:prod": "./deploy/deploy.sh prod --rollback"
+  },
+  "dependencies": {
+    "three": "0.170.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.0"
+  }
+}
