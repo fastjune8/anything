@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+*.log
+
+# 비밀 키 / 서버 접속 정보 (절대 커밋 금지)
+Important/
+*.key
+*.pem
+deploy/targets.env
+.env
+.env.*
+
+# Roblox Studio 임시 파일
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxl.bak
