@@ -164,6 +164,20 @@ try {
     await page.evaluate(() => window.__g.input({ fire: false }));
     check(!!gotDmg, '실제로 쏴서 맞히면 서버가 상대에게 피해를 준다', gotDmg ? '' : JSON.stringify(await page.evaluate(() => { const g = window.__g, r = [...g.remotes.values()][0]; return { sent: window.__sent, cur: g.cur, ammo: g.inv[g.cur].ammo, alive: g.me.alive, pos: g.me.pos.toArray(), yaw: g.me.yaw, pitch: g.me.pitch, remote: r && r.pos.toArray(), ralive: r && r.alive }; })));
 
+    // 부활: 자동 부활은 없고, 최소 시간이 지난 뒤 아무 키나 누르면 부활한다
+    dummy.send({ t: 'hit', w: 4, hits: [['head', 5, await page.evaluate(() => window.__g.me.id)]] });
+    await page.waitForFunction(() => !window.__g.me.alive, null, { timeout: 4000 }).catch(() => {});
+    check(!(await page.evaluate(() => window.__g.me.alive)), '(준비) 내가 죽었다');
+    await sleep(4000);
+    check(!(await page.evaluate(() => window.__g.me.alive)), '4초가 지나도 자동으로 부활하지 않는다');
+    check((await page.evaluate(() => document.getElementById('deadT').textContent)).includes('아무 키'), '부활 방법 안내가 표시된다');
+    await page.keyboard.press('Enter'); await sleep(400);
+    check(!(await page.evaluate(() => window.__g.me.alive)), '채팅을 여는 Enter 로는 부활하지 않는다');
+    await page.keyboard.press('Escape'); await sleep(200);
+    await page.keyboard.press('KeyW');
+    await page.waitForFunction(() => window.__g.me.alive, null, { timeout: 3000 }).catch(() => {});
+    check(await page.evaluate(() => window.__g.me.alive), '아무 키나 누르면 부활한다');
+
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     clearInterval(hold); dummy.ws.close();
     await page.close();

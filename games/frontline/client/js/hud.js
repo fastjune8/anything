@@ -109,7 +109,10 @@ export function updateHud(dt) {
 
   updateScoreboard();
   setDisplay($('dead'), !me.alive && game.matchState === 'playing', 'flex');
-  if (!me.alive) setText($('deadT'), `${Math.max(0, (game.respawnAt - performance.now()) / 1000).toFixed(1)}초 후 재투입`);
+  if (!me.alive) {
+    const wait = (game.respawnAt - performance.now()) / 1000;
+    setText($('deadT'), wait > 0 ? `${wait.toFixed(1)}초 후 재투입 가능` : '아무 키나 누르거나 클릭하면 재투입');
+  }
   setDisplay($('endscr'), game.matchState === 'ended', 'flex');
   if (game.matchState === 'ended') setText($('endR'), `${Math.max(0, Math.ceil((game.endAt - performance.now()) / 1000))}초 후 다음 경기 시작`);
 }

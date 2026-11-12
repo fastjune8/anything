@@ -3,12 +3,22 @@ import { WEAPONS } from '/shared/weapons.js';
 import { canvas, camera } from './scene.js';
 import { closeChat, openChat } from './chat.js';
 import { sfx } from './sfx.js';
-import { me, wp, inp, game, PITCH_MAX } from './state.js';
+import { me, wp, inp, game, net, PITCH_MAX } from './state.js';
 import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
 import { setDisplay } from './dom.js';
 import { startReload, switchTo } from './weapon.js';
 
 // 게임 입력을 받아도 되는 상태인가 (접속 중 + 채팅 안 열림 + 마우스 잠금됨)
+// 죽어 있을 때: 자동 부활은 없다. 최소 대기 시간이 지난 뒤 "새로 한" 입력(키/클릭)이 부활 요청이 된다.
+// (누르고 있던 키의 반복 입력, 채팅 열기/닫기 키는 제외)
+function tryRespawn() {
+  if (!game.joined || me.alive || inp.chatOpen || game.matchState !== 'playing') return;
+  if (performance.now() < game.respawnAt) return;
+  net.send({ t: 'respawn' });
+}
+addEventListener('keydown', e => { if (!e.repeat && !['Enter', 'NumpadEnter', 'Escape'].includes(e.code)) tryRespawn(); });
+addEventListener('mousedown', tryRespawn);
+
 export const isActive = () => game.joined && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
 
 function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }

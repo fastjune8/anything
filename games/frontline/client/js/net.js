@@ -1,5 +1,5 @@
 // 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
-import { RESPAWN_MS, MAX_HP } from '/shared/constants.js';
+import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { addChatLine } from './chat.js';
 import { impact, addTracer } from './fx.js';
@@ -115,7 +115,7 @@ function onMessage(m) {
       feed(`<span class="${mine ? 'a' : 'e'}">${esc(kn)}</span><span class="w">[${w ? w.name : '?'}]</span><span class="${iDie ? 'a' : 'e'}">${esc(vn)}</span>${m.head ? '<span class="hs">헤드샷</span>' : ''}`);
       if (mine) sfx.kill();
       if (iDie) {
-        me.alive = false; me.hp = 0; wp.reload = null; game.respawnAt = performance.now() + RESPAWN_MS;
+        me.alive = false; me.hp = 0; wp.reload = null; game.respawnAt = performance.now() + RESPAWN_MIN_MS; // 이 시각 이후 아무 입력이나 하면 부활
         setText($('deadBy'), `${kn} 의 ${w ? w.name : ''}${m.head ? ' · 헤드샷' : ''}`);
       } else {
         const r = remotes.get(m.victim);

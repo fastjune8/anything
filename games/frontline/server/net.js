@@ -15,6 +15,7 @@ const HANDLERS = {
   rl(me, m, room) { if (me.alive) { m.id = me.id; room.broadcast(m, me); } },
   hit: (me, m, room) => room.onHit(me, m),
   chat: (me, m, room) => room.onChat(me, m),
+  respawn: (me, m, room) => room.onRespawn(me),
 };
 
 export function attachWebSocket(httpServer) {

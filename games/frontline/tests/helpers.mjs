@@ -35,13 +35,14 @@ export async function startServer(extraEnv = {}) {
 // 메시지를 모아 두고 조건을 기다릴 수 있는 클라이언트
 export function connect(port, name) {
   const ws = new WebSocket(`ws://localhost:${port}`);
-  const c = { ws, me: -1, msgs: [], players: new Map() };
+  const c = { ws, me: -1, msgs: [], players: new Map(), autoRespawn: true }; // autoRespawn: 죽으면 1.7초 뒤 부활 요청
   ws.on('message', raw => {
     const m = JSON.parse(raw);
     c.msgs.push(m);
     if (m.t === 'welcome') { c.me = m.id; m.players.forEach(p => c.players.set(p.id, p)); }
     if (m.t === 'pj') c.players.set(m.player.id, m.player);
     if (m.t === 'pl') c.players.delete(m.id);
+    if (m.t === 'kill' && m.victim === c.me && c.autoRespawn) setTimeout(() => { if (ws.readyState === 1) c.send({ t: 'respawn' }); }, 1700);
   });
   c.send = m => ws.send(JSON.stringify(m));
   c.count = t => c.msgs.filter(m => m.t === t).length;

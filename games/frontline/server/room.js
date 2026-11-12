@@ -1,5 +1,5 @@
 // 방(Room) 하나 = 한 판의 FFA 경기. 플레이어/봇 관리, 피해·킬 처리, 경기 진행을 맡는다.
-import { MAX_HP, RESPAWN_MS, ROOM_MAX, SPAWN_PROTECT_MS } from '../shared/constants.js';
+import { MAX_HP, RESPAWN_MS, RESPAWN_MIN_MS, ROOM_MAX, SPAWN_PROTECT_MS } from '../shared/constants.js';
 import { SPAWNS } from '../shared/spawns.js';
 import { Bot } from './bots/bot.js';
 import { BOT_NAMES } from './bots/names.js';
@@ -43,7 +43,7 @@ export class Room {
   }
 
   newPlayer(id, name, ws) {
-    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, invulnUntil: 0, lastSpawn: null, room: this };
+    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, invulnUntil: 0, lastSpawn: null, diedAt: 0, room: this };
   }
 
   // ───────── 입장 / 퇴장 ─────────
@@ -137,9 +137,20 @@ export class Room {
     victim.alive = false; victim.deaths++; attacker.kills++;
     this.broadcast({ t: 'kill', killer: attacker.id, victim: victim.id, w: wi, head, sc: this.scoreList() });
     if (attacker.kills >= GOAL_KILLS) { this.endMatch(); return; }
-    victim.respawnTimer = setTimeout(() => {
-      if (this.players.get(victim.id) === victim && this.state === 'playing') this.spawn(victim);
-    }, RESPAWN_MS);
+    victim.diedAt = Date.now();
+    // 봇은 자동으로 부활한다. 사람은 자동 부활이 없고, 입력을 하면 부활을 요청한다 (onRespawn).
+    if (victim.bot) {
+      victim.respawnTimer = setTimeout(() => {
+        if (this.players.get(victim.id) === victim && this.state === 'playing') this.spawn(victim);
+      }, RESPAWN_MS);
+    }
+  }
+
+  // 사람이 보낸 부활 요청: 죽은 뒤 최소 시간이 지났을 때만 받아 준다
+  onRespawn(p) {
+    if (this.state !== 'playing' || p.alive || p.bot) return;
+    if (Date.now() - p.diedAt < RESPAWN_MIN_MS) return;
+    this.spawn(p);
   }
 
   // 사람이 보낸 명중 신호

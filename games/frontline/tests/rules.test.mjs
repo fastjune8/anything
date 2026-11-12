@@ -28,7 +28,27 @@ try {
   a.send({ t: 'hit', w: M9, hits: [['body', 5, c.me]] });
   check(!!(await a.waitFor('dmg', m => m.to === c.me && m.from === a.me, 2000)), '무적 중에 사격한 사람은 바로 피해를 받는다');
 
+  console.log('\n[부활: 자동 부활 없음, 입력하면 부활]');
+  b.autoRespawn = false;
+  const AWM = 4;
+  a.send({ t: 'hit', w: AWM, hits: [['head', 5, b.me]] });
+  const killed = await a.waitFor('kill', m => m.victim === b.me, 2000);
+  check(!!killed, '(준비) 상대를 죽였다');
+  const spawnsBefore = a.msgs.filter(m => m.t === 'spawn' && m.id === b.me).length;
+  const spawnCount = () => a.msgs.filter(m => m.t === 'spawn' && m.id === b.me).length - spawnsBefore;
+  b.send({ t: 'respawn' });
+  await sleep(500);
+  check(spawnCount() === 0, '죽은 직후의 부활 요청은 무시된다 (최소 1.5초)');
+  await sleep(3500);
+  check(spawnCount() === 0, '4초가 지나도 자동으로 부활하지 않는다');
+  b.send({ t: 'respawn' });
+  await sleep(500);
+  check(spawnCount() === 1, '최소 시간이 지난 뒤 요청하면 부활한다');
+  b.send({ t: 'respawn' }); await sleep(300);
+  check(spawnCount() === 1, '살아 있을 때의 부활 요청은 무시된다');
+
   console.log('\n[입장 정보]');
+  await sleep(3100); a.send({ t: 'hit', w: M9, hits: [['body', 5, b.me]] }); await sleep(300);
   const d = connect(srv.port, 'late'); await d.open;
   const w = await d.waitFor('welcome');
   const bInfo = w && w.players.find(p => p.id === b.me);
