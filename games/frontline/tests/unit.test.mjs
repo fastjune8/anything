@@ -83,5 +83,32 @@ console.log('\n[스폰 지점]');
   check(tooClose === 0, '적과 25m 안쪽인 지점에서는 태어나지 않는다');
 }
 
+console.log('\n[마우스 튐 필터]');
+{
+  const { createMouseFilter } = await import('../client/js/mousefilter.js');
+  const f = createMouseFilter();
+  for (let i = 0; i < 30; i++) f.apply(4, -2);
+  check(JSON.stringify(f.apply(5, 3)) === '[5,3]', '평소 움직임은 그대로 통과한다');
+  check(f.apply(380, 0) === null, '천천히 움직이다 갑자기 튄 값(380px)은 버린다');
+  check(JSON.stringify(f.apply(4, 1)) === '[4,1]', '튄 값 다음의 정상 움직임은 통과한다');
+
+  const g = createMouseFilter();
+  for (let i = 0; i < 10; i++) g.apply(3, 0);
+  const flick = [20, 45, 80, 120, 150, 150, 120].map(v => g.apply(v, 0));
+  check(flick.every(v => v !== null), '점점 빨라지는 실제 휘두르기는 버리지 않는다');
+
+  const h = createMouseFilter();
+  for (let i = 0; i < 10; i++) h.apply(2, 0);
+  const sudden = [200, 200, 200].map(v => h.apply(v, 0));
+  check(sudden[0] === null && sudden[1] !== null && sudden[2] !== null, '정지 상태에서 급히 휘두르면 첫 값 하나만 버리고 이어서 통과한다');
+
+  const k = createMouseFilter();
+  for (let i = 0; i < 20; i++) k.apply(200, 0);
+  check(k.apply(600, 0)[0] === 250, '한 번에 인정하는 이동량은 250px 로 제한한다');
+
+  const r = createMouseFilter(); r.reset();
+  check(r.apply(50, 50) === null && r.apply(50, 50) === null && r.apply(5, 5) !== null, '마우스 잠금 직후 2개는 버린다');
+}
+
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
 process.exit(failed() ? 1 : 0);

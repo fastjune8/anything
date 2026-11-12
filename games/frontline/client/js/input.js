@@ -7,14 +7,27 @@ import { me, wp, inp, game, PITCH_MAX } from './state.js';
 import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
 import { setDisplay } from './dom.js';
 import { startReload, switchTo } from './weapon.js';
+import { createMouseFilter } from './mousefilter.js';
+
+const mouseFilter = createMouseFilter();
 
 // 게임 입력을 받아도 되는 상태인가 (접속 중 + 채팅 안 열림 + 마우스 잠금됨)
 export const isActive = () => game.joined && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
 
-function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
+// 마우스 잠금. 가능하면 "가공되지 않은 입력"(unadjustedMovement)으로 받는다:
+// 운영체제의 포인터 가속과 화면 가장자리 되돌림의 영향을 받지 않아 시야가 튀는 문제가 줄어든다.
+function lock() {
+  sfx.init();
+  if (!canvas.requestPointerLock) return;
+  const plain = () => { const q = canvas.requestPointerLock(); if (q && q.catch) q.catch(() => {}); };
+  let p;
+  try { p = canvas.requestPointerLock({ unadjustedMovement: true }); } catch { plain(); return; }
+  if (p && p.catch) p.catch(e => { if (e && e.name === 'NotSupportedError') plain(); }); // 지원하지 않는 환경은 일반 잠금으로
+}
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
+  if (on) mouseFilter.reset();
   // 잠금이 풀리면 설정(일시정지) 창을 띄우되, 죽어 있을 때는 띄우지 않는다 (죽을 때마다 창이 뜨던 문제)
   if (game.joined) setDisplay($('pause'), !on && me.alive, 'flex');
   if (!on) { inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false; if (inp.chatOpen) closeChat(); }
@@ -47,8 +60,9 @@ addEventListener('mouseup', e => { if (e.button === 0) inp.fireHeld = false; els
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas || !me.alive || inp.chatOpen) return;
-  // 일부 브라우저에서 간헐적으로 튀는 값 방지
-  const dx = clamp(e.movementX, -400, 400), dy = clamp(e.movementY, -400, 400);
+  const moved = mouseFilter.apply(e.movementX, e.movementY); // 갑자기 튀는 값 제거
+  if (!moved) return;
+  const [dx, dy] = moved;
   const k = 0.0022 * inp.sens * Math.tan(camera.fov * DEG / 2) / Math.tan(BASE_FOV * DEG / 2);
   me.yaw -= dx * k;
   me.pitch = clamp(me.pitch - dy * k, -PITCH_MAX, PITCH_MAX);
