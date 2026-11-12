@@ -14,16 +14,8 @@ const mouseFilter = createMouseFilter();
 // 게임 입력을 받아도 되는 상태인가 (접속 중 + 채팅 안 열림 + 마우스 잠금됨)
 export const isActive = () => game.joined && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
 
-// 마우스 잠금. 가능하면 "가공되지 않은 입력"(unadjustedMovement)으로 받는다:
-// 운영체제의 포인터 가속과 화면 가장자리 되돌림의 영향을 받지 않아 시야가 튀는 문제가 줄어든다.
-function lock() {
-  sfx.init();
-  if (!canvas.requestPointerLock) return;
-  const plain = () => { const q = canvas.requestPointerLock(); if (q && q.catch) q.catch(() => {}); };
-  let p;
-  try { p = canvas.requestPointerLock({ unadjustedMovement: true }); } catch { plain(); return; }
-  if (p && p.catch) p.catch(e => { if (e && e.name === 'NotSupportedError') plain(); }); // 지원하지 않는 환경은 일반 잠금으로
-}
+// 마우스 잠금 (운영체제 설정이 반영된 일반 입력을 쓴다. 원본 입력은 감도 체감이 달라져서 쓰지 않는다)
+function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
@@ -60,7 +52,7 @@ addEventListener('mouseup', e => { if (e.button === 0) inp.fireHeld = false; els
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas || !me.alive || inp.chatOpen) return;
-  const moved = mouseFilter.apply(e.movementX, e.movementY); // 갑자기 튀는 값 제거
+  const moved = mouseFilter.apply(e.movementX, e.movementY, performance.now()); // 혼자 튀는 값만 제거
   if (!moved) return;
   const [dx, dy] = moved;
   const k = 0.0022 * inp.sens * Math.tan(camera.fov * DEG / 2) / Math.tan(BASE_FOV * DEG / 2);

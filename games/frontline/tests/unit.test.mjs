@@ -86,28 +86,36 @@ console.log('\n[스폰 지점]');
 console.log('\n[마우스 튐 필터]');
 {
   const { createMouseFilter } = await import('../client/js/mousefilter.js');
-  const f = createMouseFilter();
-  for (let i = 0; i < 30; i++) f.apply(4, -2);
-  check(JSON.stringify(f.apply(5, 3)) === '[5,3]', '평소 움직임은 그대로 통과한다');
-  check(f.apply(380, 0) === null, '천천히 움직이다 갑자기 튄 값(380px)은 버린다');
-  check(JSON.stringify(f.apply(4, 1)) === '[4,1]', '튄 값 다음의 정상 움직임은 통과한다');
+  // 이벤트 목록을 8ms 간격으로 넣고, 실제로 반영된 이동량의 합을 돌려준다
+  const run = (f, events, gap = 8, t0 = 0) => { let sx = 0, sy = 0, t = t0; for (const [dx, dy] of events) { const r = f.apply(dx, dy, t); if (r) { sx += r[0]; sy += r[1]; } t += gap; } return [sx, sy, t]; };
+  const sum = events => events.reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
+  const warm = f => run(f, Array.from({ length: 30 }, () => [4, -2]));
 
-  const g = createMouseFilter();
-  for (let i = 0; i < 10; i++) g.apply(3, 0);
-  const flick = [20, 45, 80, 120, 150, 150, 120].map(v => g.apply(v, 0));
-  check(flick.every(v => v !== null), '점점 빨라지는 실제 휘두르기는 버리지 않는다');
+  { const f = createMouseFilter(); const ev = Array.from({ length: 50 }, (_, i) => [3 + (i % 5), -2]);
+    check(String(run(f, ev).slice(0, 2)) === String(sum(ev)), '평소 움직임은 한 픽셀도 바뀌지 않는다'); }
 
-  const h = createMouseFilter();
-  for (let i = 0; i < 10; i++) h.apply(2, 0);
-  const sudden = [200, 200, 200].map(v => h.apply(v, 0));
-  check(sudden[0] === null && sudden[1] !== null && sudden[2] !== null, '정지 상태에서 급히 휘두르면 첫 값 하나만 버리고 이어서 통과한다');
+  { const f = createMouseFilter(); const [, , t] = warm(f);
+    const ev = [[5, 0], [380, 0], [4, 0], [5, 0]];
+    check(run(f, ev, 8, t)[0] === 14, '천천히 움직이다 혼자 튄 값(380px)은 버리고 나머지는 그대로', `합 ${run(createMouseFilter(), ev)[0]}`); }
 
-  const k = createMouseFilter();
-  for (let i = 0; i < 20; i++) k.apply(200, 0);
-  check(k.apply(600, 0)[0] === 250, '한 번에 인정하는 이동량은 250px 로 제한한다');
+  { const f = createMouseFilter(); const [, , t] = warm(f);
+    const ev = [[20, 0], [45, 0], [80, 0], [120, 0], [180, 0], [240, 0], [300, 0], [260, 0], [120, 0], [30, 0]];
+    check(run(f, ev, 8, t)[0] === sum(ev)[0], '점점 빨라지는 빠른 휘두르기는 이동량이 그대로다 (감도 일정)'); }
 
-  const r = createMouseFilter(); r.reset();
-  check(r.apply(50, 50) === null && r.apply(50, 50) === null && r.apply(5, 5) !== null, '마우스 잠금 직후 2개는 버린다');
+  { const f = createMouseFilter(); const [, , t] = warm(f);
+    const ev = [[260, 10], [280, 12], [250, 8], [90, 0]];
+    check(run(f, ev, 8, t)[0] === sum(ev)[0], '정지 상태에서 급히 휘둘러도 이동량을 잃지 않는다 (한 박자 늦게 모두 반영)'); }
+
+  { const f = createMouseFilter(); const [, , t] = warm(f);
+    check(run(f, [[300, 0], [-6, 0], [-5, 0]], 8, t)[0] === -11, '튄 값 다음에 반대 방향이 오면 튄 값만 버린다'); }
+
+  { const f = createMouseFilter(); const [, , t] = warm(f);
+    f.apply(300, 0, t);
+    const late = f.apply(200, 0, t + 400);
+    check(late === null || late[0] <= 200, '튄 값 뒤 한참(0.4초) 지나 온 값과는 합치지 않는다'); }
+
+  { const f = createMouseFilter(); f.reset();
+    check(f.apply(50, 50, 0) === null && String(f.apply(5, 5, 8)) === '5,5', '마우스 잠금 직후 첫 값만 버린다'); }
 }
 
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
