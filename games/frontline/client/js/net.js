@@ -97,7 +97,7 @@ function onMessage(m) {
       sfx.shot(w, a.dist, a.pan);
       if (w.bolt) sfx.mech('bolt', a.att, a.pan, 0.5);
       const r = remotes.get(m.id);
-      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; } // 쏜 사람은 무적이 풀린다
+      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; r.shotAt = performance.now(); } // 쏜 사람은 무적이 풀리고, 미니맵에 잠깐 표시된다 // 쏜 사람은 무적이 풀린다
       for (const e of m.e || []) {
         const end = new V3(e[0], e[1], e[2]);
         addTracer(o, end);

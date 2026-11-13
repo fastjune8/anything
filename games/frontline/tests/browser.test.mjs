@@ -206,6 +206,38 @@ try {
       return { ally: ally ? ray(ally) : 'none', foeHit: foe ? !!ray(foe) : 'none' };
     });
     check(ff.ally === null || ff.ally === 'none', '아군은 조준해도 명중 판정이 나지 않는다', JSON.stringify(ff.ally));
+
+    // ── 미니맵 / 이름표 (팀전) ──
+    console.log('\n[미니맵 / 이름표]');
+    await page.waitForFunction(() => window.__g.me.alive, null, { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 600));
+    const mm = await page.evaluate(() => {
+      const c = document.getElementById('minimap'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let painted = 0, blue = 0, gold = 0;
+      for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 0) painted++; if (d[i] < 120 && d[i + 2] > 200 && d[i + 3] > 200) blue++; if (d[i] > 240 && d[i + 1] > 160 && d[i + 1] < 200 && d[i + 2] < 90) gold++; }
+      return { shown: getComputedStyle(c).display !== 'none', painted, blue, gold, stats: { ...window.__g.minimapStats } };
+    });
+    check(mm.shown && mm.painted > 5000, '게임 화면에 미니맵이 그려진다', `칠해진 점 ${mm.painted}`);
+    check(mm.gold > 20, '내 위치 표시(주황 삼각형)가 가운데에 있다', `gold ${mm.gold}`);
+    check(mm.stats.allies >= 1 && mm.blue > 20, '팀전에서는 아군이 파란 점으로 보인다', JSON.stringify(mm.stats));
+    const tags = await page.evaluate(() => {
+      const g = window.__g;
+      return [...g.remotes.values()].map(r => ({ name: r.name, key: r.rig.tagKey, vis: r.rig.bar.visible }));
+    });
+    check(tags.length === 9 && tags.every(t => t.key.startsWith(t.name + '|')), '모든 상대에게 이름표가 만들어진다 (이름 포함)', JSON.stringify(tags.slice(0, 2)));
+    check(tags.filter(t => t.vis).length >= 1, '살아 있는 상대의 이름표가 보인다');
+    // 이름표 크기 = 0.75m × clamp(거리/14, 1, 3.4). 각 상대의 실제 거리로 기대값을 계산해 비교한다 (봇은 계속 움직이므로 위치를 고정하지 않는다)
+    const sizes = await page.evaluate(() => {
+      const g = window.__g;
+      return [...g.remotes.values()].filter(r => r.alive && r.hasPos && r.rig.bar.visible).map(r => {
+        const d = Math.hypot(r.pos.x - g.me.pos.x, r.pos.y + 1.7 - (g.me.pos.y + 1.6), r.pos.z - g.me.pos.z);
+        return { d: +d.toFixed(1), scale: +r.rig.bar.scale.x.toFixed(2), expect: +(0.75 * Math.min(3.4, Math.max(1, d / 14))).toFixed(2) };
+      });
+    });
+    check(sizes.length >= 3 && sizes.every(z => Math.abs(z.scale - z.expect) / z.expect < 0.12), '이름표 크기가 거리에 비례해 커진다 (멀리서도 읽히게)', JSON.stringify(sizes.slice(0, 4)));
+    const nearest = sizes.reduce((m, z) => (z.d < m.d ? z : m)), farthest = sizes.reduce((m, z) => (z.d > m.d ? z : m));
+    check(farthest.d < 20 || farthest.scale > nearest.scale, '더 먼 상대의 이름표가 더 크다', `${nearest.d}m→${nearest.scale}, ${farthest.d}m→${farthest.scale}`);
+    check(await page.evaluate(() => [...window.__g.remotes.values()].every(r => r.rig.bar.center.y === 0)), '이름표는 머리 위에서 위로 자라서 얼굴을 가리지 않는다');
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
 
     await page.close();

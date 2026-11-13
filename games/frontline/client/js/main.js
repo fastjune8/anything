@@ -8,6 +8,7 @@ import { updateViewmodel } from './viewmodel.js';
 import { updateMovement } from './player.js';
 import { updateWeapon, startReload, switchTo } from './weapon.js';
 import { updateHud } from './hud.js';
+import { updateMinimap, lastStats as minimapStats } from './minimap.js';
 import { sendState } from './net.js';
 import { isActive } from './input.js';
 import { join, nameEl } from './menu.js';
@@ -46,7 +47,7 @@ function frame(now) {
   updateRemotes(dt);
   updateTracers(dt);
   updateParts(dt);
-  if (game.joined) updateHud(dt);
+  if (game.joined) { updateHud(dt); updateMinimap(); }
 
   renderer.clear();
   renderer.render(scene, camera);
@@ -61,6 +62,6 @@ fetch('/status').then(r => r.json()).then(st => {
 }).catch(() => {});
 
 // 디버그 / 자동 테스트 훅 (tests/browser.test.mjs 가 사용)
-window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, switchTo, startReload,
+window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload,
   input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }

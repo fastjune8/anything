@@ -36,7 +36,8 @@ games/frontline/
 │       ├── scene.js        렌더러·카메라       world.js  맵/하늘 그리기
 │       ├── player.js       이동·충돌           weapon.js 사격·재장전·교체
 │       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성
-│       ├── remotes.js      다른 플레이어 모델·명중 판정
+│       ├── remotes.js      다른 플레이어 모델·명중 판정·머리 위 이름표/체력바
+│       ├── minimap.js      미니맵(회전 원형 지도)   minimath.js  미니맵 좌표 계산(단위 테스트 대상)
 │       ├── fx.js           궤적·탄흔·파편      textures.js  이펙트 텍스처
 │       ├── hud.js          체력·탄약·순위표·킬 피드·종료 화면
 │       ├── chat.js         채팅 입력/표시
@@ -82,5 +83,7 @@ games/frontline/
 | 채팅 제한 | `server/chat.js` 상단 상수, 글자 수는 `shared/constants.js` 의 `CHAT_MAX_LEN` |
 | 화면 모양 | `client/css/style.css`, `client/index.html` |
 | 순위표·HUD 표시 | `client/js/hud.js` |
+| 미니맵 크기·표시 범위·적 표시 시간 | `client/js/minimap.js` 맨 위 상수 (`VIEW_M`), 적 표시 시간은 `minimath.js` |
+| 이름표 크기·표시 거리 | `client/js/remotes.js` (`TAG_RANGE`, 크기 계산) |
 | 조작키 | `client/js/input.js` (메뉴의 조작 안내는 `client/index.html`) |
 | 새 메시지 추가 | `docs/PROTOCOL.md` 맨 아래 순서대로 |

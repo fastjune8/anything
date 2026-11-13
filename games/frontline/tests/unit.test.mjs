@@ -91,5 +91,24 @@ console.log('\n[스폰 지점]');
   check(tooClose === 0, '적과 25m 안쪽인 지점에서는 태어나지 않는다');
 }
 
+console.log('\n[미니맵 좌표]');
+{
+  const { toMini, inMini, enemyVisible } = await import('../client/js/minimath.js');
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  // 게임 규칙: yaw=0 이면 앞은 -z, 오른쪽은 +x
+  const fwd = toMini(0, 0, 0, 0, -10, 2), right = toMini(0, 0, 0, 10, 0, 2);
+  check(near(fwd.x, 0) && near(fwd.y, -20), '앞(-z)에 있는 사람은 미니맵 위쪽에 보인다', JSON.stringify(fwd));
+  check(near(right.x, 20) && near(right.y, 0), '오른쪽(+x)에 있는 사람은 미니맵 오른쪽에 보인다', JSON.stringify(right));
+  // yaw 를 돌리면 지도가 같이 돈다: 시선 방향 (-sin, -cos) 에 있는 점은 언제나 위쪽
+  for (const yaw of [0.7, 2.1, -1.3, Math.PI]) {
+    const ahead = toMini(5, -3, yaw, 5 - Math.sin(yaw) * 10, -3 - Math.cos(yaw) * 10, 1);
+    const rightPt = toMini(5, -3, yaw, 5 + Math.cos(yaw) * 10, -3 - Math.sin(yaw) * 10, 1);
+    check(near(ahead.x, 0) && near(ahead.y, -10) && near(rightPt.x, 10) && near(rightPt.y, 0), `시선(yaw=${yaw.toFixed(1)})이 어느 쪽이든 앞은 위, 오른쪽은 오른쪽이다`);
+  }
+  check(toMini(3, 4, 1.2, 3, 4, 5).x === 0 && toMini(3, 4, 1.2, 3, 4, 5).y === 0, '내 위치는 항상 가운데(0,0)다');
+  check(inMini({ x: 30, y: 30 }, 85) && !inMini({ x: 80, y: 40 }, 85), '원 밖의 점은 그리지 않는다');
+  check(enemyVisible(1000, 0, 2000) === true && enemyVisible(2500, 0, 2000) === false && enemyVisible(0, -1e9) === false, '적은 총을 쏜 뒤 2초 동안만 보이고, 한 번도 안 쐈으면 보이지 않는다');
+}
+
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
 process.exit(failed() ? 1 : 0);

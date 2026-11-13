@@ -5,7 +5,7 @@ import { MAX_PLAYERS } from '/shared/modes.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { rayBox } from '/shared/collision.js';
 import { buildGun, buildSoldier } from './guns.js';
-import { scene } from './scene.js';
+import { scene, camera } from './scene.js';
 import { flashTex } from './textures.js';
 import { sfx, audioAt } from './sfx.js';
 import { isAlly } from './state.js';
@@ -14,6 +14,9 @@ import { V3, MODE_CFG, lerp, smooth, angLerp } from './util.js';
 // 3인칭 모델은 방 최대 인원만큼 미리 만들어 두고, 들어오는 사람에게 하나씩 배정한다.
 const RIG_COLORS = [[0x6a6048, 0x3a3d2c], [0x4a5a6a, 0x2c333d], [0x6a4a48, 0x3d2c2c], [0x4a6a52, 0x2c3d33],
   [0x6a6a48, 0x3d3d2c], [0x5a4a6a, 0x332c3d], [0x48666a, 0x2c3d3d], [0x6a5448, 0x3d332c]];
+const TAG_W = 160, TAG_H = 36;      // 이름표 캔버스 크기
+const TEAM_MODE = () => MODE_CFG.teams > 0;
+const TAG_RANGE = 90;                // 이 거리(m) 밖에서는 이름표를 숨긴다
 const TEAM_COLORS = { ally: [0x3f5f8a, 0x243650], foe: [0x8a3d35, 0x4f231f] };
 function makeRig(i) {
   const [uniform, vest] = RIG_COLORS[i % RIG_COLORS.length];
@@ -27,19 +30,28 @@ function makeRig(i) {
   });
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
   flash.scale.setScalar(0.7); flash.visible = false; scene.add(flash);
-  // 머리 위 체력바 (벽 뒤에서는 가려진다)
-  const barCanvas = document.createElement('canvas'); barCanvas.width = 64; barCanvas.height = 8;
-  const barTex = new THREE.CanvasTexture(barCanvas); barTex.colorSpace = THREE.SRGBColorSpace;
-  const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: barTex, depthWrite: false, fog: false, toneMapped: false }));
-  bar.scale.set(0.8, 0.1, 1); bar.visible = false; scene.add(bar);
-  return { soldier, guns, flash, flashT: 0, used: false, bar, barCanvas, barTex, barHp: -1 };
+  // 머리 위 이름표 + 체력바 (벽 뒤에서는 가려진다)
+  const tagCanvas = document.createElement('canvas'); tagCanvas.width = TAG_W; tagCanvas.height = TAG_H;
+  const tagTex = new THREE.CanvasTexture(tagCanvas); tagTex.colorSpace = THREE.SRGBColorSpace;
+  const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex, depthWrite: false, fog: false, toneMapped: false }));
+  bar.center.set(0.5, 0); // 아래쪽을 기준으로 해서 크기가 커져도 머리를 가리지 않고 위로 자란다
+  bar.visible = false; scene.add(bar);
+  return { soldier, guns, flash, flashT: 0, used: false, bar, tagCanvas, tagTex, tagKey: '' };
 }
-function drawBar(rig, hp, ally) {
-  const g = rig.barCanvas.getContext('2d'), k = Math.max(0, Math.min(1, hp / MAX_HP));
-  g.clearRect(0, 0, 64, 8);
-  g.fillStyle = 'rgba(0,0,0,0.65)'; g.fillRect(0, 0, 64, 8);
-  g.fillStyle = ally ? '#5aa9ff' : k > 0.6 ? '#e9ecef' : k > 0.3 ? '#ffb43a' : '#ff4b3a'; g.fillRect(1, 1, Math.round(62 * k), 6);
-  rig.barTex.needsUpdate = true; rig.barHp = hp;
+// 이름 + 체력바를 캔버스에 그린다. 이름/체력/팀이 바뀔 때만 다시 그린다.
+function drawTag(rig, name, hp, ally) {
+  const g = rig.tagCanvas.getContext('2d'), k = Math.max(0, Math.min(1, hp / MAX_HP));
+  g.clearRect(0, 0, TAG_W, TAG_H);
+  g.font = 'bold 17px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  let label = name;
+  while (label.length > 1 && g.measureText(label).width > TAG_W - 8) label = label.slice(0, -1); // 너무 길면 자른다
+  if (label !== name) label += '…';
+  g.lineWidth = 4; g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,0.8)'; g.strokeText(label, TAG_W / 2, 12);
+  g.fillStyle = TEAM_MODE() ? (ally ? '#7fbcff' : '#ff8a7d') : '#ffffff'; g.fillText(label, TAG_W / 2, 12);
+  g.fillStyle = 'rgba(0,0,0,0.7)'; g.fillRect(16, 25, TAG_W - 32, 9);
+  g.fillStyle = ally ? '#5aa9ff' : k > 0.6 ? '#e9ecef' : k > 0.3 ? '#ffb43a' : '#ff4b3a';
+  g.fillRect(17, 26, Math.round((TAG_W - 34) * k), 7);
+  rig.tagTex.needsUpdate = true;
 }
 const rigs = Array.from({ length: MAX_PLAYERS }, (_, i) => makeRig(i));
 
@@ -55,7 +67,7 @@ export function addRemote(info) {
       id: info.id, rig, name: '', bot: false, alive: false, hasPos: false,
       pos: new V3(), tpos: new V3(), yaw: 0, tyaw: 0, pitch: 0, tpitch: 0, crouch: 0, crouchT: 0,
       weapon: 0, deadT: 0, walk: 0, stepDist: 0,
-      team: -1, hp: MAX_HP, invUntil: 0, // invUntil: 스폰 무적이 끝나는 시각 (performance.now 기준)
+      team: -1, shotAt: -1e9, hp: MAX_HP, invUntil: 0, // invUntil: 스폰 무적이 끝나는 시각 (performance.now 기준)
     };
     remotes.set(info.id, r);
   }
@@ -65,14 +77,14 @@ export function addRemote(info) {
     r.team = info.team;
     const [uniform, vest] = isAlly(r.team) ? TEAM_COLORS.ally : TEAM_COLORS.foe;
     r.rig.soldier.mats.uniform.color.setHex(uniform); r.rig.soldier.mats.vest.color.setHex(vest);
-    r.rig.barHp = -1; // 체력바 색도 다시 그린다
+    r.rig.tagKey = ''; // 이름표 색도 다시 그린다
   }
   return r;
 }
 export function removeRemote(id) {
   const r = remotes.get(id);
   if (!r) return;
-  r.rig.used = false; r.rig.soldier.root.visible = false; r.rig.flash.visible = false; r.rig.bar.visible = false;
+  r.rig.used = false; r.rig.soldier.root.visible = false; r.rig.flash.visible = false; r.rig.bar.visible = false; r.rig.tagKey = '';
   remotes.delete(id);
 }
 export function clearRemotes() { for (const id of [...remotes.keys()]) removeRemote(id); }
@@ -117,7 +129,8 @@ export function updateRemotes(dt) {
     const rig = e.rig, s = rig.soldier;
     const protectedNow = e.alive && e.invUntil > performance.now();
     s.root.visible = e.hasPos && !(protectedNow && Math.floor(performance.now() / 120) % 2); // 무적 중에는 깜빡인다
-    rig.bar.visible = e.hasPos && e.alive;
+    const dist = e.pos.distanceTo(camera.position);
+    rig.bar.visible = e.hasPos && e.alive && dist < TAG_RANGE;
     if (!e.hasPos) continue;
     const px = e.pos.x, pz = e.pos.z;
     if (e.pos.distanceToSquared(e.tpos) > 36) e.pos.copy(e.tpos);
@@ -153,8 +166,12 @@ export function updateRemotes(dt) {
       s.root.position.y = e.pos.y + t * 0.14;
       s.aim.rotation.x = lerp(s.aim.rotation.x, 0.9, k);
     }
-    rig.bar.position.set(e.pos.x, e.pos.y + lerp(2.0, 1.55, c), e.pos.z);
-    if (rig.barHp !== e.hp) drawBar(rig, e.hp, isAlly(e.team));
+    // 이름표: 머리 바로 위. 멀어질수록 크게 그려서 멀리서도 읽을 수 있다 (가까이서는 원래 크기)
+    rig.bar.position.set(e.pos.x, e.pos.y + lerp(1.85, 1.4, c), e.pos.z);
+    const f = Math.min(3.4, Math.max(1, dist / 14)), w = 0.75 * f;
+    rig.bar.scale.set(w, w * TAG_H / TAG_W, 1);
+    const key = `${e.name}|${e.hp}|${isAlly(e.team)}`;
+    if (rig.tagKey !== key) { drawTag(rig, e.name, e.hp, isAlly(e.team)); rig.tagKey = key; }
     rig.guns.forEach((g, i) => { g.group.visible = i === e.weapon; });
     rig.flashT -= dt;
     rig.flash.visible = rig.flashT > 0;
