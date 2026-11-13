@@ -10,7 +10,7 @@ games/frontline/
 │   ├── config.js           환경변수·경로·시간 설정 (process.env 는 여기서만 읽는다)
 │   ├── http.js             정적 파일(client/, shared/, three.js)과 /status
 │   ├── net.js              WebSocket 접속·메시지를 해당 방으로 분배
-│   ├── rooms.js            방 목록. 빈자리 있는 방을 찾거나 새로 만든다
+│   ├── rooms.js            방 목록. 빠른 시작(빈 방 찾기)과 친선전(만들기·코드 입장·목록)
 │   ├── room.js             방 하나: 입장/퇴장, 봇 채우기, 스폰, 피해·킬, 경기 진행, 채팅
 │   ├── chat.js             채팅 규칙 (글자 정리, 도배 방지)       ← 순수 함수
 │   ├── combat.js           명중 신고 검증·피해 합산               ← 순수 함수
@@ -41,7 +41,7 @@ games/frontline/
 │       ├── hud.js          체력·탄약·순위표·킬 피드·종료 화면
 │       ├── chat.js         채팅 입력/표시
 │       ├── net.js          서버 통신           input.js  키보드·마우스
-│       ├── menu.js         시작 메뉴·설정      audio.js / sfx.js  소리
+│       ├── menu.js         로비(빠른 시작·친선전)·설정      audio.js / sfx.js  소리
 │       └── util.js, dom.js 도우미
 ├── tests/                  unit / protocol(서버) / browser(Chrome)
 ├── deploy/                 라이브 배포 스크립트
@@ -54,6 +54,11 @@ games/frontline/
 - **서버 규칙은 순수 함수로** — `chat.js`, `combat.js` 처럼 입력→결과만 있는 함수로 두면 단위 테스트가 쉽다.
 - **브라우저 모듈 간 값 공유는 `state.js` 의 객체로** — `wp.cur = 3` 처럼 속성으로 바꾼다. (모듈 간에 변수를 직접 바꿀 수 없기 때문)
 - **브라우저 모듈 의존은 한 방향** — `util → state → scene/sfx/textures → fx/remotes/viewmodel → player/hud → weapon → net/input → menu → main`. 순환 참조를 만들지 않는다.
+
+## 모드/맵 전환은 새로고침 없이
+- 클라이언트의 현재 모드는 `MODE_CFG`(`util.js`)에 있고 `setMode(id)` 로 바뀐다. 다른 모듈은 이 객체를 그대로 읽는다.
+- 맵은 `scene.js` 의 `loadMap(id)` 가 구조물을 통째로 갈아 끼우고 `colliders` 배열 내용을 교체한다. (하늘·지면·조명은 그대로)
+- 방에 들어갈 때는 서버가 보낸 `welcome.mode` 를 기준으로 모드/맵을 맞춘다. 나갈 때는 `net.js` 의 `leaveToLobby()` 가 연결·상태·화면을 정리한다.
 
 ## 데이터 흐름 (한 번의 사격)
 1. `input.js` 가 마우스 클릭을 `inp.fireHeld` 에 기록
@@ -70,6 +75,7 @@ games/frontline/
 | 새 총 추가 | `shared/weapons.js` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`) |
 | 맵 수정 | `shared/maps/<맵>.js` (배치와 스폰 지점이 한 파일에 있다) |
 | 새 맵 추가 | `shared/maps/` 에 파일 추가 → `maps/index.js` 에 등록 → `modes.js` 에서 모드에 연결 |
+| 친선전 옵션(시간·정원 등) | `server/rooms.js` (`resolveRoom`), 로비 화면은 `client/js/menu.js` |
 | 새 모드 추가 | `shared/modes.js` 에 항목 추가 (로비 카드는 자동으로 생긴다). 규칙이 다르면 `server/room.js` |
 | 봇 난이도 | `server/bots/bot.js` 맨 위 상수와 `skill`, 정확도는 `shoot()` 의 `pHit` |
 | 방 인원·킬 수·봇 수 | `shared/modes.js` (모드별), 시간은 `shared/constants.js` |

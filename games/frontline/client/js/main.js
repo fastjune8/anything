@@ -1,7 +1,7 @@
 // 시작점: 모듈을 불러오고 매 프레임 루프를 돈다.
 //   입력(input.js) → 이동(player.js)·무기(weapon.js) → 카메라 → 화면 갱신(hud/fx/remotes) → 그리기
 import { WEAPONS } from '/shared/weapons.js';
-import { renderer, scene, camera, vm, vmScene, vmCam } from './scene.js';
+import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap } from './scene.js';
 import { updateTracers, updateParts } from './fx.js';
 import { updateRemotes, remotes, remoteHit } from './remotes.js';
 import { updateViewmodel } from './viewmodel.js';
@@ -61,6 +61,6 @@ fetch('/status').then(r => r.json()).then(st => {
 }).catch(() => {});
 
 // 디버그 / 자동 테스트 훅 (tests/browser.test.mjs 가 사용)
-window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, switchTo, startReload,
+window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, switchTo, startReload,
   input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }

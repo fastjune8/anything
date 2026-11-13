@@ -10,7 +10,7 @@
 
 | t | 필드 | 설명 |
 |---|---|---|
-| `join` | `name`, `mode` | 입장. 연결 후 가장 먼저 보낸다. 이름은 14자까지. `mode` 는 `ffa`(기본) 또는 `tdm`. |
+| `join` | `name`, `mode`, 그리고 아래 중 하나 | 입장. 연결 후 가장 먼저 보낸다. 이름은 14자까지. `mode` 는 `ffa`(기본) 또는 `tdm`. 방 선택: (없음) = **빠른 시작**, `code` = 친선전 방 **코드로 입장**, `create` = 친선전 **방 만들기** `{name(20자), private, bots, minutes(3/5/10)}` |
 | `s` | `p`, `y`(yaw), `x`(pitch), `c`(앉음 0/1), `w`(무기번호) | 내 위치/시선. 20회/초. 서버가 다른 사람들에게 그대로 전달한다. |
 | `shot` | `w`, `o`(총구 위치), `e`(`[[x,y,z,n], ...]` 탄착점) | 사격. 소리/궤적용으로 다른 사람에게 전달된다. `n`=6 이면 사람에 맞음, 그 외는 벽 방향 번호. |
 | `rl` | `w` | 재장전 시작 (소리용). |
@@ -22,7 +22,8 @@
 
 | t | 필드 | 설명 |
 |---|---|---|
-| `welcome` | `id`, `mode`, `team`, `ts`, `goal`, `left`(남은 ms), `state`, `players`, `lan`, `port` | 입장 직후 한 번. `players` = `[{id,name,bot,k,d,alive,hp,team}]`. `team` 은 팀전에서 0/1, 개인전은 -1. `ts` = 팀 점수 `[0팀, 1팀]` |
+| `denied` | `reason` | 입장 거부 후 연결이 닫힌다. `not_found`(코드의 방이 없음) / `full`(가득 참) / `limit`(방을 더 만들 수 없음) |
+| `welcome` | `id`, `mode`, `room`, `team`, `ts`, `goal`, `left`(남은 ms), `state`, `players`, `lan`, `port` | 입장 직후 한 번. `players` = `[{id,name,bot,k,d,alive,hp,team}]`. `room` 은 친선전이면 `{code, name, minutes}`, 빠른 시작이면 `null`. `team` 은 팀전에서 0/1, 개인전은 -1. `ts` = 팀 점수 `[0팀, 1팀]` |
 | `pj` | `player` | 누가 방에 들어옴 (봇 포함). |
 | `pl` | `id` | 누가 방에서 나감. |
 | `spawn` | `id`, `p` | 스폰/부활. 내 id 면 내 캐릭터를 그 위치로 옮긴다. |
@@ -43,6 +44,7 @@
 | `/` , `/js/*`, `/css/*` | `client/` 폴더 |
 | `/shared/*` | `shared/` 폴더 (서버와 같이 쓰는 규칙 코드) |
 | `/vendor/three/*` | three.js |
+| `/rooms` | `{rooms: [{code, name, mode, humans, max, state, minutes, bots}]}` — 공개 친선전 방 목록 (비공개 방은 나오지 않는다) |
 | `/status` | `{env, version, uptime, rooms, humans, modes: {ffa: {rooms, humans}, tdm: {…}}}` — 로비의 모드별 인원 표시, 배포 전 접속자 확인 |
 
 ## 새 메시지를 추가하려면

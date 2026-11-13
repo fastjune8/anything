@@ -199,8 +199,8 @@ function boxGeo(w, h, d, tile) {
   return g;
 }
 
-// layout: shared/maps 의 맵 배치 { boxes, trees, colliders }
-export function buildWorld(scene, renderer, layout) {
+// 하늘·조명·지면·먼 산을 만들고, 맵(구조물)은 setMap(layout) 으로 올린다. layout = shared/maps 의 { boxes, trees, colliders }
+export function buildWorld(scene, renderer) {
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const textures = {};
   for (const k of Object.keys(TEX)) textures[k] = canvasTex(k === 'ground' ? 1024 : 512, TEX[k], aniso);
@@ -268,40 +268,49 @@ export function buildWorld(scene, renderer, layout) {
     scene.add(hill);
   }
 
-  // ── 구조물 ──
-  for (const b of layout.boxes) {
-    if (b.invisible) continue;
-    const d = MAT_DEF[b.mat];
-    let mesh;
-    if (b.shape === 'cyl') {
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(b.w / 2, b.w / 2, b.h, 18), getMat(b.mat, b.tint));
-    } else {
-      mesh = new THREE.Mesh(boxGeo(b.w, b.h, b.d, b.fit ? 0 : d.tile), getMat(b.mat, b.tint));
+  // ── 구조물 / 나무: 맵마다 다르므로 setMap 으로 통째로 갈아 끼운다 ──
+  const mapGroup = new THREE.Group();
+  scene.add(mapGroup);
+  function setMap(layout) {
+    for (const child of [...mapGroup.children]) { // 이전 맵 치우기 (재질은 공유하므로 모양만 해제)
+      mapGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
     }
-    mesh.position.set(b.x, b.y + b.h / 2, b.z);
-    mesh.castShadow = true; mesh.receiveShadow = true;
-    scene.add(mesh);
-  }
-
-  // ── 나무 ──
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 1 });
-  const leafMats = [0x35472a, 0x2e4025, 0x40522f].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
-  for (const t of layout.trees) {
-    const s = t.s;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.26 * s, 5 * s, 7), trunkMat);
-    trunk.position.set(t.x, 2.5 * s, t.z); trunk.castShadow = true; scene.add(trunk);
-    for (let i = 0; i < 5; i++) {
-      const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry((1.3 + r() * 0.9) * s, 1), leafMats[i % 3]);
-      const pos = leaf.geometry.attributes.position;
-      for (let k = 0; k < pos.count; k++) {
-        const j = 1 + (Math.sin(pos.getX(k) * 12.9 + pos.getY(k) * 78.2 + pos.getZ(k) * 37.7) * 0.5) * 0.3;
-        pos.setXYZ(k, pos.getX(k) * j, pos.getY(k) * j * 0.85, pos.getZ(k) * j);
+    const r = rng(99);
+    for (const b of layout.boxes) {
+      if (b.invisible) continue;
+      const d = MAT_DEF[b.mat];
+      let mesh;
+      if (b.shape === 'cyl') {
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(b.w / 2, b.w / 2, b.h, 18), getMat(b.mat, b.tint));
+      } else {
+        mesh = new THREE.Mesh(boxGeo(b.w, b.h, b.d, b.fit ? 0 : d.tile), getMat(b.mat, b.tint));
       }
-      leaf.geometry.computeVertexNormals();
-      leaf.position.set(t.x + (r() - 0.5) * 2.2 * s, (4.2 + r() * 2.4) * s, t.z + (r() - 0.5) * 2.2 * s);
-      leaf.castShadow = true; scene.add(leaf);
+      mesh.position.set(b.x, b.y + b.h / 2, b.z);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mapGroup.add(mesh);
+    }
+
+    // ── 나무 ──
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 1 });
+    const leafMats = [0x35472a, 0x2e4025, 0x40522f].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
+    for (const t of layout.trees) {
+      const s = t.s;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.26 * s, 5 * s, 7), trunkMat);
+      trunk.position.set(t.x, 2.5 * s, t.z); trunk.castShadow = true; mapGroup.add(trunk);
+      for (let i = 0; i < 5; i++) {
+        const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry((1.3 + r() * 0.9) * s, 1), leafMats[i % 3]);
+        const pos = leaf.geometry.attributes.position;
+        for (let k = 0; k < pos.count; k++) {
+          const j = 1 + (Math.sin(pos.getX(k) * 12.9 + pos.getY(k) * 78.2 + pos.getZ(k) * 37.7) * 0.5) * 0.3;
+          pos.setXYZ(k, pos.getX(k) * j, pos.getY(k) * j * 0.85, pos.getZ(k) * j);
+        }
+        leaf.geometry.computeVertexNormals();
+        leaf.position.set(t.x + (r() - 0.5) * 2.2 * s, (4.2 + r() * 2.4) * s, t.z + (r() - 0.5) * 2.2 * s);
+        leaf.castShadow = true; mapGroup.add(leaf);
+      }
     }
   }
 
-  return { colliders: layout.colliders, sunDir };
+  return { setMap, sunDir };
 }

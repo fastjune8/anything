@@ -208,17 +208,103 @@ try {
     check(ff.ally === null || ff.ally === 'none', '아군은 조준해도 명중 판정이 나지 않는다', JSON.stringify(ff.ally));
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
 
-    // 로비: 접속 전 화면에서 모드 카드가 보이고, 다른 모드를 누르면 그 모드로 다시 열린다
-    const lobby = await browser.newPage({ viewport: { width: 1000, height: 640 } });
+    await page.close();
+    const lobby = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    const lerrors = []; lobby.on('pageerror', e => lerrors.push(e.message)); lobby.on('console', m => { if (m.type() === 'error') lerrors.push(m.text()); });
     await lobby.goto(`http://localhost:${srv.port}/?mode=ffa`);
     await lobby.waitForSelector('#modes button');
     const cards = await lobby.evaluate(() => [...document.querySelectorAll('#modes button')].map(b => b.dataset.mode + (b.classList.contains('on') ? '*' : '')));
     check(String(cards) === 'ffa*,tdm', '로비에 모드 카드 2개가 보이고 현재 모드가 선택돼 있다', String(cards));
+
+    // ── 새로고침 없이 모드/맵 전환 ──
+    console.log('\n[새로고침 없는 모드 전환]');
+    await lobby.evaluate(() => { window.__marker = 'same-page'; });
+    const ffaCount = await lobby.evaluate(() => window.__g.colliderCount);
+    await lobby.click('#modes button[data-mode="tdm"]');
+    await sleep(500);
+    const afterTdm = await lobby.evaluate(() => ({ marker: window.__marker, map: window.__g.map, count: window.__g.colliderCount, url: location.href, join: document.getElementById('join').textContent }));
+    check(afterTdm.marker === 'same-page' && !afterTdm.url.includes('mode=tdm'), '팀전 카드를 눌러도 페이지가 다시 열리지 않는다');
+    check(afterTdm.map === 'warehouse' && afterTdm.count !== ffaCount, '맵이 그 자리에서 창고로 바뀐다', `${ffaCount} → ${afterTdm.count}`);
+    check(afterTdm.join.includes('팀 데스매치'), '입장 버튼 문구가 바뀐다');
+    await lobby.click('#modes button[data-mode="ffa"]'); await sleep(300);
+    check((await lobby.evaluate(() => ({ map: window.__g.map, count: window.__g.colliderCount }))).map === 'frontline', '다시 개인전을 고르면 전선으로 돌아온다 (이전 맵 구조물이 남지 않음)');
+    check(await lobby.evaluate(() => window.__g.colliderCount) === ffaCount, '맵을 오가도 충돌 박스 수가 정확히 복원된다');
     await sleep(1200);
-    check((await lobby.textContent('#modes button[data-mode="tdm"] .mc')).includes('1명'), '모드별 접속 인원이 표시된다');
-    await lobby.click('#modes button[data-mode="tdm"]'); await lobby.waitForLoadState('load'); await lobby.waitForSelector('#modes button.on');
-    check(lobby.url().includes('mode=tdm') && (await lobby.textContent('#join')).includes('팀 데스매치'), '팀전 카드를 누르면 팀전 로비로 바뀐다');
-    await lobby.close(); await page.close();
+    check((await lobby.textContent('#modes button[data-mode="tdm"] .mc')).length > 0, '모드별 접속 인원 문구가 표시된다');
+
+    // ── 친선전: 방 만들기 ──
+    console.log('\n[친선전]');
+    await lobby.fill('#name', '방장봇');
+    await lobby.click('#tabs button[data-tab="custom"]');
+    check(await lobby.isVisible('#paneCustom') && !(await lobby.isVisible('#paneQuick')), '친선전 탭이 열린다');
+    await lobby.fill('#roomName', '<i>친구들끼리</i>');
+    await lobby.click('#createMode button[data-mode="tdm"]');
+    await lobby.check('#optPrivate', { force: false }).catch(() => {});
+    await lobby.uncheck('#optPrivate');
+    await lobby.check('#optBots');
+    await lobby.selectOption('#optMinutes', '3');
+    await lobby.click('#createBtn');
+    await lobby.waitForFunction(() => window.__g.joined, null, { timeout: 8000 });
+    await sleep(1500);
+    const made = await lobby.evaluate(() => ({
+      marker: window.__marker, map: window.__g.map, team: window.__g.me.team, tag: document.getElementById('roomtag').textContent,
+      tagShown: getComputedStyle(document.getElementById('roomtag')).display !== 'none', goal: document.getElementById('goal').textContent,
+      room: window.__g.game.room, remotes: window.__g.remotes.size, menu: getComputedStyle(document.getElementById('menu')).display,
+    }));
+    check(made.marker === 'same-page' && made.menu === 'none', '방을 만들어 입장해도 페이지는 그대로다');
+    check(made.map === 'warehouse' && (made.team === 0 || made.team === 1) && made.goal.includes('아군'), '팀전 방이라 창고 맵·팀이 적용된다', JSON.stringify({ map: made.map, team: made.team }));
+    check(made.room && made.tagShown && made.tag.includes('<i>친구들끼리</i>') && made.tag.includes(made.room.code), '방 이름(글자 그대로)과 코드가 화면에 표시된다', made.tag);
+    check(made.remotes === 9, '봇 채우기를 켜서 5 대 5 가 된다', `remotes ${made.remotes}`);  // (제한 시간 옵션은 서버 테스트에서 확인)
+    const code = made.room.code;
+
+    // ── 다른 사람이 목록에서 입장 ──
+    const guest = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    const gerrors = []; guest.on('pageerror', e => gerrors.push(e.message));
+    await guest.goto(`http://localhost:${srv.port}/`);
+    await guest.fill('#name', '손님봇');
+    await guest.click('#tabs button[data-tab="custom"]');
+    await guest.waitForSelector('#roomList .roomrow', { timeout: 6000 });
+    const row = await guest.evaluate(() => document.querySelector('#roomList .roomrow').textContent);
+    check(row.includes('<i>친구들끼리</i>') && row.includes('팀 데스매치') && row.includes(code), '방 목록에 이름·모드·인원·코드가 보인다 (HTML 은 글자 그대로)', row);
+    check(await guest.evaluate(() => !document.querySelector('#roomList .roomrow i')), '방 이름의 HTML 태그가 실제 태그로 만들어지지 않는다');
+    await guest.click('#roomList .roomrow button');
+    await guest.waitForFunction(() => window.__g.joined, null, { timeout: 8000 });
+    await sleep(1200);
+    const g = await guest.evaluate(() => ({ map: window.__g.map, code: window.__g.game.room && window.__g.game.room.code, n: window.__g.roster.size }));
+    check(g.code === code && g.map === 'warehouse' && g.n === 10, '목록의 입장 버튼으로 같은 방에 들어간다 (맵도 따라 바뀜)', JSON.stringify(g));
+    await guest.evaluate(() => { document.getElementById('pause').style.display = 'flex'; }); // 일시정지 창이 떠 있는 상태를 재현 (nolock 이 아닌 실제 상황)
+    await guest.click('#leave'); // 실제 마우스 클릭 (클릭이 일시정지 창의 "전투로 복귀"로 번지면 안 된다)
+    await sleep(500);
+    check(await guest.isVisible('#menu') && !(await guest.evaluate(() => window.__g.joined)), '로비로 나가기를 누르면 로비로 돌아온다');
+    check(await guest.evaluate(() => document.pointerLockElement === null) && !(await guest.isVisible('#pause')), '나간 뒤 마우스가 게임 화면에 잠기지 않고 일시정지 창도 남지 않는다');
+    await guest.fill('#codeIn', code.toLowerCase());
+    await guest.click('#codeJoin');
+    await guest.waitForFunction(() => window.__g.joined, null, { timeout: 8000 });
+    check(await guest.evaluate(() => window.__g.game.room.code) === code, '코드를 직접 입력해서도 같은 방에 다시 들어간다');
+    await guest.evaluate(() => document.getElementById('leave').click());
+    await guest.click('#tabs button[data-tab="custom"]');
+    await guest.fill('#codeIn', 'ZZZZ'); await guest.click('#codeJoin');
+    await guest.waitForFunction(() => document.getElementById('msg').textContent.includes('찾을 수 없'), null, { timeout: 5000 }).catch(() => {});
+    check((await guest.textContent('#msg')).includes('찾을 수 없'), '없는 코드는 로비에 안내 문구가 나온다');
+    check(gerrors.length === 0, '손님 쪽 브라우저 오류가 없다', gerrors.join(' | '));
+    await guest.close();
+
+    // ── 방장: 로비로 나가서 다른 모드 빠른 시작 (새로고침 없이) ──
+    console.log('\n[로비로 나간 뒤 다른 모드로]');
+    await lobby.evaluate(() => document.getElementById('leave').click());
+    await sleep(500);
+    const left = await lobby.evaluate(() => ({ joined: window.__g.joined, menu: getComputedStyle(document.getElementById('menu')).display, remotes: window.__g.remotes.size, hud: document.getElementById('hud').classList.contains('on'), tag: getComputedStyle(document.getElementById('roomtag')).display, chat: document.getElementById('chatLog').children.length }));
+    check(!left.joined && left.menu !== 'none' && left.remotes === 0 && !left.hud && left.tag === 'none', '나가면 로비가 보이고 방의 상태(다른 플레이어·HUD·방 표시)가 정리된다', JSON.stringify(left));
+    await lobby.click('#tabs button[data-tab="quick"]');
+    await lobby.click('#modes button[data-mode="ffa"]');
+    await lobby.click('#join');
+    await lobby.waitForFunction(() => window.__g.joined, null, { timeout: 8000 });
+    await sleep(1500);
+    const again = await lobby.evaluate(() => ({ marker: window.__marker, map: window.__g.map, team: window.__g.me.team, room: window.__g.game.room, remotes: window.__g.remotes.size, goal: document.getElementById('goal').textContent }));
+    check(again.marker === 'same-page' && again.map === 'frontline' && again.team === -1 && again.room === null && again.remotes === 5, '같은 페이지에서 개인전으로 다시 입장한다 (전선 맵, 팀 없음, 봇 5명)', JSON.stringify(again));
+    check(again.goal.includes('킬 선승') && !again.goal.includes('아군'), '개인전 표시(팀 점수 없음)로 돌아온다', again.goal);
+    check(lerrors.length === 0, '방장 쪽 브라우저 오류가 없다', lerrors.join(' | '));
+    await lobby.close();
   }
 } catch (e) {
   console.error('테스트 중 오류:', e);

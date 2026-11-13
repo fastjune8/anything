@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { APP_ENV, CLIENT_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
-import { roomStats } from './rooms.js';
+import { roomStats, listCustomRooms } from './rooms.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -28,6 +28,13 @@ export function createHttpServer() {
     if (url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ env: APP_ENV, version: VERSION, uptime: Math.round((Date.now() - STARTED_AT) / 1000), ...roomStats() }));
+      return;
+    }
+
+    // 공개 친선전 방 목록 (로비)
+    if (url === '/rooms') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ rooms: listCustomRooms() }));
       return;
     }
 

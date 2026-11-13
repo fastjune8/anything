@@ -17,7 +17,11 @@ export const params = new URLSearchParams(location.search);
 export const NOLOCK = params.has('nolock'); // 테스트용: 포인터 락 없이 진행
 export const BASE_FOV = 74;
 
-// 이번에 플레이할 모드: 주소의 ?mode= → 지난번에 고른 모드 → 기본값. (맵이 모드마다 달라서 모드를 바꾸면 페이지를 다시 연다)
+// 현재 선택된(또는 들어가 있는) 모드. 로비에서 고르거나 방에 들어갈 때 setMode 로 바뀌고, 다른 모듈은 MODE_CFG 를 그대로 읽으면 된다.
 const wanted = params.get('mode') || localStorage.getItem('fd_mode');
-export const MODE = wanted && Object.hasOwn(MODES, wanted) ? wanted : DEFAULT_MODE;
-export const MODE_CFG = MODES[MODE];
+export const MODE_CFG = { ...MODES[wanted && Object.hasOwn(MODES, wanted) ? wanted : DEFAULT_MODE] };
+export function setMode(id) {
+  if (!Object.hasOwn(MODES, id)) return;
+  Object.assign(MODE_CFG, MODES[id]);
+  localStorage.setItem('fd_mode', id);
+}

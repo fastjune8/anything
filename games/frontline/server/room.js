@@ -14,10 +14,13 @@ const SAFE_SPAWN_DIST = 25; // 이 거리(m) 안에 적이 있는 스폰 지점�
 
 export class Room {
   // number: 방 번호(로그용), mode: 'ffa' | 'tdm', onDestroy: 사람이 모두 나가 방이 사라질 때 호출
-  constructor({ number, mode = 'ffa', onDestroy }) {
+  // custom: 친선전이면 { code, name, isPrivate, bots, matchMs } (빠른 시작 방은 null)
+  constructor({ number, mode = 'ffa', onDestroy, custom = null }) {
     this.number = number;
     this.onDestroy = onDestroy;
     this.mode = mode;
+    this.custom = custom;
+    this.matchMs = custom ? custom.matchMs : MATCH_MS;
     this.cfg = MODES[mode];             // 인원·팀 수·목표 킬 등
     this.map = getMap(this.cfg.map);
     this.nav = navFor(this.cfg.map);    // 봇 길찾기
@@ -25,7 +28,7 @@ export class Room {
     this.teamScores = [0, 0];           // 팀전: 팀별 킬 합계
     this.players = new Map();          // id → player
     this.state = 'playing';            // playing | ended
-    this.endsAt = Date.now() + MATCH_MS;
+    this.endsAt = Date.now() + this.matchMs;
     this.restartTimer = null;
     this.regenAcc = 0;
     this.timer = setInterval(() => this.tick(), TICK_MS);
@@ -34,6 +37,8 @@ export class Room {
   humans() { return [...this.players.values()].filter(p => !p.bot); }
   freeId() { for (let i = 0; i < this.cfg.max; i++) if (!this.players.has(i)) return i; return -1; }
   info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp, team: p.team }; }
+  // 방 목록에 보여 줄 요약
+  summary() { return { code: this.custom.code, name: this.custom.name, mode: this.mode, humans: this.humans().length, max: this.cfg.max, state: this.state, minutes: Math.round(this.matchMs / 60000), bots: this.custom.bots }; }
   // 서로 적인가 (개인전: 나 빼고 전부, 팀전: 다른 팀)
   isEnemy(a, b) { return a !== b && (!this.cfg.teams || a.team !== b.team); }
   teamCount(team) { let n = 0; for (const p of this.players.values()) if (p.team === team) n++; return n; }
@@ -65,13 +70,13 @@ export class Room {
     const p = this.newPlayer(this.freeId(), name, ws);
     this.players.set(p.id, p);
     this.sendTo(p, {
-      t: 'welcome', id: p.id, mode: this.mode, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
+      t: 'welcome', id: p.id, mode: this.mode, room: this.custom ? { code: this.custom.code, name: this.custom.name, minutes: Math.round(this.matchMs / 60000) } : null, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
       players: [...this.players.values()].map(q => this.info(q)), lan: lanAddresses(), port: PORT,
     });
     this.broadcast({ t: 'pj', player: this.info(p) }, p);
     this.balanceBots();
     if (this.state === 'playing') this.spawn(p);
-    console.log(`[+] ${p.name} 접속 (방 ${this.number} ${this.mode}, 사람 ${this.humans().length}명)`);
+    console.log(`[+] ${p.name} 접속 (방 ${this.number} ${this.mode}${this.custom ? ' 친선전 ' + this.custom.code : ''}, 사람 ${this.humans().length}명)`);
     return p;
   }
 
@@ -89,7 +94,8 @@ export class Room {
   // 사람이 적으면 봇으로 채우고, 사람이 늘면 봇을 뺀다
   balanceBots() {
     const humans = this.humans().length;
-    const want = Math.max(0, Math.min(botFillFor(this.cfg) - humans, this.cfg.max - humans));
+    const fill = this.custom && !this.custom.bots ? 0 : botFillFor(this.cfg); // 친선전은 봇 채우기를 끌 수 있다
+    const want = Math.max(0, Math.min(fill - humans, this.cfg.max - humans));
     let bots = [...this.players.values()].filter(p => p.bot);
     while (bots.length < want) { this.addBot(); bots = [...this.players.values()].filter(p => p.bot); }
     while (bots.length > want) { this.removeBot(); bots = [...this.players.values()].filter(p => p.bot); }
@@ -202,10 +208,10 @@ export class Room {
   startMatch() {
     clearTimeout(this.restartTimer);
     this.state = 'playing';
-    this.endsAt = Date.now() + MATCH_MS;
+    this.endsAt = Date.now() + this.matchMs;
     for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.alive = false; }
     this.teamScores = [0, 0];
-    this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: MATCH_MS, players: [...this.players.values()].map(p => this.info(p)) });
+    this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: this.matchMs, players: [...this.players.values()].map(p => this.info(p)) });
     for (const p of this.players.values()) this.spawn(p);
   }
 

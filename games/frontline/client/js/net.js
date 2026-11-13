@@ -1,40 +1,59 @@
 // 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
 import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
-import { addChatLine } from './chat.js';
+import { addChatLine, clearChat, closeChat } from './chat.js';
 import { impact, addTracer } from './fx.js';
 import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
 import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
+import { loadMap } from './scene.js';
 import { sfx, audioAt } from './sfx.js';
-import { me, wp, game, roster, net } from './state.js';
-import { $, V3, NOLOCK, MODE, lerp, esc } from './util.js';
+import { me, wp, inp, game, roster, net } from './state.js';
+import { $, V3, NOLOCK, MODE_CFG, setMode, lerp, esc } from './util.js';
 import { setText, setDisplay } from './dom.js';
 import { placeMe } from './weapon.js';
 
 const _v = new V3();
 
-export function connect(name) {
+// opts: { mode } 빠른 시작 | { code } 친선전 코드로 입장 | { mode, create: { name, private, bots, minutes } } 친선전 방 만들기
+export function connect(name, opts = {}) {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   net.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE_CFG.id, ...opts }));
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onMessage(m); };
   ws.onclose = () => {
     if (net.ws !== ws) return;
-    const was = game.joined; game.joined = false; net.ws = null;
-    clearRemotes(); roster.clear(); game.matchState = 'idle';
-    if (document.pointerLockElement) document.exitPointerLock();
-    setDisplay($('pause'), false); setDisplay($('menu'), true, 'flex'); setHudOn(false);
-    $('join').disabled = false;
-    $('msg').textContent = was ? '서버와의 연결이 끊어졌습니다.' : '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.';
+    leaveToLobby(game.joined ? '서버와의 연결이 끊어졌습니다.' : '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.');
   };
 }
+
+// 방에서 나가 로비로 돌아간다 (연결 종료 + 화면/상태 정리). 새로고침이 필요 없다.
+export function leaveToLobby(message = '') {
+  const ws = net.ws; net.ws = null;
+  if (ws) ws.close();
+  game.joined = false; game.matchState = 'idle'; game.room = null;
+  clearRemotes(); roster.clear();
+  me.alive = true; me.team = -1; me.hp = 100; wp.reload = null;
+  inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false;
+  if (inp.chatOpen) closeChat();
+  clearChat();
+  if (document.pointerLockElement) document.exitPointerLock();
+  for (const id of ['pause', 'dead', 'endscr', 'inv', 'banner', 'roomtag']) setDisplay($(id), false);
+  setDisplay($('menu'), true, 'flex'); setHudOn(false);
+  $('join').disabled = false;
+  $('msg').textContent = message;
+}
+
+const DENIED = { not_found: '그 코드의 방을 찾을 수 없습니다. (방이 사라졌거나 코드가 틀렸습니다)', full: '방이 가득 찼습니다.', limit: '지금은 방을 더 만들 수 없습니다. 잠시 뒤에 다시 시도하세요.' };
 
 // 서버가 보낸 메시지 종류별 처리
 function onMessage(m) {
   switch (m.t) {
     case 'welcome': {
-      game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0];
-      clearRemotes(); roster.clear();
+      game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0]; game.room = m.room || null;
+      setMode(m.mode); loadMap(MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이)
+      clearRemotes(); roster.clear(); clearChat();
+      setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
+      setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
       game.goalKills = m.goal; game.matchState = m.state; game.matchEndsAt = performance.now() + m.left; game.endAt = performance.now() + 10000;
       for (const p of m.players) { rosterSet(p); if (p.id !== m.id) addRemote(p); }
       setDisplay($('menu'), false); setHudOn(true);
@@ -105,6 +124,7 @@ function onMessage(m) {
       }
       break;
     case 'hp': me.hp = m.hp; break;
+    case 'denied': leaveToLobby(DENIED[m.reason] || '입장할 수 없습니다.'); break;
     case 'chat': addChatLine(String(m.name), String(m.text), m.id === me.id); break;
     case 'kill': {
       applyScores(m.sc); if (m.ts) game.teamScores = m.ts;

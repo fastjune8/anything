@@ -21,7 +21,7 @@ addEventListener('mousedown', tryRespawn);
 
 export const isActive = () => game.joined && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
 
-function lock() { sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
+function lock() { if (!game.joined) return; /* 로비에서는 마우스를 잠그지 않는다 */ sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
 
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
@@ -29,7 +29,7 @@ document.addEventListener('pointerlockchange', () => {
   if (game.joined) setDisplay($('pause'), !on && me.alive, 'flex');
   if (!on) { inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false; if (inp.chatOpen) closeChat(); }
 });
-$('pause').addEventListener('click', e => { if (!e.target.closest('.opt')) lock(); });
+$('pause').addEventListener('click', e => { if (!e.target.closest('.opt, button')) lock(); }); // 설정 슬라이더/버튼(로비로 나가기)을 누른 클릭은 "전투로 복귀"가 아니다
 canvas.addEventListener('click', () => { if (game.joined && !isActive()) lock(); });
 $('banner').addEventListener('click', lock);
 

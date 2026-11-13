@@ -10,6 +10,7 @@ export function openChat() {
   inp.chatOpen = true; inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false;
   chatEl.classList.add('open'); chatIn.value = ''; chatIn.focus();
 }
+export function clearChat() { chatLog.replaceChildren(); }
 export function closeChat() { inp.chatOpen = false; chatEl.classList.remove('open'); chatIn.blur(); }
 
 function sendChat() {
