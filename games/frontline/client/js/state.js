@@ -2,7 +2,7 @@
 // 모듈 간에 값을 공유하려면 객체의 속성으로 바꿔야 하므로 (wp.cur = 3), 변수 대신 이 객체들을 쓴다.
 import { MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
-import { V3, DEG, lerp } from './util.js';
+import { V3, DEG, MODE_CFG, lerp } from './util.js';
 
 // ───── 플레이어(나) ─────
 export const STAND_H = 1.75, CROUCH_H = 1.2, RADIUS = 0.35, STEP = 0.45, GRAVITY = 19, JUMP_V = 6.4;
@@ -11,6 +11,7 @@ export const PITCH_MAX = 88 * DEG;
 export const me = {
   id: -1, name: '', pos: new V3(0, 0, -54), vel: new V3(), yaw: Math.PI, pitch: 0,
   onGround: true, crouch: false, h: STAND_H, hp: MAX_HP, alive: true, stepOff: 0, deadT: 0,
+  team: -1, // 팀전에서 내 팀 (0/1), 개인전은 -1
 };
 export const inv = WEAPONS.map(w => ({ ammo: w.mag, reserve: w.reserve })); // 무기별 탄약
 
@@ -35,8 +36,11 @@ export const inp = {
 export const adsInput = () => inp.adsHeld || inp.keys.has('KeyT'); // 우클릭 또는 T키
 
 // ───── 경기 ─────
-export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20, invUntil: 0 }; // invUntil: 내 스폰 무적이 끝나는 시각
+export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20, invUntil: 0, teamScores: [0, 0] }; // invUntil: 내 스폰 무적이 끝나는 시각
 export const roster = new Map(); // id → { id, name, bot, k, d } (나 포함 방 전체)
+
+// 팀전에서 같은 팀인가 (개인전은 항상 false)
+export const isAlly = team => MODE_CFG.teams > 0 && team === me.team;
 
 // ───── 네트워크 연결 (실제 연결/수신은 net.js) ─────
 export const net = {

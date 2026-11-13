@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { buildLayout } from '/shared/layout.js';
 
 // ───────── 절차적 텍스처 ─────────
 function rng(seed) {
@@ -200,7 +199,8 @@ function boxGeo(w, h, d, tile) {
   return g;
 }
 
-export function buildWorld(scene, renderer) {
+// layout: shared/maps 의 맵 배치 { boxes, trees, colliders }
+export function buildWorld(scene, renderer, layout) {
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const textures = {};
   for (const k of Object.keys(TEX)) textures[k] = canvasTex(k === 'ground' ? 1024 : 512, TEX[k], aniso);
@@ -269,7 +269,6 @@ export function buildWorld(scene, renderer) {
   }
 
   // ── 구조물 ──
-  const layout = buildLayout();
   for (const b of layout.boxes) {
     if (b.invisible) continue;
     const d = MAT_DEF[b.mat];

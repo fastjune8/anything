@@ -61,10 +61,18 @@ console.log('\n[명중 검증: resolveHits]');
 console.log('\n[스폰 지점]');
 {
   const { Room } = await import('../server/room.js');
-  const { SPAWNS } = await import('../shared/spawns.js');
-  const { isBlocked, findPath } = await import('../server/bots/nav.js');
-  check(SPAWNS.every(s => !isBlocked(s[0], s[1])), `스폰 지점 ${SPAWNS.length}곳이 모두 장애물과 겹치지 않는다`);
-  check(SPAWNS.every(s => findPath(s[0], s[1], 0, 0)), '모든 스폰 지점에서 맵 중앙까지 길이 이어진다');
+  const { getMap, MAP_IDS } = await import('../shared/maps/index.js');
+  const { navFor } = await import('../server/bots/nav.js');
+  for (const id of MAP_IDS) {
+    const map = getMap(id), nav = navFor(id), all = map.spawns.ffa;
+    check(all.every(s => !nav.isBlocked(s[0], s[1])), `[${map.name}] 스폰 지점 ${all.length}곳이 모두 장애물과 겹치지 않는다`);
+    check(all.every(s => nav.findPath(s[0], s[1], 0, 0)), `[${map.name}] 모든 스폰 지점에서 맵 중앙까지 길이 이어진다`);
+    if (map.spawns.team) {
+      const [t0, t1] = map.spawns.team;
+      check(!!nav.findPath(t0[0][0], t0[0][1], t1[0][0], t1[0][1]), `[${map.name}] 양 팀 진영 사이에 길이 이어진다`);
+      check(t0.length === t1.length && t0.every(([x, z], i) => x === -t1[i][0] && z === -t1[i][1]), `[${map.name}] 양 팀 스폰이 대칭이다 (조건이 같다)`);
+    }
+  }
 
   const room = new Room({ number: 1 });
   const p = room.newPlayer(0, 'me', null);

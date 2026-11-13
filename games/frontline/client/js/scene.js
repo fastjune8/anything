@@ -1,7 +1,8 @@
 // 렌더러, 장면, 카메라, 1인칭 무기용 별도 장면
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
-import { $, BASE_FOV } from './util.js';
+import { getMap } from '/shared/maps/index.js';
+import { $, BASE_FOV, MODE_CFG } from './util.js';
 
 export const canvas = $('view');
 export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -15,7 +16,7 @@ renderer.autoClear = false;
 export const scene = new THREE.Scene();
 export const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.08, 1500);
 camera.rotation.order = 'YXZ';
-export const world = buildWorld(scene, renderer);
+export const world = buildWorld(scene, renderer, getMap(MODE_CFG.map).layout);
 export const colliders = world.colliders;
 
 // 1인칭 무기는 벽에 파묻히지 않게 별도 장면/카메라로 위에 덧그린다

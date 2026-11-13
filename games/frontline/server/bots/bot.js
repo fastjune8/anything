@@ -1,7 +1,6 @@
 // 봇 전투 AI: 시야 판단 → 이동 → 조준 → 사격 (서버 전용)
 import { rayWorld } from '../../shared/collision.js';
 import { WEAPONS, calcDamage } from '../../shared/weapons.js';
-import { COLLIDERS, findPath, randomReachablePoint, isBlocked } from './nav.js';
 
 // ───────── 봇 AI ─────────
 const EYE = 1.55;
@@ -17,8 +16,10 @@ const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI)
 export class Bot {
   constructor(player, room) {
     this.p = player; this.room = room;
+    this.nav = room.nav; // 이 방의 맵에 맞는 길찾기
     this.skill = 0.5 + Math.random() * 0.35;
-    this.reset([0, 0, -54]);
+    const s0 = room.map.spawns.ffa[0];
+    this.reset([s0[0], 0, s0[1]]);
   }
 
   reset(pos) {
@@ -34,15 +35,15 @@ export class Bot {
   }
 
   setGoal(x, z) {
-    this.path = findPath(this.x, this.z, x, z); this.pi = 0;
+    this.path = this.nav.findPath(this.x, this.z, x, z); this.pi = 0;
     return !!this.path;
   }
 
   tryMove(mx, mz) {
     const nx = this.x + mx, nz = this.z + mz;
-    if (!isBlocked(nx, nz)) { this.x = nx; this.z = nz; return true; }
-    if (!isBlocked(nx, this.z)) { this.x = nx; return true; }
-    if (!isBlocked(this.x, nz)) { this.z = nz; return true; }
+    if (!this.nav.isBlocked(nx, nz)) { this.x = nx; this.z = nz; return true; }
+    if (!this.nav.isBlocked(nx, this.z)) { this.x = nx; return true; }
+    if (!this.nav.isBlocked(this.x, nz)) { this.z = nz; return true; }
     return false;
   }
 
@@ -60,7 +61,7 @@ export class Bot {
     const tp = o.pos, cy = o.crouch ? 0.85 : 1.2;
     const dx = tp[0] - this.x, dy = tp[1] + cy - EYE, dz = tp[2] - this.z;
     const dist = Math.hypot(dx, dy, dz) || 1;
-    const r = rayWorld({ x: this.x, y: EYE, z: this.z }, { x: dx / dist, y: dy / dist, z: dz / dist }, COLLIDERS, dist);
+    const r = rayWorld({ x: this.x, y: EYE, z: this.z }, { x: dx / dist, y: dy / dist, z: dz / dist }, this.nav.COLLIDERS, dist);
     return r.t >= dist - 0.1;
   }
 
@@ -74,7 +75,7 @@ export class Bot {
     let best = null, bestD = Infinity;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     for (const o of this.room.players.values()) {
-      if (o === p || !o.alive || !o.pos || o.invulnUntil > now) continue; // 무적인 상대는 노리지 않는다
+      if (!this.room.isEnemy(p, o) || !o.alive || !o.pos || o.invulnUntil > now) continue; // 아군/무적인 상대는 노리지 않는다
       const dx = o.pos[0] - this.x, dz = o.pos[2] - this.z, d = Math.hypot(dx, dz);
       if (d > VIEW || d >= bestD) continue;
       if (d > 6 && (dx * fx + dz * fz) / d < Math.cos(FOV_HALF)) continue;
@@ -108,7 +109,7 @@ export class Bot {
       if (!this.followPath(dt, SPEED)) { this.lastKnown = null; moving = false; }
     } else {
       if (!this.followPath(dt, SPEED * 0.85)) {
-        const g = randomReachablePoint();
+        const g = this.nav.randomReachablePoint();
         this.setGoal(g[0], g[1]);
       }
     }
@@ -181,7 +182,7 @@ export class Bot {
         const off = 0.8 + Math.random() * 2.2;
         let dx = tx - ox + (Math.random() * 2 - 1) * off, dy = ty - oy + (Math.random() * 2 - 1) * off * 0.5, dz = tz - oz + (Math.random() * 2 - 1) * off;
         const len = Math.hypot(dx, dy, dz) || 1; dx /= len; dy /= len; dz /= len;
-        const rw = rayWorld({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, COLLIDERS, 200);
+        const rw = rayWorld({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, this.nav.COLLIDERS, 200);
         ends.push([+(ox + dx * rw.t).toFixed(2), +(oy + dy * rw.t).toFixed(2), +(oz + dz * rw.t).toFixed(2), rw.n >= 0 ? rw.n : 2]);
       }
     }

@@ -17,13 +17,13 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const servers = [];
-async function openPage(env) {
+async function openPage(env, query = '') {
   const srv = await startServer(env); servers.push(srv);
   const page = await browser.newPage({ viewport: { width: 1000, height: 560 } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto(`http://localhost:${srv.port}/?auto=Tester&nolock`);
+  await page.goto(`http://localhost:${srv.port}/?auto=Tester&nolock${query}`);
   await page.waitForFunction(() => window.__g && window.__g.me.id >= 0, null, { timeout: 15000 });
   return { srv, page, errors };
 }
@@ -181,6 +181,44 @@ try {
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     clearInterval(hold); dummy.ws.close();
     await page.close();
+  }
+
+  // ───────── 3) 로비와 팀 데스매치 ─────────
+  console.log('\n[로비 / 팀 데스매치]');
+  {
+    const { srv, page, errors } = await openPage({ MATCH_SECONDS: '120', GOAL: '999' }, '&mode=tdm');
+    await sleep(3000);
+    const t = await page.evaluate(() => ({
+      team: window.__g.me.team, z: window.__g.me.pos.z,
+      goal: document.getElementById('goal').textContent,
+      remoteTeams: [...window.__g.remotes.values()].map(r => r.team).sort().join(''),
+      allyRows: document.querySelectorAll('#lb .ally').length + document.querySelectorAll('#lb .foe').length,
+    }));
+    check(t.team === 0 || t.team === 1, '팀전으로 접속하면 팀이 정해진다', `team=${t.team}`);
+    check(t.remoteTeams.length === 9 && t.remoteTeams.split('').filter(c => String(c) === String(t.team)).length === 4, '아군 4명 + 적군 5명이 화면에 배정된다', t.remoteTeams);
+    check(t.goal.includes('아군') && t.goal.includes('적군'), '상단에 팀 점수가 표시된다', t.goal);
+    check(t.allyRows >= 4, '순위표가 아군/적군 색으로 구분된다');
+    const ff = await page.evaluate(() => {
+      const g = window.__g; const ray = r => g.remoteHit({ x: r.pos.x + 6, y: r.pos.y + 1.2, z: r.pos.z }, { x: -1, y: 0, z: 0 }, 7);
+      const now = performance.now();
+      const ally = [...g.remotes.values()].find(r => r.team === g.me.team && r.alive && r.hasPos);
+      const foe = [...g.remotes.values()].find(r => r.team !== g.me.team && r.alive && r.hasPos && r.invUntil < now);
+      return { ally: ally ? ray(ally) : 'none', foeHit: foe ? !!ray(foe) : 'none' };
+    });
+    check(ff.ally === null || ff.ally === 'none', '아군은 조준해도 명중 판정이 나지 않는다', JSON.stringify(ff.ally));
+    check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
+
+    // 로비: 접속 전 화면에서 모드 카드가 보이고, 다른 모드를 누르면 그 모드로 다시 열린다
+    const lobby = await browser.newPage({ viewport: { width: 1000, height: 640 } });
+    await lobby.goto(`http://localhost:${srv.port}/?mode=ffa`);
+    await lobby.waitForSelector('#modes button');
+    const cards = await lobby.evaluate(() => [...document.querySelectorAll('#modes button')].map(b => b.dataset.mode + (b.classList.contains('on') ? '*' : '')));
+    check(String(cards) === 'ffa*,tdm', '로비에 모드 카드 2개가 보이고 현재 모드가 선택돼 있다', String(cards));
+    await sleep(1200);
+    check((await lobby.textContent('#modes button[data-mode="tdm"] .mc')).includes('1명'), '모드별 접속 인원이 표시된다');
+    await lobby.click('#modes button[data-mode="tdm"]'); await lobby.waitForLoadState('load'); await lobby.waitForSelector('#modes button.on');
+    check(lobby.url().includes('mode=tdm') && (await lobby.textContent('#join')).includes('팀 데스매치'), '팀전 카드를 누르면 팀전 로비로 바뀐다');
+    await lobby.close(); await page.close();
   }
 } catch (e) {
   console.error('테스트 중 오류:', e);

@@ -1,20 +1,28 @@
-// 방(Room) 하나 = 한 판의 FFA 경기. 플레이어/봇 관리, 피해·킬 처리, 경기 진행을 맡는다.
-import { MAX_HP, RESPAWN_MS, RESPAWN_MIN_MS, ROOM_MAX, SPAWN_PROTECT_MS } from '../shared/constants.js';
-import { SPAWNS } from '../shared/spawns.js';
+// 방(Room) 하나 = 한 판의 경기 (개인전 또는 팀전). 플레이어/봇 관리, 피해·킬 처리, 경기 진행을 맡는다.
+import { MAX_HP, RESPAWN_MS, RESPAWN_MIN_MS, SPAWN_PROTECT_MS } from '../shared/constants.js';
+import { getMap } from '../shared/maps/index.js';
+import { MODES } from '../shared/modes.js';
+import { navFor } from './bots/nav.js';
 import { Bot } from './bots/bot.js';
 import { BOT_NAMES } from './bots/names.js';
 import { sanitizeChat, allowChat } from './chat.js';
 import { resolveHits } from './combat.js';
-import { PORT, TICK_MS, GOAL_KILLS, MATCH_MS, RESTART_MS, botFill, lanAddresses } from './config.js';
+import { PORT, TICK_MS, MATCH_MS, RESTART_MS, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
 const SAFE_SPAWN_DIST = 25; // 이 거리(m) 안에 적이 있는 스폰 지점은 피한다
 
 export class Room {
-  // number: 방 번호(로그용), onDestroy: 사람이 모두 나가 방이 사라질 때 호출
-  constructor({ number, onDestroy }) {
+  // number: 방 번호(로그용), mode: 'ffa' | 'tdm', onDestroy: 사람이 모두 나가 방이 사라질 때 호출
+  constructor({ number, mode = 'ffa', onDestroy }) {
     this.number = number;
     this.onDestroy = onDestroy;
+    this.mode = mode;
+    this.cfg = MODES[mode];             // 인원·팀 수·목표 킬 등
+    this.map = getMap(this.cfg.map);
+    this.nav = navFor(this.cfg.map);    // 봇 길찾기
+    this.goal = goalFor(this.cfg);
+    this.teamScores = [0, 0];           // 팀전: 팀별 킬 합계
     this.players = new Map();          // id → player
     this.state = 'playing';            // playing | ended
     this.endsAt = Date.now() + MATCH_MS;
@@ -24,8 +32,13 @@ export class Room {
   }
 
   humans() { return [...this.players.values()].filter(p => !p.bot); }
-  freeId() { for (let i = 0; i < ROOM_MAX; i++) if (!this.players.has(i)) return i; return -1; }
-  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp }; }
+  freeId() { for (let i = 0; i < this.cfg.max; i++) if (!this.players.has(i)) return i; return -1; }
+  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp, team: p.team }; }
+  // 서로 적인가 (개인전: 나 빼고 전부, 팀전: 다른 팀)
+  isEnemy(a, b) { return a !== b && (!this.cfg.teams || a.team !== b.team); }
+  teamCount(team) { let n = 0; for (const p of this.players.values()) if (p.team === team) n++; return n; }
+  // 새로 들어오는 사람/봇이 갈 팀: 인원이 적은 쪽 (개인전은 -1)
+  pickTeam() { return this.cfg.teams ? (this.teamCount(0) <= this.teamCount(1) ? 0 : 1) : -1; }
   scoreList() { return [...this.players.values()].map(p => [p.id, p.kills, p.deaths]); }
 
   broadcast(msg, except) {
@@ -43,22 +56,22 @@ export class Room {
   }
 
   newPlayer(id, name, ws) {
-    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, invulnUntil: 0, lastSpawn: null, diedAt: 0, room: this };
+    return { id, ws, name, bot: null, hp: MAX_HP, alive: false, kills: 0, deaths: 0, pos: null, crouch: 0, lastHurt: 0, respawnTimer: null, invulnUntil: 0, lastSpawn: null, diedAt: 0, team: this.pickTeam(), room: this };
   }
 
   // ───────── 입장 / 퇴장 ─────────
   join(ws, name) {
-    if (this.players.size >= ROOM_MAX) this.removeBot();
+    if (this.players.size >= this.cfg.max) this.removeBot();
     const p = this.newPlayer(this.freeId(), name, ws);
     this.players.set(p.id, p);
     this.sendTo(p, {
-      t: 'welcome', id: p.id, goal: GOAL_KILLS, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
+      t: 'welcome', id: p.id, mode: this.mode, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
       players: [...this.players.values()].map(q => this.info(q)), lan: lanAddresses(), port: PORT,
     });
     this.broadcast({ t: 'pj', player: this.info(p) }, p);
     this.balanceBots();
     if (this.state === 'playing') this.spawn(p);
-    console.log(`[+] ${p.name} 접속 (방 ${this.number}, 사람 ${this.humans().length}명)`);
+    console.log(`[+] ${p.name} 접속 (방 ${this.number} ${this.mode}, 사람 ${this.humans().length}명)`);
     return p;
   }
 
@@ -76,10 +89,10 @@ export class Room {
   // 사람이 적으면 봇으로 채우고, 사람이 늘면 봇을 뺀다
   balanceBots() {
     const humans = this.humans().length;
-    const want = Math.max(0, Math.min(botFill() - humans, ROOM_MAX - humans));
+    const want = Math.max(0, Math.min(botFillFor(this.cfg) - humans, this.cfg.max - humans));
     let bots = [...this.players.values()].filter(p => p.bot);
     while (bots.length < want) { this.addBot(); bots = [...this.players.values()].filter(p => p.bot); }
-    while (bots.length > want) this.removeBot(bots.pop());
+    while (bots.length > want) { this.removeBot(); bots = [...this.players.values()].filter(p => p.bot); }
   }
 
   addBot() {
@@ -96,7 +109,9 @@ export class Room {
   }
 
   removeBot(bot) {
-    const b = bot || [...this.players.values()].filter(p => p.bot).sort((a, c) => a.kills - c.kills)[0];
+    // 뺄 봇: 팀전이면 인원이 많은 팀에서 먼저, 그 안에서는 킬이 적은 봇
+    const big = this.cfg.teams ? (this.teamCount(0) >= this.teamCount(1) ? 0 : 1) : -1;
+    const b = bot || [...this.players.values()].filter(p => p.bot).sort((a, c) => (c.team === big) - (a.team === big) || a.kills - c.kills)[0];
     if (!b) return;
     clearTimeout(b.respawnTimer);
     this.players.delete(b.id);
@@ -106,9 +121,10 @@ export class Room {
   // ───────── 스폰 ─────────
   // 살아있는 다른 플레이어와 충분히 떨어진 지점 중에서 무작위. 직전에 태어난 곳은 피한다.
   pickSpawn(p) {
-    const others = [...this.players.values()].filter(o => o !== p && o.alive && o.pos);
+    const spawns = this.cfg.teams ? this.map.spawns.team[p.team] : this.map.spawns.ffa; // 팀전은 자기 진영에서만
+    const others = [...this.players.values()].filter(o => this.isEnemy(p, o) && o.alive && o.pos);
     const dist = s => (others.length ? Math.min(...others.map(o => Math.hypot(s[0] - o.pos[0], s[1] - o.pos[2]))) : Infinity);
-    const fresh = SPAWNS.filter(s => s !== p.lastSpawn);
+    const fresh = spawns.filter(s => s !== p.lastSpawn);
     let pool = fresh.filter(s => dist(s) >= SAFE_SPAWN_DIST);
     if (pool.length < 3) pool = [...fresh].sort((x, y) => dist(y) - dist(x)).slice(0, 3); // 다 가까우면 그나마 먼 3곳
     return pool[(Math.random() * pool.length) | 0];
@@ -126,7 +142,7 @@ export class Room {
 
   // ───────── 전투 ─────────
   applyDamage(attacker, victim, wi, dmg, head) {
-    if (this.state !== 'playing' || attacker === victim || !attacker.alive || !victim.alive) return;
+    if (this.state !== 'playing' || !this.isEnemy(attacker, victim) || !attacker.alive || !victim.alive) return; // 아군 사격은 무효
     attacker.invulnUntil = 0;                       // 공격하면 내 무적은 풀린다
     if (victim.invulnUntil > Date.now()) return;    // 스폰 직후 무적
     victim.hp = Math.max(0, victim.hp - dmg);
@@ -135,8 +151,10 @@ export class Room {
     if (victim.hp > 0) return;
 
     victim.alive = false; victim.deaths++; attacker.kills++;
-    this.broadcast({ t: 'kill', killer: attacker.id, victim: victim.id, w: wi, head, sc: this.scoreList() });
-    if (attacker.kills >= GOAL_KILLS) { this.endMatch(); return; }
+    if (this.cfg.teams) this.teamScores[attacker.team]++;
+    this.broadcast({ t: 'kill', killer: attacker.id, victim: victim.id, w: wi, head, sc: this.scoreList(), ts: this.teamScores });
+    const reached = this.cfg.teams ? this.teamScores[attacker.team] >= this.goal : attacker.kills >= this.goal;
+    if (reached) { this.endMatch(); return; }
     victim.diedAt = Date.now();
     // 봇은 자동으로 부활한다. 사람은 자동 부활이 없고, 입력을 하면 부활을 요청한다 (onRespawn).
     if (victim.bot) {
@@ -174,7 +192,10 @@ export class Room {
     this.state = 'ended';
     const ranked = [...this.players.values()].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
     for (const p of this.players.values()) clearTimeout(p.respawnTimer);
-    this.broadcast({ t: 'end', winner: ranked[0] ? ranked[0].id : -1, sc: this.scoreList(), restart: RESTART_MS });
+    // 팀전: 점수가 높은 팀이 승리 (동점이면 -1 = 무승부). wt = 이긴 팀
+    const [s0, s1] = this.teamScores;
+    const wt = this.cfg.teams ? (s0 === s1 ? -1 : s0 > s1 ? 0 : 1) : -1;
+    this.broadcast({ t: 'end', winner: ranked[0] ? ranked[0].id : -1, wt, ts: this.teamScores, sc: this.scoreList(), restart: RESTART_MS });
     this.restartTimer = setTimeout(() => this.startMatch(), RESTART_MS);
   }
 
@@ -183,7 +204,8 @@ export class Room {
     this.state = 'playing';
     this.endsAt = Date.now() + MATCH_MS;
     for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.alive = false; }
-    this.broadcast({ t: 'start', goal: GOAL_KILLS, left: MATCH_MS, players: [...this.players.values()].map(p => this.info(p)) });
+    this.teamScores = [0, 0];
+    this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: MATCH_MS, players: [...this.players.values()].map(p => this.info(p)) });
     for (const p of this.players.values()) this.spawn(p);
   }
 

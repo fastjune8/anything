@@ -178,5 +178,5 @@ export function buildSoldier(colorSet) {
   const gunSlot = new THREE.Group(); gunSlot.position.set(0.12, -0.03, -0.38); aim.add(gunSlot);
 
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
-  return { root, legs, upper, aim, gunSlot };
+  return { root, legs, upper, aim, gunSlot, mats: { uniform, vest } };
 }

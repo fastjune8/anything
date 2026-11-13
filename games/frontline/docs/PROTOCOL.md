@@ -10,7 +10,7 @@
 
 | t | 필드 | 설명 |
 |---|---|---|
-| `join` | `name` | 입장. 연결 후 가장 먼저 보낸다. 이름은 14자까지. |
+| `join` | `name`, `mode` | 입장. 연결 후 가장 먼저 보낸다. 이름은 14자까지. `mode` 는 `ffa`(기본) 또는 `tdm`. |
 | `s` | `p`, `y`(yaw), `x`(pitch), `c`(앉음 0/1), `w`(무기번호) | 내 위치/시선. 20회/초. 서버가 다른 사람들에게 그대로 전달한다. |
 | `shot` | `w`, `o`(총구 위치), `e`(`[[x,y,z,n], ...]` 탄착점) | 사격. 소리/궤적용으로 다른 사람에게 전달된다. `n`=6 이면 사람에 맞음, 그 외는 벽 방향 번호. |
 | `rl` | `w` | 재장전 시작 (소리용). |
@@ -22,7 +22,7 @@
 
 | t | 필드 | 설명 |
 |---|---|---|
-| `welcome` | `id`, `goal`, `left`(남은 ms), `state`, `players`, `lan`, `port` | 입장 직후 한 번. `players` = `[{id,name,bot,k,d,alive}]` |
+| `welcome` | `id`, `mode`, `team`, `ts`, `goal`, `left`(남은 ms), `state`, `players`, `lan`, `port` | 입장 직후 한 번. `players` = `[{id,name,bot,k,d,alive,hp,team}]`. `team` 은 팀전에서 0/1, 개인전은 -1. `ts` = 팀 점수 `[0팀, 1팀]` |
 | `pj` | `player` | 누가 방에 들어옴 (봇 포함). |
 | `pl` | `id` | 누가 방에서 나감. |
 | `spawn` | `id`, `p` | 스폰/부활. 내 id 면 내 캐릭터를 그 위치로 옮긴다. |
@@ -31,10 +31,10 @@
 | `rl` | `id`, `w` | 다른 플레이어 재장전. |
 | `dmg` | `to`, `from`, `hp`, `dmg`, `head` | 누가 누구에게 피해를 줌. |
 | `hp` | `hp` | 내 체력 회복 (5초간 피해 없으면 0.5초마다 +5). |
-| `kill` | `killer`, `victim`, `w`, `head`, `sc`(`[[id,킬,데스], ...]`) | 킬. |
+| `kill` | `killer`, `victim`, `w`, `head`, `sc`(`[[id,킬,데스], ...]`), `ts` | 킬. 팀전이면 `ts`(팀 점수)가 갱신된다. |
 | `chat` | `id`, `name`, `text` | 채팅 (보낸 사람에게도 돌아온다). |
-| `end` | `winner`, `sc`, `restart`(다음 경기까지 ms) | 경기 종료. |
-| `start` | `goal`, `left`, `players` | 새 경기 시작 (기록 초기화, 이어서 `spawn`). |
+| `end` | `winner`, `wt`, `ts`, `sc`, `restart`(다음 경기까지 ms) | 경기 종료. `wt` = 팀전에서 이긴 팀 (-1 = 무승부/개인전). |
+| `start` | `goal`, `ts`, `left`, `players` | 새 경기 시작 (기록 초기화, 이어서 `spawn`). |
 
 ## HTTP
 
@@ -43,7 +43,7 @@
 | `/` , `/js/*`, `/css/*` | `client/` 폴더 |
 | `/shared/*` | `shared/` 폴더 (서버와 같이 쓰는 규칙 코드) |
 | `/vendor/three/*` | three.js |
-| `/status` | `{env, version, uptime, rooms, humans}` — 배포 전에 접속자 수 확인용 |
+| `/status` | `{env, version, uptime, rooms, humans, modes: {ffa: {rooms, humans}, tdm: {…}}}` — 로비의 모드별 인원 표시, 배포 전 접속자 확인 |
 
 ## 새 메시지를 추가하려면
 1. 이 문서에 한 줄 추가

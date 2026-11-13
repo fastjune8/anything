@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GOAL, MATCH_RESTART_MS, MATCH_TIME_MS, BOT_FILL } from '../shared/constants.js';
+import { MATCH_RESTART_MS, MATCH_TIME_MS } from '../shared/constants.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const CLIENT_DIR = path.join(ROOT, 'client');
@@ -18,10 +18,10 @@ export const STARTED_AT = Date.now();
 export const TICK_MS = 50; // 방 업데이트 주기 (봇 AI, 체력 회복)
 
 // 아래는 테스트에서 시간을 줄이려고 환경변수로 바꿀 수 있다
-export const GOAL_KILLS = Number(process.env.GOAL) || GOAL;
+export const goalFor = cfg => Number(process.env.GOAL) || cfg.goal;
 export const MATCH_MS = process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : MATCH_TIME_MS;
 export const RESTART_MS = process.env.RESTART_SECONDS ? Number(process.env.RESTART_SECONDS) * 1000 : MATCH_RESTART_MS;
-export const botFill = () => (process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : BOT_FILL);
+export const botFillFor = cfg => (process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : cfg.fill);
 
 export function lanAddresses() {
   const out = [];

@@ -2,8 +2,8 @@
 import { WEAPONS } from '/shared/weapons.js';
 import { camera, canvas } from './scene.js';
 import { sfx } from './sfx.js';
-import { me, inv, wp, game, roster, currentSpread } from './state.js';
-import { $, DEG, NOLOCK, clamp, esc } from './util.js';
+import { me, inv, wp, game, roster, currentSpread, isAlly } from './state.js';
+import { $, DEG, NOLOCK, MODE_CFG, clamp, esc } from './util.js';
 import { cache, setText, setDisplay, setClass } from './dom.js';
 
 const hudEl = $('hud'), crossEl = $('cross'), hitEl = $('hitm'), vigEl = $('vig'), dirEl = $('dmgdir');
@@ -28,7 +28,9 @@ export function feed(html) {
 }
 
 // ───── 명단 / 순위 ─────
-export const rosterSet = p => roster.set(p.id, { id: p.id, name: p.name, bot: !!p.bot, k: p.k | 0, d: p.d | 0 });
+export const rosterSet = p => roster.set(p.id, { id: p.id, name: p.name, bot: !!p.bot, k: p.k | 0, d: p.d | 0, team: p.team ?? -1 });
+// 순위표/킬 피드에서 쓰는 색 구분: 나·아군 = 'a'(강조색), 그 외 = 'e'
+export const sideOf = id => (id === me.id || isAlly((roster.get(id) || {}).team) ? 'a' : 'e');
 export const nameOf = id => (roster.get(id) || {}).name || '?';
 export function applyScores(sc) { for (const [id, k, d] of sc) { const p = roster.get(id); if (p) { p.k = k; p.d = d; } } }
 const byRank = (a, b) => b.k - a.k || a.d - b.d;
@@ -36,23 +38,34 @@ const byRank = (a, b) => b.k - a.k || a.d - b.d;
 function updateScoreboard() {
   const left = Math.max(0, game.matchEndsAt - performance.now());
   setText($('timer'), game.matchState === 'ended' ? '종료' : `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`);
+  // 가운데 위: 개인전은 목표 킬, 팀전은 팀 점수
+  const ts = game.teamScores, mt = me.team === 1 ? 1 : 0;
+  setText($('goal'), MODE_CFG.teams ? `아군 ${ts[mt]} : ${ts[1 - mt]} 적군 · ${game.goalKills}킬 선승` : `${game.goalKills}킬 선승`);
   const list = [...roster.values()].sort(byRank);
   const rows = list.slice(0, 5);
   const mine = roster.get(me.id);
   if (mine && !rows.includes(mine)) rows.push(mine);
-  const html = rows.map(p => `<div class="${p.id === me.id ? 'me' : ''}"><span class="nm">${list.indexOf(p) + 1}. ${esc(p.name)}</span><span class="mono">${p.k}</span></div>`).join('');
+  const html = rows.map(p => `<div class="${p.id === me.id ? 'me' : MODE_CFG.teams ? (isAlly(p.team) ? 'ally' : 'foe') : ''}"><span class="nm">${list.indexOf(p) + 1}. ${esc(p.name)}</span><span class="mono">${p.k}</span></div>`).join('');
   const lb = $('lb');
   if (cache.get(lb) !== html) { cache.set(lb, html); lb.innerHTML = html; }
 }
 
-export function showEnd(winnerId) {
+// winnerId: 개인전 우승자, winTeam: 팀전에서 이긴 팀 (-1 = 무승부)
+export function showEnd(winnerId, winTeam = -1) {
   const list = [...roster.values()].sort(byRank);
-  const win = winnerId === me.id, t = $('endT');
-  t.textContent = win ? '승리' : '경기 종료'; t.className = win ? 'win' : 'lose';
+  const t = $('endT');
   const mine = roster.get(me.id) || { k: 0, d: 0 };
-  $('endS').textContent = `우승 ${nameOf(winnerId)}  ·  내 순위 ${list.findIndex(p => p.id === me.id) + 1}위 (${mine.k}킬 ${mine.d}데스)`;
+  if (MODE_CFG.teams) {
+    const win = winTeam === me.team, draw = winTeam < 0, ts = game.teamScores, mt = me.team === 1 ? 1 : 0;
+    t.textContent = draw ? '무승부' : win ? '승리' : '패배'; t.className = win ? 'win' : 'lose';
+    $('endS').textContent = `아군 ${ts[mt]} : ${ts[1 - mt]} 적군  ·  내 기록 ${mine.k}킬 ${mine.d}데스`;
+  } else {
+    const win = winnerId === me.id;
+    t.textContent = win ? '승리' : '경기 종료'; t.className = win ? 'win' : 'lose';
+    $('endS').textContent = `우승 ${nameOf(winnerId)}  ·  내 순위 ${list.findIndex(p => p.id === me.id) + 1}위 (${mine.k}킬 ${mine.d}데스)`;
+  }
   $('endBoard').innerHTML = list.slice(0, 6).map((p, i) =>
-    `<div class="${p.id === me.id ? 'me' : ''}"><span>${i + 1}</span><span class="nm">${esc(p.name)}</span><span class="mono">${p.k} / ${p.d}</span></div>`).join('');
+    `<div class="${p.id === me.id ? 'me' : MODE_CFG.teams ? (isAlly(p.team) ? 'ally' : 'foe') : ''}"><span>${i + 1}</span><span class="nm">${esc(p.name)}</span><span class="mono">${p.k} / ${p.d}</span></div>`).join('');
 }
 
 // ───── 매 프레임 갱신 ─────

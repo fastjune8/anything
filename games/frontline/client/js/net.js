@@ -3,11 +3,11 @@ import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { addChatLine } from './chat.js';
 import { impact, addTracer } from './fx.js';
-import { feed, hurt, nameOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
+import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
 import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
 import { sfx, audioAt } from './sfx.js';
 import { me, wp, game, roster, net } from './state.js';
-import { $, V3, NOLOCK, lerp, esc } from './util.js';
+import { $, V3, NOLOCK, MODE, lerp, esc } from './util.js';
 import { setText, setDisplay } from './dom.js';
 import { placeMe } from './weapon.js';
 
@@ -16,7 +16,7 @@ const _v = new V3();
 export function connect(name) {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   net.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE }));
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onMessage(m); };
   ws.onclose = () => {
     if (net.ws !== ws) return;
@@ -33,11 +33,10 @@ export function connect(name) {
 function onMessage(m) {
   switch (m.t) {
     case 'welcome': {
-      game.joined = true; me.id = m.id;
+      game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0];
       clearRemotes(); roster.clear();
       game.goalKills = m.goal; game.matchState = m.state; game.matchEndsAt = performance.now() + m.left; game.endAt = performance.now() + 10000;
       for (const p of m.players) { rosterSet(p); if (p.id !== m.id) addRemote(p); }
-      setText($('goal'), `${game.goalKills}킬 선승`);
       setDisplay($('menu'), false); setHudOn(true);
       if (game.matchState === 'ended') showEnd(-1);
       if (!NOLOCK) setDisplay($('pause'), true, 'flex');
@@ -54,10 +53,9 @@ function onMessage(m) {
       break;
     }
     case 'start':
-      game.matchState = 'playing'; game.goalKills = m.goal; game.matchEndsAt = performance.now() + m.left;
+      game.matchState = 'playing'; game.goalKills = m.goal; game.matchEndsAt = performance.now() + m.left; game.teamScores = m.ts || [0, 0];
       roster.clear();
       for (const p of m.players) { rosterSet(p); if (p.id !== me.id) addRemote(p); }
-      setText($('goal'), `${game.goalKills}킬 선승`);
       feed('<span class="w">새 경기 시작</span>');
       break;
     case 'spawn':
@@ -109,10 +107,10 @@ function onMessage(m) {
     case 'hp': me.hp = m.hp; break;
     case 'chat': addChatLine(String(m.name), String(m.text), m.id === me.id); break;
     case 'kill': {
-      applyScores(m.sc);
+      applyScores(m.sc); if (m.ts) game.teamScores = m.ts;
       const mine = m.killer === me.id, iDie = m.victim === me.id, w = WEAPONS[m.w];
       const kn = nameOf(m.killer), vn = nameOf(m.victim);
-      feed(`<span class="${mine ? 'a' : 'e'}">${esc(kn)}</span><span class="w">[${w ? w.name : '?'}]</span><span class="${iDie ? 'a' : 'e'}">${esc(vn)}</span>${m.head ? '<span class="hs">헤드샷</span>' : ''}`);
+      feed(`<span class="${sideOf(m.killer)}">${esc(kn)}</span><span class="w">[${w ? w.name : '?'}]</span><span class="${sideOf(m.victim)}">${esc(vn)}</span>${m.head ? '<span class="hs">헤드샷</span>' : ''}`);
       if (mine) sfx.kill();
       if (iDie) {
         me.alive = false; me.hp = 0; wp.reload = null; game.respawnAt = performance.now() + RESPAWN_MIN_MS; // 이 시각 이후 아무 입력이나 하면 부활
@@ -124,9 +122,9 @@ function onMessage(m) {
       break;
     }
     case 'end':
-      applyScores(m.sc);
+      applyScores(m.sc); if (m.ts) game.teamScores = m.ts;
       game.matchState = 'ended'; game.endAt = performance.now() + (m.restart || 10000);
-      showEnd(m.winner);
+      showEnd(m.winner, m.wt);
       break;
   }
 }

@@ -1,5 +1,6 @@
 // WebSocket: 접속을 받아 메시지를 해당 방의 처리 함수로 넘긴다. 메시지 종류는 docs/PROTOCOL.md 참고.
 import { WebSocketServer } from 'ws';
+import { MODES, DEFAULT_MODE } from '../shared/modes.js';
 import { findRoom } from './rooms.js';
 
 // join 이후에 받는 메시지별 처리. me = 보낸 플레이어, room = 그 플레이어의 방
@@ -34,7 +35,8 @@ export function attachWebSocket(httpServer) {
       if (m.t === 'join') {
         if (me) return;
         const name = String(m.name || '').trim().slice(0, 14) || '병사';
-        me = findRoom().join(ws, name);
+        const mode = typeof m.mode === 'string' && Object.hasOwn(MODES, m.mode) ? m.mode : DEFAULT_MODE;
+        me = findRoom(mode).join(ws, name);
         return;
       }
       if (!me) return;

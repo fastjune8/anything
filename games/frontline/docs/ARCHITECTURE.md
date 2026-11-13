@@ -19,11 +19,15 @@ games/frontline/
 │       ├── bot.js          봇 AI: 시야 → 이동 → 조준 → 사격
 │       └── names.js        봇 이름
 ├── shared/                 서버와 브라우저가 같이 쓰는 규칙 (THREE·DOM 에 의존하지 않는다)
-│   ├── constants.js        인원·시간·킬 수 등 상수
+│   ├── constants.js        체력·시간 등 공통 상수
+│   ├── modes.js            게임 모드 (개인전 ffa / 팀전 tdm): 맵·인원·팀 수·목표 킬
 │   ├── weapons.js          무기 7종 데이터와 피해 계산
-│   ├── layout.js           맵 배치 (건물, 컨테이너 등의 박스 목록)
 │   ├── collision.js        광선-박스 충돌
-│   └── spawns.js           부활 지점
+│   └── maps/
+│       ├── index.js        맵 목록, getMap(id)
+│       ├── parts.js        맵 부품 (벽, 건물, 컨테이너, 상자 …)
+│       ├── frontline.js    전선 (개인전)   — 배치 + 스폰 지점
+│       └── warehouse.js    창고 (팀전)     — 배치 + 팀별 스폰 지점
 ├── client/                 브라우저
 │   ├── index.html, css/style.css
 │   └── js/
@@ -64,9 +68,11 @@ games/frontline/
 |---|---|
 | 총 성능·피해량 조절 | `shared/weapons.js` |
 | 새 총 추가 | `shared/weapons.js` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`) |
-| 맵 수정 | `shared/layout.js` (건물·상자 배치), 부활 지점은 `shared/spawns.js` |
+| 맵 수정 | `shared/maps/<맵>.js` (배치와 스폰 지점이 한 파일에 있다) |
+| 새 맵 추가 | `shared/maps/` 에 파일 추가 → `maps/index.js` 에 등록 → `modes.js` 에서 모드에 연결 |
+| 새 모드 추가 | `shared/modes.js` 에 항목 추가 (로비 카드는 자동으로 생긴다). 규칙이 다르면 `server/room.js` |
 | 봇 난이도 | `server/bots/bot.js` 맨 위 상수와 `skill`, 정확도는 `shoot()` 의 `pHit` |
-| 방 인원·킬 수·시간·봇 수 | `shared/constants.js` |
+| 방 인원·킬 수·봇 수 | `shared/modes.js` (모드별), 시간은 `shared/constants.js` |
 | 채팅 제한 | `server/chat.js` 상단 상수, 글자 수는 `shared/constants.js` 의 `CHAT_MAX_LEN` |
 | 화면 모양 | `client/css/style.css`, `client/index.html` |
 | 순위표·HUD 표시 | `client/js/hud.js` |

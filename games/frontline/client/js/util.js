@@ -1,5 +1,6 @@
 // 작은 수학/DOM 도우미와 공용 상수
 import * as THREE from 'three';
+import { MODES, DEFAULT_MODE } from '/shared/modes.js';
 
 export const $ = id => document.getElementById(id);
 export const V3 = THREE.Vector3;
@@ -15,3 +16,8 @@ export const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 export const params = new URLSearchParams(location.search);
 export const NOLOCK = params.has('nolock'); // 테스트용: 포인터 락 없이 진행
 export const BASE_FOV = 74;
+
+// 이번에 플레이할 모드: 주소의 ?mode= → 지난번에 고른 모드 → 기본값. (맵이 모드마다 달라서 모드를 바꾸면 페이지를 다시 연다)
+const wanted = params.get('mode') || localStorage.getItem('fd_mode');
+export const MODE = wanted && Object.hasOwn(MODES, wanted) ? wanted : DEFAULT_MODE;
+export const MODE_CFG = MODES[MODE];
