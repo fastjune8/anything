@@ -3,14 +3,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld } from '/js/world.js';
-import { expandObject, buildLayout } from '/shared/maps/build.js';
+import { expandObject, buildLayout, OBJECT_TYPES } from '/shared/maps/build.js';
 import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap } from '/shared/content/schema.js';
 import { MODES } from '/shared/modes.js';
 import { buildForm } from './form.js';
 
 const $ = id => document.getElementById(id);
 const r2 = v => Math.round(v * 100) / 100;
-const GRID = 0.5;
 const TEAM_COLOR = { '-1': 0xe9ecef, 0: 0x5aa9ff, 1: 0xff4b3a };
 const TEAM_NAME = { '-1': '개인전 스폰', 0: '0팀 스폰', 1: '1팀 스폰' };
 
@@ -35,7 +34,8 @@ scene.fog.density = 0.0015; // 위에서 내려다보므로 안개를 옅게
 const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 3000);
 camera.position.set(0, 80, 70);
 const controls = new OrbitControls(camera, canvas);
-controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }; // 왼쪽 = 선택/이동/배치, 오른쪽 = 회전(Shift = 이동), 휠 = 확대
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: null }; // 왼쪽·오른쪽 버튼은 아래에서 직접 처리 (선택/비행), 가운데 = 화면 이동
+controls.zoomToCursor = true; // 휠: 마우스가 가리키는 곳으로 확대
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.screenSpacePanning = false;
 
 const pickGroup = new THREE.Group(), markGroup = new THREE.Group(), selGroup = new THREE.Group(), helpGroup = new THREE.Group();
@@ -229,17 +229,24 @@ function rotateSelected() {
 }
 
 // ───────── 마우스 ─────────
+// 유니티·언리얼과 비슷하게:
+//   왼쪽 클릭 = 선택·끌어서 이동·배치          Alt + 왼쪽 끌기 = 궤도 회전
+//   오른쪽 버튼을 누른 채 = 비행 (마우스로 둘러보기 + WASD 날기, Q/E 내려가기/올라가기, 휠 = 비행 속도)
+//   가운데 끌기 = 화면 이동                    휠 = 커서 쪽으로 확대/축소
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+let snapStep = 0.5;   // 격자 (0 = 끔)
+let lastSnap = 0.5;   // G 로 다시 켤 때의 격자
+let cursor = null;    // 마우스가 가리키는 바닥 좌표 [x, z] (붙여넣기 위치, 좌표 표시)
 function aim(e) {
   const r = canvas.getBoundingClientRect();
   ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
 }
-function groundPoint(e, snap = !e.altKey) {
+const snapV = v => (snapStep ? Math.round(v / snapStep) * snapStep : r2(v));
+function groundPoint(e) {
   aim(e);
   if (!ray.ray.intersectPlane(ground, hit)) return null;
-  const s = v => (snap ? Math.round(v / GRID) * GRID : r2(v));
-  return [s(hit.x), s(hit.z)];
+  return [snapV(hit.x), snapV(hit.z)];
 }
 function pick(e) {
   aim(e);
@@ -247,10 +254,34 @@ function pick(e) {
   return m ? m.object.userData : null;
 }
 
+// 카메라: 비행(오른쪽 버튼) / 궤도(Alt+왼쪽, Q/E)
+const look = new THREE.Euler(0, 0, 0, 'YXZ');
+let fly = null;       // { dist } 오른쪽 버튼을 누르고 있는 동안
+let flySpeed = 20;    // m/s (비행 중 휠로 바꾼다)
+let orbiting = false;
+function startFly() {
+  fly = { dist: Math.max(5, camera.position.distanceTo(controls.target)) };
+  controls.enabled = false;
+  look.setFromQuaternion(camera.quaternion, 'YXZ');
+}
+function endFly() {
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  controls.target.copy(camera.position).addScaledVector(fwd, fly.dist); // 다시 궤도 조작을 할 때 바라보던 곳을 중심으로
+  fly = null; controls.enabled = true; controls.update();
+}
+function orbitBy(dYaw, dPitch) {
+  const off = camera.position.clone().sub(controls.target), s = new THREE.Spherical().setFromVector3(off);
+  s.theta += dYaw; s.phi = Math.min(controls.maxPolarAngle, Math.max(0.05, s.phi + dPitch));
+  camera.position.copy(controls.target).add(off.setFromSpherical(s));
+  camera.lookAt(controls.target);
+}
+
 let drag = null; // { start: [x, z], orig, mirror, moved }
 canvas.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return;
   canvas.setPointerCapture(e.pointerId);
+  if (e.button === 2) { startFly(); return; }
+  if (e.button !== 0) return;
+  if (e.altKey) { orbiting = true; controls.enabled = false; return; }
   const p = groundPoint(e);
   if (tool) { if (p) place(p[0], p[1]); if (!e.shiftKey) setTool(null); return; } // Shift 를 누르고 있으면 계속 놓기
   const u = pick(e);
@@ -259,8 +290,15 @@ canvas.addEventListener('pointerdown', e => {
   if (u && p) drag = { start: p, orig: JSON.parse(JSON.stringify(selected())), mirror: !!u.mirror, moved: false };
 });
 canvas.addEventListener('pointermove', e => {
-  if (!drag) return;
+  if (fly) { // 둘러보기
+    look.y -= e.movementX * 0.0028; look.x = Math.max(-1.5, Math.min(1.5, look.x - e.movementY * 0.0028));
+    camera.quaternion.setFromEuler(look);
+    return;
+  }
+  if (orbiting) { orbitBy(-e.movementX * 0.006, -e.movementY * 0.006); return; }
   const p = groundPoint(e);
+  cursor = p; showCoords();
+  if (!drag) { if (!tool) canvas.style.cursor = pick(e) ? 'pointer' : 'default'; return; } // 고를 수 있는 것 위에서는 손가락 모양
   if (!p) return;
   let dx = p[0] - drag.start[0], dz = p[1] - drag.start[1];
   if (drag.mirror) { dx = -dx; dz = -dz; } // 대칭 복사본을 끌면 원본은 반대로 움직인다
@@ -268,32 +306,129 @@ canvas.addEventListener('pointermove', e => {
   drag.moved = true;
   moveTo(drag.orig, dx, dz); rebuild();
 });
-canvas.addEventListener('pointerup', () => { if (drag && drag.moved) { commit(); renderPanel(); } drag = null; });
+canvas.addEventListener('pointerup', e => {
+  if (e.button === 2 && fly) { endFly(); return; }
+  if (orbiting) { orbiting = false; controls.enabled = true; controls.update(); return; }
+  if (drag && drag.moved) { commit(); renderPanel(); }
+  drag = null;
+});
+canvas.addEventListener('wheel', e => { // 비행 중 휠 = 비행 속도
+  if (!fly) return;
+  e.preventDefault();
+  flySpeed = Math.min(200, Math.max(2, flySpeed * (e.deltaY < 0 ? 1.25 : 0.8)));
+  showCoords(`비행 속도 ${flySpeed.toFixed(0)} m/s`);
+}, { passive: false });
+canvas.addEventListener('dblclick', () => focusSelected());
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // ───────── 키보드 ─────────
+// e.code(키 위치)로 본다: 한글 입력 상태여도 W 는 W 로 동작한다
+const held = new Set();
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
+let clipboard = null;
 addEventListener('keydown', e => {
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   const mod = e.metaKey || e.ctrlKey;
-  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+  if (mod && e.code === 'KeyS') { e.preventDefault(); save(); return; }
   if (typing) return;
-  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
-  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
-  if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
-  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); return; }
-  if (e.key === 'r' || e.key === 'R') rotateSelected();
-  if (e.key === 'Escape') { setTool(null); sel = null; drawSelection(); renderPanel(); }
-  if (e.key === 't' || e.key === 'T') topView();
-  if (e.key === 'f' || e.key === 'F') focusSelected();
+  if (mod) {
+    if (e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    else if (e.code === 'KeyY') { e.preventDefault(); redo(); }
+    else if (e.code === 'KeyD') { e.preventDefault(); duplicateSelected(); }
+    else if (e.code === 'KeyC') { e.preventDefault(); copySelected(); }
+    else if (e.code === 'KeyV') { e.preventDefault(); paste(); }
+    return;
+  }
+  if (MOVE_KEYS.has(e.code)) { held.add(e.code); e.preventDefault(); return; }
+  switch (e.code) {
+    case 'Delete': case 'Backspace': e.preventDefault(); removeSelected(); break;
+    case 'KeyR': rotateSelected(); break;
+    case 'KeyF': focusSelected(); break;
+    case 'KeyT': topView(); break;
+    case 'Home': overview(); break;
+    case 'KeyG': setSnap(snapStep ? 0 : lastSnap); break;
+    case 'Escape': setTool(null); sel = null; drawSelection(); renderPanel(); break;
+    case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight': e.preventDefault(); nudge(e.code, e.shiftKey); break;
+  }
 });
+addEventListener('keyup', e => held.delete(e.code));
+addEventListener('blur', () => held.clear());
 
-function topView() { camera.position.set(controls.target.x, map.half * 2.2, controls.target.z + 0.01); }
+// 매 프레임: 누르고 있는 키로 카메라 이동
+const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Vector3();
+function moveCamera(dt) {
+  const k = c => (held.has(c) ? 1 : 0);
+  const fast = k('ShiftLeft') || k('ShiftRight') ? 3 : 1;
+  const fwd = k('KeyW') - k('KeyS'), side = k('KeyD') - k('KeyA'), updown = k('KeyE') - k('KeyQ');
+  camera.getWorldDirection(_f);
+  if (fly) { // 비행: 바라보는 방향으로, Q/E 는 아래/위
+    _r.crossVectors(_f, camera.up).normalize();
+    _m.set(0, 0, 0).addScaledVector(_f, fwd).addScaledVector(_r, side).addScaledVector(camera.up, updown);
+    if (_m.lengthSq()) camera.position.addScaledVector(_m.normalize(), flySpeed * fast * dt);
+    return;
+  }
+  // 평소: WASD = 지도 위를 앞뒤좌우로 (멀리서 볼수록 빠르게), Q/E = 시점 좌우 회전
+  if (fwd || side) {
+    _f.y = 0; _f.normalize(); _r.set(-_f.z, 0, _f.x);
+    const dist = camera.position.distanceTo(controls.target);
+    _m.set(0, 0, 0).addScaledVector(_f, fwd).addScaledVector(_r, side).normalize().multiplyScalar(Math.max(10, dist * 0.9) * fast * dt);
+    camera.position.add(_m); controls.target.add(_m);
+  }
+  if (updown) orbitBy(-updown * 1.5 * fast * dt, 0);
+}
+
+// 방향키: 선택한 것을 격자 한 칸씩 (Shift = 4칸). 화면에서 위쪽 화살표 = 멀어지는 쪽
+function nudge(code, big) {
+  const o = selected();
+  if (!o) return;
+  camera.getWorldDirection(_f); _f.y = 0;
+  const alongX = Math.abs(_f.x) > Math.abs(_f.z);
+  const fx = alongX ? Math.sign(_f.x) : 0, fz = alongX ? 0 : Math.sign(_f.z); // 화면 위쪽에 가장 가까운 축
+  const rx = -fz, rz = fx;
+  const step = (snapStep || 0.1) * (big ? 4 : 1);
+  const [u, s] = { ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[code];
+  moveTo(JSON.parse(JSON.stringify(o)), r2((fx * u + rx * s) * step), r2((fz * u + rz * s) * step));
+  rebuildNow(); commit(); renderPanel();
+}
+
+// 복사 / 붙여넣기 (마우스가 가리키는 곳에)
+function copySelected() {
+  const o = selected();
+  if (!o || sel.kind !== 'obj') return;
+  clipboard = JSON.parse(JSON.stringify(o));
+  flash('복사했습니다 — ⌘V 로 마우스 위치에 붙여넣기');
+}
+function paste() {
+  if (!clipboard) return;
+  const copy = JSON.parse(JSON.stringify(clipboard));
+  map.objects.push(copy); sel = { kind: 'obj', i: map.objects.length - 1 };
+  const [ax, az] = OBJECT_TYPES[copy.type].anchor(copy), [tx, tz] = cursor || [ax + 2, az + 2];
+  moveTo(JSON.parse(JSON.stringify(copy)), r2(snapV(tx) - ax), r2(snapV(tz) - az));
+  rebuildNow(); commit(); renderPanel();
+}
+
+function setSnap(v) {
+  snapStep = v; if (v) lastSnap = v;
+  $('snapSel').value = String(v);
+  showCoords();
+}
+function showCoords(extra) {
+  const c = cursor ? `x ${cursor[0].toFixed(1)} · z ${cursor[1].toFixed(1)}` : '';
+  $('coords').textContent = [c, `격자 ${snapStep ? snapStep + 'm' : '끔'} (G)`, extra || (fly ? `비행 속도 ${flySpeed.toFixed(0)} m/s (휠)` : '')].filter(Boolean).join('  ·  ');
+}
+
+function topView() { camera.position.set(controls.target.x, map.half * 2.2, controls.target.z + 0.01); camera.lookAt(controls.target); }
+function overview() { controls.target.set(0, 0, 0); camera.position.set(0, map.half * 1.3, map.half * 1.15); camera.lookAt(controls.target); }
 function focusSelected() {
-  const m = selGroup.children[0];
-  if (!m) return;
+  if (!selGroup.children.length) return;
+  const box = new THREE.Box3();
+  for (const m of selGroup.children) if (m.material !== selMirrorMat) box.expandByObject(m);
+  if (box.isEmpty()) box.setFromObject(selGroup);
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
   const d = camera.position.clone().sub(controls.target);
-  controls.target.set(m.position.x, 0, m.position.z);
-  camera.position.copy(controls.target).add(d.setLength(Math.min(d.length(), 30)));
+  controls.target.set(c.x, 0, c.z);
+  camera.position.copy(controls.target).add(d.setLength(Math.max(8, size * 1.6)));
+  camera.lookAt(controls.target);
 }
 
 // ───────── 화면: 도구 / 속성 / 검사 ─────────
@@ -385,7 +520,7 @@ async function openMap(id) {
   sel = null; $('mapSel').value = id;
   const p = new URLSearchParams(location.search); p.set('map', id); history.replaceState(null, '', `?${p}`);
   rebuildNow(); drawHelpers(); renderPanel();
-  controls.target.set(0, 0, 0); camera.position.set(0, map.half * 1.3, map.half * 1.15);
+  overview();
 }
 
 async function save() {
@@ -423,7 +558,7 @@ function newMap() {
   if (![...$('mapSel').options].some(o => o.value === id)) $('mapSel').appendChild(new Option(`${id} (새 맵)`, id));
   $('mapSel').value = id;
   rebuildNow(); drawHelpers(); renderPanel();
-  controls.target.set(0, 0, 0); camera.position.set(0, h * 1.3, h * 1.15);
+  overview();
 }
 
 let flashT = 0;
@@ -436,6 +571,7 @@ $('save').addEventListener('click', save);
 $('undo').addEventListener('click', undo);
 $('redo').addEventListener('click', redo);
 $('top').addEventListener('click', topView);
+$('snapSel').addEventListener('change', () => setSnap(Number($('snapSel').value)));
 $('play').addEventListener('click', play);
 for (const m of Object.values(MODES)) $('playMode').appendChild(new Option(m.name, m.id));
 addEventListener('beforeunload', e => { if (map && isDirty()) e.preventDefault(); });
@@ -445,7 +581,14 @@ resize();
 await loadMapList();
 await openMap(new URLSearchParams(location.search).get('map') || mapIds[0]);
 
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+let lastT = performance.now();
+renderer.setAnimationLoop(t => {
+  const dt = Math.min(0.1, (t - lastT) / 1000); lastT = t;
+  moveCamera(dt);
+  if (controls.enabled) controls.update();
+  renderer.render(scene, camera);
+});
+showCoords();
 
 // 자동 테스트용
-window.__ed = { get map() { return map; }, get sel() { return sel; }, get errors() { return lastErrors; }, isDirty, save, undo, redo, setTool, place, select: s => { sel = s; drawSelection(); renderPanel(); }, moveTo: (dx, dz) => { moveTo(JSON.parse(JSON.stringify(selected())), dx, dz); rebuildNow(); commit(); renderPanel(); }, removeSelected, rotateSelected, duplicateSelected, rebuildNow, openMap };
+window.__ed = { get map() { return map; }, get sel() { return sel; }, get errors() { return lastErrors; }, isDirty, save, undo, redo, setTool, place, select: s => { sel = s; drawSelection(); renderPanel(); }, moveTo: (dx, dz) => { moveTo(JSON.parse(JSON.stringify(selected())), dx, dz); rebuildNow(); commit(); renderPanel(); }, removeSelected, rotateSelected, duplicateSelected, rebuildNow, openMap, camera, controls, get snap() { return snapStep; }, get clipboard() { return clipboard; } };

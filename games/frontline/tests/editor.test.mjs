@@ -76,6 +76,42 @@ try {
   const listed = await page.evaluate(() => [...document.querySelectorAll('#mapSel option')].map(o => o.value));
   check(listed.includes(TEST_ID), '에디터 맵 목록에도 새 맵이 보인다');
 
+  console.log('\n[카메라와 편집 단축키 (유니티·언리얼 방식)]');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); // 키 입력이 캔버스로 가도록
+  const cam = () => page.evaluate(() => { const { camera: c, controls: o } = window.__ed; return { x: c.position.x, y: c.position.y, z: c.position.z, tx: o.target.x, tz: o.target.z, ang: Math.atan2(c.position.x - o.target.x, c.position.z - o.target.z) }; });
+  const c0 = await cam();
+  await page.keyboard.down('w'); await page.waitForTimeout(500); await page.keyboard.up('w');
+  const c1 = await cam();
+  check(c1.tz < c0.tz - 1 && Math.abs((c1.z - c0.z) - (c1.tz - c0.tz)) < 0.01, 'W 를 누르고 있으면 카메라가 앞(지도 위쪽)으로 이동한다', `${c0.tz.toFixed(1)} → ${c1.tz.toFixed(1)}`);
+  await page.keyboard.down('e'); await page.waitForTimeout(400); await page.keyboard.up('e');
+  const c2 = await cam();
+  check(Math.abs(c2.ang - c1.ang) > 0.2 && Math.abs(c2.tx - c1.tx) < 0.01, 'E 를 누르면 보던 곳을 중심으로 시점이 돈다', `${c1.ang.toFixed(2)} → ${c2.ang.toFixed(2)}`);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2);
+  await page.keyboard.down('e'); await page.waitForTimeout(300); await page.keyboard.up('e');
+  await page.mouse.up({ button: 'right' });
+  const c3 = await cam();
+  check(c3.y > c2.y + 1, '오른쪽 버튼을 누른 채 E 를 누르면 위로 날아오른다 (비행 모드)', `${c2.y.toFixed(1)} → ${c3.y.toFixed(1)}`);
+  await page.keyboard.press('Home');
+  const c4 = await cam();
+  check(Math.abs(c4.tx) < 0.01 && Math.abs(c4.tz) < 0.01, 'Home 을 누르면 맵 전체가 보이는 곳으로 돌아온다');
+
+  await page.evaluate(() => window.__ed.select({ kind: 'obj', i: window.__ed.map.objects.findIndex(o => o.type === 'crate') }));
+  const before = await page.evaluate(() => { const o = window.__ed.map.objects.find(q => q.type === 'crate'); return [o.x, o.z]; });
+  await page.keyboard.press('ArrowRight');
+  const after = await page.evaluate(() => { const o = window.__ed.map.objects.find(q => q.type === 'crate'); return [o.x, o.z]; });
+  check(Math.abs(after[0] - before[0]) + Math.abs(after[1] - before[1]) === 0.5, '방향키로 선택한 물체가 격자 한 칸(0.5m) 움직인다', `${before} → ${after}`);
+  await page.keyboard.press('g');
+  check(await page.evaluate(() => window.__ed.snap) === 0, 'G 로 격자를 끈다');
+  await page.keyboard.press('g');
+  const n0 = await page.evaluate(() => window.__ed.map.objects.length);
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.6);
+  await page.keyboard.press('ControlOrMeta+v');
+  const pasted = await page.evaluate(() => ({ n: window.__ed.map.objects.length, last: window.__ed.map.objects.at(-1), sel: window.__ed.sel }));
+  check(pasted.n === n0 + 1 && pasted.last.type === 'crate' && pasted.sel.i === n0 && (pasted.last.x !== after[0] || pasted.last.z !== after[1]), '⌘C / ⌘V 로 마우스 위치에 붙여넣는다', JSON.stringify(pasted.last));
+  check((await page.textContent('#coords')).includes('격자 0.5m'), '화면 구석에 커서 좌표와 격자가 표시된다', await page.textContent('#coords'));
+
   console.log('\n[저장한 맵으로 플레이]');
   const c = connect(srv.port, 'tester', { mode: 'zone', create: { name: 'x', private: true, bots: false, minutes: 3, map: TEST_ID } }); await c.open;
   const wel = await c.waitFor('welcome');

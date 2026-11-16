@@ -18,7 +18,8 @@
   <span class="sep"></span>
   <button id="undo" type="button" title="되돌리기 (⌘Z)">↶</button>
   <button id="redo" type="button" title="다시 하기 (⌘⇧Z)">↷</button>
-  <button id="top" type="button" title="위에서 보기 (T)">위에서 보기</button>
+  <button id="top" type="button" title="위에서 보기 (T) · 전체 보기는 Home">위에서 보기</button>
+  <label class="chk" title="격자 (G 로 켜고 끄기)">격자 <select id="snapSel"><option value="0">끔</option><option value="0.25">0.25m</option><option value="0.5" selected>0.5m</option><option value="1">1m</option><option value="2">2m</option></select></label>
   <span class="sep"></span>
   <button id="save" type="button" class="primary" title="저장 (⌘S)">저장</button>
   <span id="status"></span>
@@ -31,10 +32,15 @@
   <aside id="left">
     <div id="palette"></div>
     <div class="help">
-      <h3>조작</h3>
-      <p><b>왼쪽 클릭</b> 선택 · 끌어서 이동 (0.5m 격자, Alt = 자유)</p>
-      <p><b>오른쪽 끌기</b> 회전 · <b>Shift+오른쪽</b> 이동 · <b>휠</b> 확대</p>
-      <p><b>R</b> 회전 · <b>⌘D</b> 복제 · <b>Del</b> 삭제 · <b>F</b> 선택한 곳 보기 · <b>T</b> 위에서 보기</p>
+      <h3>카메라</h3>
+      <p><b>WASD</b> 이동 · <b>Q / E</b> 좌우로 돌기 · <b>Shift</b> 빠르게</p>
+      <p><b>오른쪽 버튼 누른 채</b> 비행: 마우스로 둘러보기 + <b>WASD</b>, <b>Q/E</b> 내려가기·올라가기, <b>휠</b> 비행 속도</p>
+      <p><b>Alt + 왼쪽 끌기</b> 궤도 회전 · <b>가운데 끌기</b> 화면 이동 · <b>휠</b> 커서 쪽 확대</p>
+      <p><b>F</b> / 더블클릭 선택한 곳 보기 · <b>T</b> 위에서 보기 · <b>Home</b> 전체 보기</p>
+      <h3>편집</h3>
+      <p><b>왼쪽 클릭</b> 선택 · 끌어서 이동 (격자 단위, <b>G</b> 격자 켜기/끄기)</p>
+      <p><b>방향키</b> 한 칸씩 이동 (Shift 4칸) · <b>R</b> 90° 회전</p>
+      <p><b>⌘C / ⌘V</b> 복사·마우스 위치에 붙여넣기 · <b>⌘D</b> 복제 · <b>Del</b> 삭제 · <b>⌘Z</b> 되돌리기</p>
       <p>대칭 물체(<i>반대편에도 배치</i>)는 반대편 복사본을 끌어도 원본이 같이 움직입니다.</p>
     </div>
   </aside>
@@ -43,6 +49,7 @@
     <div id="hintTool"></div>
     <div id="errors" hidden></div>
     <div id="flash" hidden></div>
+    <div id="coords"></div>
   </section>
   <aside id="props"></aside>
 </main>
