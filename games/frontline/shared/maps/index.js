@@ -22,3 +22,10 @@ export function getMap(id) {
   return built.get(id);
 }
 export const MAP_IDS = Object.keys(DEFS);
+
+// 에디터가 맵을 저장했을 때 서버가 부른다: 메모리의 맵을 새 데이터로 바꾼다 (새 맵이면 목록에 추가)
+export function setMapDef(def) {
+  DEFS[def.id] = def;
+  built.delete(def.id);
+  if (!MAP_IDS.includes(def.id)) MAP_IDS.push(def.id);
+}

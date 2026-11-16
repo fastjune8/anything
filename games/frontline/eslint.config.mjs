@@ -15,11 +15,11 @@ const common = {
 export default [
   { ignores: ['node_modules/**', 'deploy/**'] },
   // 브라우저에서 도는 코드
-  { files: ['client/**/*.js'], ...common, languageOptions: { ...common.languageOptions, globals: { ...globals.browser } } },
+  { files: ['client/**/*.js', 'editor/**/*.js'], ...common, languageOptions: { ...common.languageOptions, globals: { ...globals.browser } } },
   // 서버와 브라우저가 같이 쓰는 코드: 둘 다에서 동작해야 하므로 전역 객체를 쓰지 않는다
   { files: ['shared/**/*.js'], ...common },
   // 서버, 테스트: Node
   { files: ['server/**/*.js', 'tests/**/*.mjs', 'eslint.config.mjs'], ...common, languageOptions: { ...common.languageOptions, globals: { ...globals.node } } },
   // 테스트 안의 page.evaluate(() => ...) 는 브라우저 안에서 실행되므로 window/document 사용을 허용
-  { files: ['tests/browser.test.mjs'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
+  { files: ['tests/browser.test.mjs', 'tests/editor.test.mjs'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
 ];

@@ -14,22 +14,32 @@ games/frontline/
 │   ├── room.js             방 하나: 입장/퇴장, 봇 채우기, 스폰, 피해·킬, 경기 진행, 채팅
 │   ├── chat.js             채팅 규칙 (글자 정리, 도배 방지)       ← 순수 함수
 │   ├── combat.js           명중 신고 검증·피해 합산               ← 순수 함수
+│   ├── devtools.js         맵 에디터 저장 API (개발 서버에서만)
+│   ├── modes/              모드 규칙: 점수·승리·봇 목표 (index.js 에 규칙 객체가 갖출 것 설명)
+│   │   ├── deathmatch.js   개인·팀 데스매치 (킬 = 점수)
+│   │   └── zone.js         점령전 (stepZone = 거점 게이지 규칙, 순수 함수)
 │   └── bots/
 │       ├── nav.js          맵을 격자로 바꿔 A* 길찾기
 │       ├── bot.js          봇 AI: 시야 → 이동 → 조준 → 사격
 │       └── names.js        봇 이름
 ├── shared/                 서버와 브라우저가 같이 쓰는 규칙 (THREE·DOM 에 의존하지 않는다)
 │   ├── constants.js        체력·시간 등 공통 상수
-│   ├── modes.js            게임 모드 (개인전 ffa / 팀전 tdm): 맵·인원·팀 수·목표 킬
-│   ├── weapons.js          무기 7종 데이터와 피해 계산
-│   ├── parts.js            총기 파츠(조준경·총열·손잡이·탄창·개머리판)와 출전 무기 2개 규칙: 성능 계산, 입력값 정리
+│   ├── modes.js            게임 모드 (점령전 zone / 개인전 ffa / 팀전 tdm): 맵·규칙·인원·팀 수·목표 점수
+│   ├── weapons.js          무기 데이터(content/weapons.json)와 피해 계산
+│   ├── parts.js            총기 파츠(content/parts.json)와 출전 무기 2개 규칙: 성능 계산, 입력값 정리
+│   ├── content/
+│   │   ├── schema.js       콘텐츠 데이터 모양 정의 + 검사 (에디터 입력 칸도 여기서 만든다)
+│   │   └── format.js       콘텐츠 JSON 저장 형식 (한 항목 = 한 줄)
 │   ├── collision.js        광선-박스 충돌
 │   ├── vault.js            낮은 구조물 넘어가기/오르기 경로 계산 (findVault)
 │   └── maps/
-│       ├── index.js        맵 목록, getMap(id)
-│       ├── parts.js        맵 부품 (벽, 건물, 컨테이너, 상자 …)
-│       ├── frontline.js    전선 (개인전)   — 배치 + 스폰 지점
-│       └── warehouse.js    창고 (팀전)     — 배치 + 팀별 스폰 지점
+│       ├── index.js        맵 목록(content/maps), getMap(id)
+│       ├── build.js        맵 데이터의 물체 목록 → 박스·나무·충돌 박스 (회전·대칭 포함)
+│       └── parts.js        물체 모양 (벽, 건물, 컨테이너, 상자 …)
+├── content/                게임 데이터 (코드가 아님, 에디터가 쓴다): maps/*.json, weapons.json, parts.json
+├── editor/                 맵 에디터 (개발 서버의 /editor/, 라이브에는 없다)
+│   ├── editor.js           3D 보기·선택·이동·배치·되돌리기·저장·시험 플레이
+│   └── form.js             스키마 → 입력 칸 자동 생성
 ├── client/                 브라우저
 │   ├── index.html, css/style.css
 │   └── js/
@@ -41,19 +51,21 @@ games/frontline/
 │       ├── loadout.js      출전 무기·파츠 저장(브라우저)과 성능 갱신     armory.js  무기고 화면(벽에 걸린 총 + 패널)
 │       ├── remotes.js      다른 플레이어 모델·명중 판정·머리 위 이름표/체력바
 │       ├── minimap.js      미니맵(회전 원형 지도)   minimath.js  미니맵 좌표 계산(단위 테스트 대상)
+│       ├── objective.js    점령전 거점 표시 (바닥 원, 거점 상태 HUD, 화면 위 거점 표식)
 │       ├── fx.js           궤적·탄흔·파편      textures.js  이펙트 텍스처
 │       ├── hud.js          체력·탄약·순위표·킬 피드·종료 화면
 │       ├── chat.js         채팅 입력/표시
 │       ├── net.js          서버 통신           input.js  키보드·마우스
 │       ├── menu.js         로비(빠른 시작·친선전)·설정      audio.js / sfx.js  소리
 │       └── util.js, dom.js 도우미
-├── tests/                  unit / protocol(서버) / browser(Chrome)
+├── tests/                  unit / protocol·tdm·zone 등(서버) / browser·editor(Chrome)
 ├── deploy/                 라이브 배포 스크립트
 └── docs/                   DEV.md, PROTOCOL.md, ARCHITECTURE.md
 ```
 
 ## 책임을 나누는 기준
-- **규칙은 `shared/`** — 서버와 브라우저가 같은 값을 써야 하는 것(무기, 맵, 충돌). 한 곳만 고치면 양쪽에 반영된다.
+- **데이터는 `content/`, 규칙은 `shared/`** — 수치와 배치(맵·무기·파츠)는 JSON 데이터, 그걸 해석하는 코드는 `shared/`. 둘 다 서버와 브라우저가 같이 쓴다.
+- **모드 규칙은 `server/modes/`** — 방(`room.js`)은 입장·스폰·피해 같은 공통 진행만 하고, 점수·승리·봇 목표는 모드 규칙 객체에 맡긴다.
 - **검증은 서버** — 브라우저가 보내는 건 "신고"일 뿐이다. 서버가 `combat.js`/`chat.js` 로 검증하고 결과를 정한다.
 - **서버 규칙은 순수 함수로** — `chat.js`, `combat.js` 처럼 입력→결과만 있는 함수로 두면 단위 테스트가 쉽다.
 - **브라우저 모듈 간 값 공유는 `state.js` 의 객체로** — `wp.cur = 3` 처럼 속성으로 바꾼다. (모듈 간에 변수를 직접 바꿀 수 없기 때문)
@@ -84,15 +96,16 @@ games/frontline/
 
 | 하고 싶은 것 | 고칠 곳 |
 |---|---|
-| 총 성능·피해량 조절 | `shared/weapons.js` |
-| 새 총 추가 | `shared/weapons.js` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`). 무기고 벽에는 자동으로 걸린다 |
-| 파츠 성능 조절·새 파츠 추가 | `shared/parts.js` 의 `PARTS` (+ 모양은 `client/js/guns.js` 의 `OPTIC`/`BARREL`/`GRIP`) |
+| 총 성능·피해량 조절 | `content/weapons.json` |
+| 새 총 추가 | `content/weapons.json` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`). 무기고 벽에는 자동으로 걸린다 |
+| 파츠 성능 조절·새 파츠 추가 | `content/parts.json` (+ 모양은 `client/js/guns.js` 의 `OPTIC`/`BARREL`/`GRIP`) |
 | 기본 출전 무기 | `shared/parts.js` 의 `DEFAULT_LOADOUT` |
 | 무기고 화면(벽 배치·조명·성능 표) | `client/js/armory.js`, 모양은 `client/css/style.css` 의 무기고 부분 |
-| 맵 수정 | `shared/maps/<맵>.js` (배치와 스폰 지점이 한 파일에 있다) |
-| 새 맵 추가 | `shared/maps/` 에 파일 추가 → `maps/index.js` 에 등록 → `modes.js` 에서 모드에 연결 |
+| 맵 수정·새 맵 | 맵 에디터(`/editor/`) → `content/maps/<id>.json`. 모드의 기본 맵은 `shared/modes.js` 의 `map` |
+| 새 물체 종류 (맵 부품) | `shared/maps/build.js` 의 `OBJECT_TYPES` + `shared/content/schema.js` 의 `OBJECT_SCHEMAS` |
 | 친선전 옵션(시간·정원 등) | `server/rooms.js` (`resolveRoom`), 로비 화면은 `client/js/menu.js` |
-| 새 모드 추가 | `shared/modes.js` 에 항목 추가 (로비 카드는 자동으로 생긴다). 규칙이 다르면 `server/room.js` |
+| 새 모드 추가 | `shared/modes.js` 에 항목 추가 (로비 카드는 자동). 점수·승리 규칙이 다르면 `server/modes/` 에 규칙 파일 + `index.js` 에 등록 |
+| 점령전 수치 (점령 시간·점수 속도·목표) | `shared/modes.js` 의 `zone` 항목 |
 | 봇 난이도 | `server/bots/bot.js` 맨 위 상수와 `skill`, 정확도는 `shoot()` 의 `pHit` |
 | 방 인원·킬 수·봇 수 | `shared/modes.js` (모드별), 시간은 `shared/constants.js` |
 | 채팅 제한 | `server/chat.js` 상단 상수, 글자 수는 `shared/constants.js` 의 `CHAT_MAX_LEN` |

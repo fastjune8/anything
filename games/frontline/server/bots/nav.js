@@ -7,6 +7,7 @@ export function navFor(mapId) {
   if (!cache.has(mapId)) cache.set(mapId, createNav(getMap(mapId)));
   return cache.get(mapId);
 }
+export function forgetNav(mapId) { cache.delete(mapId); } // 맵이 바뀌면 (에디터 저장) 다음에 새로 만든다
 
 // 반환: { COLLIDERS, isBlocked(x,z), findPath(sx,sz,tx,tz), randomReachablePoint(), pointNear(x,z,r) }
 export function createNav(map) {

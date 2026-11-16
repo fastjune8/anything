@@ -100,7 +100,7 @@ echo "== 이전 버전 백업 (~/$DIR.prev)"
 remote "mkdir -p ~/$DIR && rm -rf ~/$DIR.prev && cp -a ~/$DIR ~/$DIR.prev"
 
 echo "== 파일 전송"
-rsync -az --delete --exclude node_modules --exclude deploy --exclude tests --exclude .git --exclude '*.log' \
+rsync -az --delete --exclude node_modules --exclude deploy --exclude tests --exclude editor --exclude .git --exclude '*.log' \
   -e "ssh ${SSH_BASE[*]}" ./ "$SSH_USER@$HOST:~/$DIR/"
 
 echo "== 설치 및 서비스 재시작"

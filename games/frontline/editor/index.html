@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRONTIER 맵 에디터</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<link rel="stylesheet" href="./editor.css">
+</head>
+<body>
+<header>
+  <b class="logo">FRONT<em>IER</em> 맵 에디터</b>
+  <select id="mapSel" title="맵 고르기"></select>
+  <button id="newMap" type="button">새 맵</button>
+  <span class="sep"></span>
+  <button id="undo" type="button" title="되돌리기 (⌘Z)">↶</button>
+  <button id="redo" type="button" title="다시 하기 (⌘⇧Z)">↷</button>
+  <button id="top" type="button" title="위에서 보기 (T)">위에서 보기</button>
+  <span class="sep"></span>
+  <button id="save" type="button" class="primary" title="저장 (⌘S)">저장</button>
+  <span id="status"></span>
+  <span class="grow"></span>
+  <select id="playMode" title="시험 플레이 모드"></select>
+  <label class="chk"><input id="playBots" type="checkbox" checked> 봇</label>
+  <button id="play" type="button" class="primary" title="저장하고 새 탭에서 이 맵으로 플레이">▶ 시험 플레이</button>
+</header>
+<main>
+  <aside id="left">
+    <div id="palette"></div>
+    <div class="help">
+      <h3>조작</h3>
+      <p><b>왼쪽 클릭</b> 선택 · 끌어서 이동 (0.5m 격자, Alt = 자유)</p>
+      <p><b>오른쪽 끌기</b> 회전 · <b>Shift+오른쪽</b> 이동 · <b>휠</b> 확대</p>
+      <p><b>R</b> 회전 · <b>⌘D</b> 복제 · <b>Del</b> 삭제 · <b>F</b> 선택한 곳 보기 · <b>T</b> 위에서 보기</p>
+      <p>대칭 물체(<i>반대편에도 배치</i>)는 반대편 복사본을 끌어도 원본이 같이 움직입니다.</p>
+    </div>
+  </aside>
+  <section id="stage">
+    <canvas id="view"></canvas>
+    <div id="hintTool"></div>
+    <div id="errors" hidden></div>
+    <div id="flash" hidden></div>
+  </section>
+  <aside id="props"></aside>
+</main>
+<script type="module" src="./editor.js"></script>
+</body>
+</html>

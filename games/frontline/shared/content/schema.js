@@ -23,6 +23,7 @@ const X = num('x (m)', { step: 0.1 }), Z = num('z (m)', { step: 0.1 });
 const AXIS = oneOf('방향', ['x', 'z'], { hint: 'x = 동서로 길게, z = 남북으로 길게' });
 const OPENING = obj('구멍', { at: num('위치 (벽을 따라 절대 좌표)', { step: 0.1 }), w: num('너비', { min: 0.5, max: 10, step: 0.1 }), type: oneOf('종류', ['door', 'window']) });
 const OPENINGS = list('문·창문', OPENING, opt());
+const sideOpenings = label => list(label, OPENING, opt());
 
 // 모든 물체에 공통인 칸
 export const COMMON_FIELDS = {
@@ -45,7 +46,7 @@ export const OBJECT_SCHEMAS = {
   building: { label: '건물', fields: {
     x: X, z: Z, w: num('너비 (x)', { min: 2, max: 100, step: 0.1 }), d: num('깊이 (z)', { min: 2, max: 100, step: 0.1 }), h: num('높이', { min: 1, max: 20, step: 0.1 }),
     mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()),
-    ops: obj('문·창문 (n=북 z+, s=남 z−, e=동 x+, w=서 x−)', { n: OPENINGS, s: OPENINGS, e: OPENINGS, w: OPENINGS }, opt()),
+    ops: obj('문·창문 (위치 = 벽을 따라가는 절대 좌표)', { n: sideOpenings('북쪽 벽 (z+)'), s: sideOpenings('남쪽 벽 (z−)'), e: sideOpenings('동쪽 벽 (x+)'), w: sideOpenings('서쪽 벽 (x−)') }, opt()),
   } },
   container: { label: '컨테이너', fields: { x: X, z: Z, axis: AXIS, tint: color('색', opt()), y: num('바닥 높이 (2단 = 2.59)', opt({ min: 0, step: 0.01 })) } },
   crate: { label: '상자', fields: { x: X, z: Z, s: num('크기', opt({ min: 0.3, max: 4, step: 0.1 })), y: num('바닥 높이', opt({ min: 0, step: 0.1 })) } },

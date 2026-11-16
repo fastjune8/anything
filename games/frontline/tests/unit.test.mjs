@@ -188,5 +188,39 @@ console.log('\n[미니맵 좌표]');
   check(enemyVisible(1000, 0, 2000) === true && enemyVisible(2500, 0, 2000) === false && enemyVisible(0, -1e9) === false, '적은 총을 쏜 뒤 2초 동안만 보이고, 한 번도 안 쐈으면 보이지 않는다');
 }
 
+console.log('\n[콘텐츠 데이터: 스키마 검사, 맵 펼치기, 저장 형식]');
+{
+  const fs = await import('node:fs');
+  const { checkMap, checkWeapons, checkParts } = await import('../shared/content/schema.js');
+  const { expandObject, buildLayout } = await import('../shared/maps/build.js');
+  const { formatContent } = await import('../shared/content/format.js');
+  const { MAP_IDS, getMap } = await import('../shared/maps/index.js');
+  const { WEAPONS } = await import('../shared/weapons.js');
+  const read = f => JSON.parse(fs.readFileSync(new URL(`../content/${f}`, import.meta.url), 'utf8'));
+  for (const id of MAP_IDS) check(checkMap(read(`maps/${id}.json`)).length === 0, `content/maps/${id}.json 이 검사를 통과한다`);
+  check(checkWeapons(read('weapons.json')).length === 0 && checkParts(read('parts.json'), WEAPONS.map(w => w.id)).length === 0, '무기·파츠 데이터가 검사를 통과한다');
+
+  const good = { id: 'm', name: 'm', half: 20, spawns: { ffa: [[0, 0], [1, 1]] }, objects: [{ type: 'crate', x: 1, z: 1 }] };
+  check(checkMap(good).length === 0, '(준비) 최소한의 맵은 통과');
+  const errs = d => checkMap({ ...good, ...d }).join(' / ');
+  check(errs({ objects: [{ type: 'ufo', x: 0, z: 0 }] }).includes('모르는 물체 종류'), '모르는 물체 종류를 잡아낸다');
+  check(errs({ objects: [{ type: 'crate', x: 0 }] }).includes('objects[0].z'), '빠진 칸을 위치와 함께 알려 준다', errs({ objects: [{ type: 'crate', x: 0 }] }));
+  check(errs({ objects: [{ type: 'box', x: 0, z: 0, w: 1, h: 1, d: 1, mat: 'gold' }] }).includes('고를 수 없는 값'), '없는 재질을 잡아낸다');
+  check(errs({ objects: [{ type: 'crate', x: 0, z: 0, size: 3 }] }).includes('모르는 칸'), '오타 난 칸 이름을 잡아낸다');
+  check(errs({ spawns: { ffa: [[0, 0], [50, 0]] } }).includes('맵 밖'), '맵 밖 스폰을 잡아낸다');
+
+  const one = expandObject({ type: 'box', x: 3, y: 0, z: 1, w: 4, h: 1, d: 2, mat: 'concrete', rot: 90 }).boxes[0];
+  check(one.x === 3 && one.z === 1 && one.w === 2 && one.d === 4, '90도 회전하면 너비와 깊이가 바뀐다 (중심은 그대로)', JSON.stringify(one));
+  const sym = expandObject({ type: 'crate', x: 3, z: 5, s: 1, sym: true }).boxes;
+  check(sym.length === 2 && sym[1].x === -3 && sym[1].z === -5, '대칭 물체는 맵 중심 반대편에 하나 더 생긴다');
+  const tower = expandObject({ type: 'tower', x: 10, z: 0, rot: 180 }).boxes;
+  const stairs = tower.filter(b => b.d === 1.2);
+  check(stairs.length === 10 && stairs.every(b => b.x > 10), '감시탑을 180도 돌리면 계단이 반대쪽(동쪽)으로 간다');
+  check(buildLayout(getMap('warehouse')).colliders.length === getMap('warehouse').layout.colliders.length, '맵 펼치기는 몇 번을 해도 같다');
+
+  const data = read('maps/warehouse.json');
+  check(formatContent(data) === fs.readFileSync(new URL('../content/maps/warehouse.json', import.meta.url), 'utf8'), '저장 형식은 안정적이다 (다시 써도 파일이 바뀌지 않는다)');
+}
+
 console.log(failed() ? `\n실패 ${failed()}건` : '\n모두 통과');
 process.exit(failed() ? 1 : 0);

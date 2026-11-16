@@ -6,7 +6,7 @@ import { connect, leaveToLobby } from './net.js';
 import { loadMap } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, inp } from './state.js';
-import { $, MODE_CFG, setMode } from './util.js';
+import { $, MODE_CFG, setMode, params } from './util.js';
 
 export const nameEl = $('name');
 nameEl.value = localStorage.getItem('fd_name') || '';
@@ -20,8 +20,12 @@ function beforeJoin() {
   sfx.init();
   return name;
 }
-// 빠른 시작
-export function join() { connect(beforeJoin(), { mode: MODE_CFG.id }); }
+// 빠른 시작. 주소에 map 이 있으면 (에디터의 시험 플레이) 그 맵으로 혼자 쓰는 비공개 방을 만든다
+export function join() {
+  const map = params.get('map');
+  if (map) connect(beforeJoin(), { mode: MODE_CFG.id, create: { name: `맵 시험 · ${map}`, private: true, bots: params.get('bots') !== '0', minutes: 10, map } });
+  else connect(beforeJoin(), { mode: MODE_CFG.id });
+}
 $('join').addEventListener('click', join);
 nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
 
