@@ -12,39 +12,73 @@
 </head>
 <body>
 <div id="update" hidden><b>새 버전이 있습니다</b><span data-r="msg"></span><code>git pull</code><span>후 이 페이지를 새로고침하세요</span><button type="button" id="updateClose" class="mini">닫기</button></div>
+
+<!-- 위쪽: 로고 · 탭(홈 + 열린 편집기) · 저장 · 도움말 -->
 <header id="top">
-  <b class="logo">FRONT<em>IER</em> Studio</b>
-  <button id="saveAll" type="button" title="열린 것 모두 저장 (⌘⇧S)">모두 저장</button>
-  <span class="sep"></span>
-  <div id="docBar"></div>
+  <b class="logo">FRONT<em>IER</em> <span>Studio</span></b>
+  <nav id="tabs"></nav>
   <span class="grow"></span>
-  <a class="navlink" href="/" target="_blank" title="게임을 새 탭에서">게임 열기 ↗</a>
+  <span id="unsaved" class="pill warn" hidden></span>
+  <button id="saveAll" type="button" title="열린 것 모두 저장 (⌘⇧S)">모두 저장</button>
+  <button id="helpBtn" type="button" class="icon" title="도움말 · 단축키 (F1)">?</button>
+  <a class="navlink" href="/" target="_blank" title="게임을 새 탭에서">게임 ↗</a>
 </header>
-<main id="shell">
-  <aside id="left">
-    <section id="assets"></section>
-    <section id="tools"></section>
-  </aside>
-  <section id="center">
-    <nav id="tabs"></nav>
-    <div id="stage">
-      <canvas id="view"></canvas>
-      <div id="overlays"></div>
-      <div id="play" hidden>
-        <iframe id="playFrame" title="시험 플레이" allow="fullscreen; pointer-lock"></iframe>
-        <div id="playBar"><b>▶ 시험 플레이 중</b><span>Ctrl/⌘+P 또는 ■ 로 멈춤 · 마우스를 풀려면 Esc</span><button id="playStop" type="button">■ 멈춤</button></div>
-      </div>
-      <div id="drop"><div><b>.glb 를 놓으면 총 모델로 엽니다</b></div></div>
-      <div id="flash" hidden></div>
-      <div id="empty"><div><b>왼쪽 목록에서 열 것을 고르세요</b><span>맵 · 총 모델 · 무기 · 파츠 · 모드</span></div></div>
-    </div>
-    <section id="console">
-      <header><b>콘솔</b><span id="conCount"></span><span class="grow"></span><button id="conClear" type="button" class="mini">지우기</button><button id="conToggle" type="button" class="mini">접기</button></header>
-      <div id="conLog"></div>
+
+<main id="main">
+  <!-- 홈: 모든 데이터를 한눈에 -->
+  <section id="home">
+    <nav id="homeNav"></nav>
+    <section id="homeList">
+      <header id="homeHead"></header>
+      <div id="homeCards"></div>
     </section>
+    <aside id="homeDetail"></aside>
   </section>
-  <aside id="inspector"></aside>
+
+  <!-- 편집기: 머리(편집기 이름 · 고치는 것 · 버튼들) + 도구 | 화면 | 속성 -->
+  <section id="editor" hidden>
+    <header id="edHead"><span id="edKind"></span><b id="edTitle"></b><span class="sep"></span><div id="edBar"></div></header>
+    <div id="edBody">
+      <aside id="toolbox"></aside>
+      <section id="stage">
+        <canvas id="view"></canvas>
+        <div id="overlays"></div>
+        <div id="play" hidden>
+          <iframe id="playFrame" title="시험 플레이" allow="fullscreen; pointer-lock"></iframe>
+          <div id="playBar"><b>▶ 시험 플레이 중</b><span>⌘P 또는 ■ 로 멈춤 · 마우스를 풀려면 Esc</span><button id="playStop" type="button">■ 멈춤</button></div>
+        </div>
+      </section>
+      <aside id="inspector"></aside>
+    </div>
+  </section>
+  <div id="drop"><div><b>.glb 를 놓으면 모델 에디터로 엽니다</b></div></div>
+  <div id="flash" hidden></div>
 </main>
+
+<!-- 아래: 상태 막대 (마지막 기록) + 콘솔 -->
+<section id="console" class="closed">
+  <div id="conLog"></div>
+</section>
+<footer id="status">
+  <button id="conToggle" type="button" class="mini" title="콘솔 열기/닫기">콘솔 <span id="conCount"></span></button>
+  <span id="lastLog"></span>
+  <span class="grow"></span>
+  <button id="conClear" type="button" class="mini">기록 지우기</button>
+</footer>
+
+<!-- 도움말 -->
+<div id="help" class="modal" hidden>
+  <div class="card">
+    <header><b>도움말</b><nav id="helpTabs"></nav><span class="grow"></span><button type="button" class="icon" id="helpClose" title="닫기 (Esc)">×</button></header>
+    <div id="helpBody"></div>
+    <footer><button type="button" id="tourAgain">튜토리얼 다시 보기</button><span class="grow"></span><span class="note">F1 또는 ? 로 언제든 열 수 있습니다</span></footer>
+  </div>
+</div>
+
+<!-- 튜토리얼 -->
+<div id="tour" hidden><div id="tourHole"></div><div id="tourTip"></div></div>
+
+<input id="fileIn" type="file" accept=".glb,model/gltf-binary" hidden>
 <script type="module" src="./studio.js"></script>
 </body>
 </html>

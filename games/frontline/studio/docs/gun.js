@@ -30,20 +30,18 @@ export async function createGunDoc(ctx, id, opts = {}) {
 
   // ───────── 화면 조각 ─────────
   const overlay = html('div', '', '<div class="labels" data-r="labels"></div><div class="vhint" data-r="vhint"></div>');
-  const tools = html('div', '', `<h3 class="sub">보기</h3>
-    <div class="seg" data-r="views"><button type="button" data-view="orbit" class="on">살펴보기</button><button type="button" data-view="hip">1인칭</button><button type="button" data-view="ads">정조준</button></div>
-    <h3 class="sub">표시</h3>
-    <label class="tog"><input type="checkbox" data-r="showSockets" checked> 부착 지점</label>
-    <label class="tog"><input type="checkbox" data-r="showWire"> 와이어프레임</label>
-    <label class="tog"><input type="checkbox" data-r="showArms" checked> 팔 (1인칭)</label>
-    <label class="tog"><input type="checkbox" data-r="spin"> 천천히 돌리기</label>
-    <h3 class="sub">크기 비교 (지금 게임의 총)</h3><select data-r="ghostSel"><option value="">없음</option></select>
-    <h3 class="sub">파츠 달아 보기</h3><div data-r="partSels"></div>
-    <h3 class="sub">스킨 (색 칸)</h3><select data-r="skinSel"></select><div class="slots" data-r="slotList"></div>
-    <p class="note">규칙: docs/GUN_MODELING.md · Blender 템플릿: tools/blender/</p>`);
-  const toolbar = html('div', '', `<span class="status" data-r="fname"></span>
-    <input type="text" data-r="gunId" placeholder="총 id (예: vk12)" size="14" title="영문 소문자·숫자·_ (content/guns/<id>.glb)">
-    <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button>`);
+  const sec = (title, inner) => `<div class="tbx-h">${title}</div><div>${inner}</div>`;
+  const tools = html('div', '', sec('보기', `<div class="seg" data-r="views"><button type="button" data-view="orbit" class="on" title="돌려 보며 부착 지점 확인">살펴보기</button><button type="button" data-view="hip" title="게임에서 들고 있는 모습">1인칭</button><button type="button" data-view="ads" title="정조준 — 빨간 점에 가늠쇠가 겹쳐야 한다">정조준</button></div>`)
+    + sec('표시', `<label class="tog"><input type="checkbox" data-r="showSockets" checked> 부착 지점</label><label class="tog"><input type="checkbox" data-r="showWire"> 와이어프레임</label>
+      <label class="tog"><input type="checkbox" data-r="showArms" checked> 팔 (1인칭)</label><label class="tog"><input type="checkbox" data-r="spin"> 천천히 돌리기</label>`)
+    + sec('크기 비교', '<select data-r="ghostSel" title="지금 게임의 총을 반투명으로 겹쳐 보기"><option value="">없음</option></select>')
+    + sec('파츠 달아 보기', '<div data-r="partSels"></div>')
+    + sec('스킨 (색 칸)', '<select data-r="skinSel"></select><div class="slots" data-r="slotList"></div>')
+    + '<p class="note">만드는 규칙: docs/GUN_MODELING.md · 조작법은 ? (F1)</p>');
+  for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
+  const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span></span><span class="grow"></span>
+    <span class="grp"><span class="gl">총 id</span><input type="text" data-r="gunId" placeholder="예: vk12" size="14" title="영문 소문자·숫자·_ (content/guns/<id>.glb)">
+    <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button></span>`);
   const inspector = html('div', '', '<h2>규칙 검사</h2><div class="checks" data-r="checks"></div><h2 class="sub2">부착 지점</h2><div class="socks" data-r="socks"></div>');
   const r = n => overlay.querySelector(`[data-r="${n}"]`) || tools.querySelector(`[data-r="${n}"]`) || toolbar.querySelector(`[data-r="${n}"]`) || inspector.querySelector(`[data-r="${n}"]`);
 

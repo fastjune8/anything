@@ -89,9 +89,10 @@ export const WEAPON_SCHEMA = obj('무기', {
 
 // ───────── 파츠 ─────────
 const STATS = ['recoilV', 'recoilH', 'hip', 'ads', 'bloom', 'adsTime', 'reload', 'draw', 'move', 'mag', 'range', 'adsFov'];
+const STAT_LABELS = { recoilV: '수직 반동', recoilH: '수평 반동', hip: '지향 사격 탄퍼짐', ads: '정조준 탄퍼짐', bloom: '연사 중 탄퍼짐 증가', adsTime: '정조준 시간', reload: '재장전 시간', draw: '꺼내는 시간', move: '이동 속도', mag: '탄창 용량', range: '유효 사거리', adsFov: '정조준 시야각' };
 export const PART_SCHEMA = obj('파츠', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'),
-  mul: dict('성능 배율 (1 보다 크면 값이 커진다)', num('배율', { min: 0.1, max: 5, step: 0.01 }), { keys: STATS }),
+  mul: dict('성능 배율 (1 보다 크면 값이 커진다)', num('배율', { min: 0.1, max: 5, step: 0.01 }), { keys: STATS, keyLabels: STAT_LABELS }),
   only: list('이 무기에만', str('무기 id'), opt()), not: list('이 무기에는 안 됨', str('무기 id'), opt()),
   quiet: bool('소음 (미니맵에 안 보임)', opt()),
 });

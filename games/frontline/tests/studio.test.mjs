@@ -1,5 +1,5 @@
 // FRONTIER Studio 테스트 (실제 Chrome)
-//  - 틀: 콘텐츠 목록, 탭, 탭마다 도구·속성이 바뀜
+//  - 첫 실행 튜토리얼(건너뛰기·다시 안 나옴), 홈(데이터 종류·카드·자세히·연결), 도움말(F1)
 //  - 맵: 열기 → 속성 고치기·되돌리기 → 카메라·단축키 → 새 맵 → 마우스로 놓기 → 검사 → 저장 → 화면 안 시험 플레이(저장 안 한 내용 그대로)
 //  - 총 모델: 예시 총 검사·1인칭·정조준·파츠·스킨 → 규칙을 어긴 모델 → 프로젝트에 저장
 //  - 게임 데이터: 무기 비교 표가 고치는 대로 다시 계산 · 모드 저장
@@ -24,7 +24,7 @@ const cleanup = () => {
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
 };
 // 지금 화면에 나와 있는 문서의 조각 (탭을 바꾸면 다른 문서의 조각은 숨는다)
-const ACT = { bar: '#docBar > div:not([hidden])', tools: '#tools > div:not([hidden])', over: '#overlays > div:not([hidden])', insp: '#inspector > div:not([hidden])' };
+const ACT = { bar: '#edBar > div:not([hidden])', tools: '#toolbox > div:not([hidden])', over: '#overlays > div:not([hidden])', insp: '#inspector > div:not([hidden])' };
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const servers = [];
@@ -38,18 +38,51 @@ try {
   const answers = [];
   page.on('dialog', d => d.accept(answers.shift() ?? ''));
 
-  console.log('[스튜디오 틀]');
+  console.log('[첫 실행 튜토리얼]');
   await page.goto(`http://localhost:${srv.port}/editor/`); // 예전 에디터 주소도 스튜디오로 간다
-  await page.waitForFunction(() => window.__studio && window.__ed && window.__ed.map, null, { timeout: 60000 });
+  await page.waitForFunction(() => window.__studio && window.__studio.home.data.maps.length, null, { timeout: 60000 });
+  await page.waitForSelector('#tour:not([hidden])', { timeout: 10000 });
+  await page.waitForFunction(() => (document.querySelector('#tourTip h3') || {}).textContent, null, { timeout: 5000 });
+  const t1 = await page.textContent('#tourTip');
+  await page.click('#tourTip [data-a="next"]');
+  await page.waitForFunction(() => document.querySelector('#tourTip h3').textContent === '홈', null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(400); // 밝히는 상자가 제자리로 움직이는 동안 (0.25초)
+  const t2 = await page.evaluate(() => ({ tip: document.querySelector('#tourTip h3').textContent, hole: document.getElementById('tourHole').getBoundingClientRect().width }));
+  check(t1.includes('환영') && t2.tip === '홈' && t2.hole > 20, '처음 켜면 튜토리얼이 나오고, 단계마다 화면의 한 부분을 밝혀 설명한다', JSON.stringify(t2));
+  await page.click('#tourTip [data-a="skip"]');
+  check(await page.locator('#tour').isHidden(), '건너뛰기로 바로 끝낼 수 있다');
+  await page.reload();
+  await page.waitForFunction(() => window.__studio && window.__studio.home.data.maps.length, null, { timeout: 60000 });
+  await page.waitForTimeout(500);
+  check(await page.locator('#tour').isHidden() && page.url().includes('/studio/'), '한 번 보거나 건너뛰면 다시 나오지 않는다 (/editor/ → /studio/)');
+
+  console.log('\n[홈: 데이터를 한눈에]');
   const shell = await page.evaluate(() => ({
-    url: location.pathname, assets: [...document.querySelectorAll('[data-asset]')].map(a => a.dataset.asset),
-    tabs: document.querySelectorAll('.tab').length, bars: [...document.querySelectorAll('#docBar > div')].filter(d => !d.hidden).length,
+    home: !document.getElementById('home').hidden, tabs: document.querySelectorAll('.tab').length,
+    cats: [...document.querySelectorAll('[data-cat]')].map(c => c.dataset.cat), cards: [...document.querySelectorAll('#homeCards [data-asset]')].map(c => c.dataset.asset),
   }));
-  check(shell.url === '/studio/' && shell.assets.includes('map:frontline') && shell.assets.includes('data:weapons') && shell.assets.includes('data:modes'), '콘텐츠 목록에 맵·게임 데이터가 보인다 (/editor/ → /studio/)', JSON.stringify(shell.assets));
-  check(shell.tabs === 1 && shell.bars === 1, '처음엔 첫 맵이 탭 하나로 열린다', JSON.stringify(shell));
+  check(shell.home && shell.tabs === 1, '처음엔 홈 탭 하나', JSON.stringify(shell));
+  check(['maps', 'models', 'weapons', 'parts', 'modes', 'effects'].every(c => shell.cats.includes(c)) && shell.cards.includes('map:frontline') && shell.cards.includes('map:warehouse'), '종류(맵·모델·무기·파츠·모드·효과)와 맵 카드가 보인다', JSON.stringify(shell));
+  await page.click('[data-asset="map:warehouse"]');
+  const det = await page.evaluate(() => ({ title: document.querySelector('#homeDetail h2').textContent, rel: [...document.querySelectorAll('#homeDetail .rel button')].map(b => b.textContent), thumb: !!document.querySelector('#homeDetail .big canvas') }));
+  check(det.title === '창고' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
+  await page.click('[data-cat="effects"]');
+  check((await page.textContent('#homeCards')).includes('준비 중'), '효과는 "준비 중" 으로 자리가 잡혀 있다');
+  await page.click('[data-cat="maps"]');
+  await page.dblclick('[data-asset="map:frontline"]');
+  await page.waitForFunction(() => window.__ed && window.__ed.map && window.__ed.map.id === 'frontline' && !document.getElementById('editor').hidden, null, { timeout: 30000 });
+  const ed = await page.evaluate(() => ({ kind: document.getElementById('edKind').textContent, tabs: document.querySelectorAll('.tab').length }));
+  check(ed.kind.includes('맵 에디터') && ed.tabs === 2, '카드를 두 번 누르면 맞는 편집기(맵 에디터)가 탭으로 열린다', JSON.stringify(ed));
+
+  console.log('\n[도움말]');
+  await page.keyboard.press('F1');
+  const hp = await page.evaluate(() => ({ open: !document.getElementById('help').hidden, tab: document.querySelector('#helpTabs .on').textContent, body: document.getElementById('helpBody').textContent }));
+  check(hp.open && hp.tab === '맵 에디터' && hp.body.includes('비행') && hp.body.includes('복사'), 'F1 을 누르면 지금 편집기의 사용법·단축키가 열린다', JSON.stringify({ open: hp.open, tab: hp.tab }));
+  await page.keyboard.press('Escape');
+  check(await page.locator('#help').isHidden(), 'Esc 로 닫힌다');
 
   console.log('\n[맵: 속성 고치기 / 되돌리기]');
-  await page.click('[data-asset="map:warehouse"]');
+  await page.click('.tab.home'); await page.dblclick('[data-asset="map:warehouse"]');
   await page.waitForFunction(() => window.__ed.map.id === 'warehouse', null, { timeout: 20000 });
   const bi = await page.evaluate(() => window.__ed.map.objects.findIndex(o => o.type === 'building'));
   await page.evaluate(i => window.__ed.select({ kind: 'obj', i }), bi);
@@ -58,7 +91,7 @@ try {
   await page.fill(`${ACT.insp} input[type=number] >> nth=2`, '20');
   await page.dispatchEvent(`${ACT.insp} input[type=number] >> nth=2`, 'change');
   const w = await page.evaluate(i => ({ w: window.__ed.map.objects[i].w, dirty: window.__ed.isDirty(), tab: document.querySelector('.tab.active').textContent }), bi);
-  check(w.w === 20 && w.dirty && w.tab.includes('●'), '칸을 고치면 맵이 바뀌고 탭에 ● (저장 안 됨) 가 붙는다', JSON.stringify(w));
+  check(w.w === 20 && w.dirty && w.tab.includes('●') && await page.locator('#unsaved').isVisible(), '칸을 고치면 맵이 바뀌고 탭에 ●, 위쪽에 "저장 안 됨" 이 붙는다', JSON.stringify(w));
   await page.keyboard.press('Escape');
   await page.keyboard.press('ControlOrMeta+z');
   const back = await page.evaluate(i => ({ w: window.__ed.map.objects[i].w, dirty: window.__ed.isDirty() }), bi);
@@ -84,9 +117,9 @@ try {
 
   console.log('\n[새 맵 → 마우스로 놓기 → 검사 → 저장]');
   answers.push(TEST_ID, '스튜디오 시험 맵');
-  await page.click('#newMapBtn');
+  await page.click('.tab.home'); await page.click('[data-cat="maps"]'); await page.click('#newMapBtn');
   await page.waitForFunction(id => window.__ed.map.id === id, TEST_ID, { timeout: 8000 });
-  await page.click(`${ACT.tools} .palette button[data-tool="obj:crate"]`);
+  await page.click(`${ACT.tools} .tile[data-tool="obj:crate"]`);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 40);
   const placed = await page.evaluate(() => { const o = window.__ed.map.objects.at(-1); return { type: o.type, x: o.x, z: o.z, sel: window.__ed.sel }; });
   check(placed.type === 'crate' && placed.sel && placed.x % 0.5 === 0, '도구를 고르고 바닥을 클릭하면 그 자리(0.5m 격자)에 놓인다', JSON.stringify(placed));
@@ -106,7 +139,7 @@ try {
   await page.waitForFunction(() => !window.__ed.isDirty(), null, { timeout: 8000 });
   const saved = JSON.parse(fs.readFileSync(C('maps', `${TEST_ID}.json`), 'utf8'));
   check(checkMap(saved).length === 0 && saved.objects.filter(o => o.type === 'crate').length === 2, '⌘S 로 저장하면 content/maps 에 검사를 통과하는 파일이 생긴다');
-  check(JSON.parse(fs.readFileSync(C('maps', 'index.json'), 'utf8')).includes(TEST_ID) && await page.locator(`[data-asset="map:${TEST_ID}"]`).count() === 1, '새 맵이 맵 목록(index.json)과 콘텐츠 목록에 들어간다');
+  check(JSON.parse(fs.readFileSync(C('maps', 'index.json'), 'utf8')).includes(TEST_ID) && await page.evaluate(id => window.__studio.home.data.maps.some(m => m.id === id), TEST_ID), '새 맵이 맵 목록(index.json)과 홈에 들어간다');
   const c = connect(srv.port, 'tester', { mode: 'zone', create: { name: 'x', private: true, bots: false, minutes: 3, map: TEST_ID } }); await c.open;
   const wel = await c.waitFor('welcome');
   check(wel && wel.map === TEST_ID, '서버를 다시 켜지 않아도 저장한 맵으로 방을 만들 수 있다');
@@ -127,13 +160,13 @@ try {
   check(!(await page.evaluate(() => window.__studio.isPlaying())) && await page.locator('#play').isHidden(), '■ 멈춤으로 스튜디오로 돌아온다');
 
   console.log('\n[총 모델]');
-  await page.click('#sampleBtn');
+  await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#sampleBtn');
   await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.kind === 'gun', null, { timeout: 30000 });
   const sm = await page.evaluate(() => { const m = window.__gv.model; return { levels: m.checks.map(x => x.level), spec: { sightY: m.spec.sightY, adsZ: m.spec.adsZ, muzzleZ: m.spec.muzzleZ, mag: !!m.spec.mag, irons: m.spec.irons.length } }; });
   check(sm.levels.every(l => l === 'ok'), '예시 총은 규칙 검사를 모두 통과한다', JSON.stringify(sm.levels));
   check(Math.abs(sm.spec.sightY - 0.064) < 1e-3 && Math.abs(sm.spec.adsZ + 0.21) < 1e-3 && Math.abs(sm.spec.muzzleZ + 0.52) < 1e-3 && sm.spec.mag && sm.spec.irons === 2, '.glb 의 부착 지점·부품이 게임 기준점으로 바뀐다', JSON.stringify(sm.spec));
-  const toolsNow = await page.evaluate(s => !!document.querySelector(`${s} [data-r="views"]`) && !document.querySelector(`${s} .palette`), ACT.tools);
-  check(toolsNow, '탭을 바꾸면 왼쪽 도구도 그 문서 것으로 바뀐다 (맵 도구 → 총 보기 도구)');
+  const toolsNow = await page.evaluate(s => !!document.querySelector(`${s} [data-r="views"]`) && !document.querySelector(`${s} .tile[data-tool]`), ACT.tools);
+  check(toolsNow && (await page.textContent('#edKind')).includes('모델 에디터'), '모델은 모델 에디터로 열리고, 도구 상자도 그 편집기 것으로 바뀐다');
   await page.click(`${ACT.tools} [data-view="ads"]`);
   const ads = await page.evaluate(() => { const g = window.__gv.model.gun, h = window.__gv.holder; return Math.abs(h.position.y + g.sightY) < 1e-6 && Math.abs(h.position.z - g.adsZ) < 1e-6; });
   check(ads, '정조준 보기: 게임과 같은 계산으로 조준선이 화면 가운데');
@@ -154,16 +187,18 @@ try {
   check(broken.fails.some(t => t.includes('socket_ads')) && broken.fails.some(t => t.includes('cm')) && broken.save, '필수 지점이 없거나 100배면 알려 주고 저장이 잠긴다', JSON.stringify(broken.fails));
   await page.evaluate(() => window.__studio.closeDoc('gun:filebroken'));
 
-  await page.click('[data-asset="gun:sample"]');
+  await page.click('.tab[data-key="gun:sample"]');
   await page.fill(`${ACT.bar} [data-r="gunId"]`, GUN_ID);
   await page.click(`${ACT.bar} [data-r="save"]`);
-  await page.waitForFunction(id => !!document.querySelector(`[data-asset="gun:${id}"]`) && window.__studio.active.key === `gun:${id}`, GUN_ID, { timeout: 10000 });
+  await page.waitForFunction(id => window.__studio.home.data.models.some(m => m.id === id) && window.__studio.active.key === `gun:${id}`, GUN_ID, { timeout: 10000 });
   const glb = C('guns', `${GUN_ID}.glb`);
   check(fs.existsSync(glb) && fs.readFileSync(glb).toString('ascii', 0, 4) === 'glTF' && JSON.parse(fs.readFileSync(C('guns', 'index.json'), 'utf8')).includes(GUN_ID), '프로젝트에 저장하면 content/guns/<id>.glb 와 목록이 생기고, 탭 이름이 그 id 가 된다');
 
   console.log('\n[게임 데이터]');
-  await page.click('[data-asset="data:weapons"]');
+  await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:ak"]');
   await page.waitForFunction(() => window.__dd && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
+  check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'ak' && (await page.textContent('#edKind')).includes('데이터 에디터'), '홈에서 무기 카드를 두 번 누르면 데이터 에디터가 그 무기를 고른 채 열린다');
+  await page.evaluate(() => window.__dd.select(0));
   const ttk0 = await page.textContent('#overlays > div:not([hidden]) table.cmp tbody tr:first-child td:nth-child(6)');
   await page.fill(`${ACT.insp} .row:has(.lbl:text-is("피해")) input`, '40');
   const ttk1 = await page.textContent('#overlays > div:not([hidden]) table.cmp tbody tr:first-child td:nth-child(6)');
@@ -172,7 +207,7 @@ try {
   check(await page.evaluate(a => window.__dd.errors.length > 0 && document.querySelector(`${a.bar} [data-r="save"]`).disabled, ACT), '범위를 벗어나면 (피해 0) 오류가 보이고 저장이 잠긴다');
   await page.evaluate(() => { window.__dd.data[0].dmg = 22; window.__dd.render(); });
 
-  await page.click('[data-asset="data:modes"]');
+  await page.click(`${ACT.tools} .tile:has-text("모드")`);
   await page.waitForFunction(() => window.__studio.active.key === 'data:modes', null, { timeout: 10000 });
   await page.evaluate(() => { window.__dd.select(0); });
   await page.fill(`${ACT.insp} .row:has(.lbl:text-is("혼자 점령하는 시간 (초)")) input`, '9');

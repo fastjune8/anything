@@ -47,25 +47,17 @@ export async function createMapDoc(ctx, id, opts = {}) {
 
   // ───────── 화면 조각 ─────────
   const overlay = html('div', '', '<div class="hint" data-r="hint"></div><div class="errors" data-r="errors" hidden></div><div class="coords" data-r="coords"></div>');
-  const tools = html('div', '', `<div class="palette" data-r="palette"></div>
-    <div class="help"><h3 class="sub">카메라</h3>
-      <p><b>WASD</b> 이동 · <b>Q / E</b> 좌우로 돌기 · <b>Shift</b> 빠르게</p>
-      <p><b>오른쪽 버튼 누른 채</b> 비행: 둘러보기 + <b>WASD</b>, <b>Q/E</b> 아래·위, <b>휠</b> 속도</p>
-      <p><b>Alt + 왼쪽 끌기</b> 궤도 · <b>가운데 끌기</b> 화면 이동 · <b>휠</b> 확대</p>
-      <p><b>F</b>/더블클릭 선택한 곳 · <b>T</b> 위에서 · <b>Home</b> 전체</p>
-      <h3 class="sub">편집</h3>
-      <p><b>왼쪽 클릭</b> 선택 · 끌어서 이동 (<b>G</b> 격자 켜기/끄기)</p>
-      <p><b>방향키</b> 한 칸 이동 (Shift 4칸) · <b>R</b> 90° 회전</p>
-      <p><b>⌘C / ⌘V</b> 복사·붙여넣기 · <b>⌘D</b> 복제 · <b>Del</b> 삭제 · <b>⌘Z</b> 되돌리기</p>
-      <p><b>⌘S</b> 저장 · <b>⌘P</b> 시험 플레이 (다시 누르면 멈춤)</p></div>`);
-  const toolbar = html('div', '', `<button type="button" data-r="undo" title="되돌리기 (⌘Z)">↶</button><button type="button" data-r="redo" title="다시 하기 (⌘⇧Z)">↷</button>
-    <button type="button" data-r="top" title="위에서 보기 (T) · 전체 보기 Home">위에서</button>
-    <label class="chk" title="격자 (G)">격자 <select data-r="snap"><option value="0">끔</option><option value="0.25">0.25m</option><option value="0.5" selected>0.5m</option><option value="1">1m</option><option value="2">2m</option></select></label>
-    <span class="sep"></span><button type="button" class="primary" data-r="save" title="저장 (⌘S)">저장</button><span class="status" data-r="status"></span>
-    <span class="sep"></span><select data-r="playMode" title="시험 플레이 모드"></select>
-    <label class="chk"><input type="checkbox" data-r="playBots" checked> 봇</label>
-    <label class="chk" title="보고 있는 곳(화면 가운데)에서 태어난다"><input type="checkbox" data-r="playHere"> 여기서 시작</label>
-    <button type="button" class="primary" data-r="play" title="저장하지 않아도 지금 모습 그대로 플레이 (⌘P)">▶ 플레이</button>`);
+  const tools = html('div', '', '<div data-r="palette"></div>');
+  const toolbar = html('div', '', `<span class="grp"><button type="button" data-r="undo" title="되돌리기 (⌘Z)">↶</button><button type="button" data-r="redo" title="다시 하기 (⌘⇧Z)">↷</button></span>
+    <span class="grp"><span class="gl">보기</span><button type="button" data-r="top" title="위에서 보기 (T)">위에서</button><button type="button" data-r="all" title="맵 전체 보기 (Home)">전체</button>
+      <span class="gl">격자</span><select data-r="snap" title="격자 (G 로 켜기/끄기)"><option value="0">끔</option><option value="0.25">0.25m</option><option value="0.5" selected>0.5m</option><option value="1">1m</option><option value="2">2m</option></select></span>
+    <span class="grow"></span>
+    <span class="grp"><span class="status" data-r="status"></span><button type="button" class="primary" data-r="save" title="저장 (⌘S)">저장</button></span>
+    <span class="sep"></span>
+    <span class="grp"><select data-r="playMode" title="시험 플레이 모드"></select>
+      <label class="chk" title="빈자리를 봇으로 채운다"><input type="checkbox" data-r="playBots" checked> 봇</label>
+      <label class="chk" title="지금 보고 있는 곳(화면 가운데)에서 태어난다"><input type="checkbox" data-r="playHere"> 여기서 시작</label>
+      <button type="button" class="primary" data-r="play" title="저장하지 않아도 지금 모습 그대로 화면 안에서 플레이 (⌘P)">▶ 플레이</button></span>`);
   const inspector = html('div', '');
   const r = name => overlay.querySelector(`[data-r="${name}"]`) || tools.querySelector(`[data-r="${name}"]`) || toolbar.querySelector(`[data-r="${name}"]`);
   for (const m of Object.values(MODES)) r('playMode').appendChild(new Option(m.name, m.id));
@@ -434,23 +426,31 @@ export async function createMapDoc(ctx, id, opts = {}) {
   const toolKey = t => (t.kind === 'obj' ? `obj:${t.type}` : t.kind === 'spawn' ? `spawn:${t.team}` : 'zone');
   function setTool(t) {
     tool = t;
-    for (const b of r('palette').querySelectorAll('button')) b.classList.toggle('on', !!t && b.dataset.tool === toolKey(t));
+    for (const b of r('palette').querySelectorAll('.tile')) b.classList.toggle('on', !!t && b.dataset.tool === toolKey(t));
     canvas.style.cursor = t ? 'crosshair' : 'default';
     r('hint').textContent = t ? '바닥을 클릭해 놓기 · Shift+클릭 = 계속 놓기 · Esc = 취소' : '';
   }
+  // 도구 상자: 묶음별 타일 (묶음 제목을 누르면 접힌다)
+  const ICON = { building: '⌂', wall: '▬', box: '■', container: '▤', crate: '▣', sandbags: '≋', barrier: '▭', barrel: '◍', tower: '♜', tree: '♣' };
+  const GROUPS = [['구조물', ['building', 'wall', 'box']], ['엄폐물', ['container', 'crate', 'sandbags', 'barrier', 'barrel']], ['자연 · 기타', ['tree', 'tower']]];
   (function buildPalette() {
     const pal = r('palette');
     const group = (title, items) => {
-      pal.appendChild(Object.assign(document.createElement('h3'), { className: 'sub', textContent: title }));
-      for (const [label, t] of items) {
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.tool = toolKey(t);
+      const h = html('div', 'tbx-h'); h.textContent = title; h.addEventListener('click', () => h.classList.toggle('shut'));
+      const tiles = html('div', 'tiles');
+      for (const [label, icon, t, color] of items) {
+        const b = html('button', 'tile'); b.type = 'button'; b.dataset.tool = toolKey(t); b.title = `${label} 놓기 — 바닥을 클릭`;
+        const ic = html('span', 'ic'); ic.textContent = icon; if (color) ic.style.color = color;
+        b.append(ic, document.createTextNode(label));
         b.addEventListener('click', () => setTool(tool && toolKey(tool) === toolKey(t) ? null : t));
-        pal.appendChild(b);
+        tiles.appendChild(b);
       }
+      pal.append(h, tiles);
     };
-    group('물체', Object.entries(OBJECT_SCHEMAS).map(([type, s]) => [s.label, { kind: 'obj', type }]));
-    group('스폰 지점', [['개인전', { kind: 'spawn', team: -1 }], ['0팀 (파랑)', { kind: 'spawn', team: 0 }], ['1팀 (빨강)', { kind: 'spawn', team: 1 }]]);
-    group('모드', [['거점 (점령전)', { kind: 'zone' }]]);
+    for (const [title, types] of GROUPS) group(title, types.filter(t => OBJECT_SCHEMAS[t]).map(t => [OBJECT_SCHEMAS[t].label, ICON[t] || '■', { kind: 'obj', type: t }]));
+    group('스폰 지점', [['개인전', '●', { kind: 'spawn', team: -1 }, '#e9ecef'], ['0팀', '●', { kind: 'spawn', team: 0 }, '#5aa9ff'], ['1팀', '●', { kind: 'spawn', team: 1 }, '#ff4b3a']]);
+    group('모드', [['거점', '◎', { kind: 'zone' }, '#ffb43a']]);
+    pal.appendChild(Object.assign(html('p', 'note'), { textContent: '고른 뒤 화면 바닥을 클릭해 놓습니다. Shift+클릭 = 계속 놓기, Esc = 그만. 조작법은 ? (F1)' }));
   })();
 
   function renderPanel() {
@@ -498,7 +498,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   }
   function updateStatus() {
     const d = isDirty();
-    r('status').textContent = d ? (saved ? '저장 안 됨' : '새 맵 · 저장 안 됨') : '저장됨';
+    r('status').textContent = d ? (saved ? '● 저장 안 됨' : '● 새 맵 · 저장 안 됨') : '✓ 저장됨';
     r('status').className = `status${d ? ' dirty' : ''}`;
   }
 
@@ -528,6 +528,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   r('undo').addEventListener('click', undo);
   r('redo').addEventListener('click', redo);
   r('top').addEventListener('click', topView);
+  r('all').addEventListener('click', overview);
   r('snap').addEventListener('change', () => setSnap(Number(r('snap').value)));
   r('save').addEventListener('click', () => save());
   r('play').addEventListener('click', () => play());
@@ -535,7 +536,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   rebuildNow(); drawHelpers(); renderPanel(); overview(); showCoords();
 
   return {
-    kind: 'map', key: `map:${map.id}`, id: map.id, title: map.id, icon: '▦', is3D: true,
+    kind: 'map', key: `map:${map.id}`, id: map.id, title: map.name && map.name !== map.id ? `${map.name} (${map.id})` : map.id, icon: '▦', is3D: true,
     overlay, tools, toolbar, inspector,
     activate() { controls.connect(); for (const [t, fn, o] of listeners) canvas.addEventListener(t, fn, o); renderer.toneMappingExposure = 0.62; canvas.style.cursor = tool ? 'crosshair' : 'default'; },
     deactivate() { controls.disconnect(); for (const [t, fn, o] of listeners) canvas.removeEventListener(t, fn, o); held.clear(); drag = null; if (fly) endFly(); },

@@ -31,12 +31,20 @@ export async function createDataDoc(ctx, id) {
   let cur = 0, slot = 'optic', errors = [];
 
   const overlay = el('div', 'page'); const page = el('div', 'datapage'); overlay.appendChild(page);
+  // 도구 상자: 다른 데이터로 바로 가기 + 안내
   const tools = el('div');
-  tools.innerHTML = `<p class="note">${info.file} 의 항목을 고릅니다. 오른쪽에서 수치를 고치면 가운데 표가 바로 다시 계산됩니다.</p>
-    <p class="note">저장(⌘S)하면 개발 서버가 다시 시작되어 게임에 반영됩니다.</p>`;
+  tools.appendChild(Object.assign(el('div', 'tbx-h'), { textContent: '데이터' }));
+  const jump = el('div', 'tiles');
+  for (const d of DATA_DOCS) {
+    const b = el('button', `tile${d.id === id ? ' on' : ''}`); b.type = 'button';
+    b.append(Object.assign(el('span', 'ic'), { textContent: { weapons: '✦', parts: '⚙', modes: '⚑' }[d.id] }), document.createTextNode(d.title));
+    b.addEventListener('click', () => ctx.openAsset(`data:${d.id}`));
+    jump.appendChild(b);
+  }
+  tools.append(jump, Object.assign(el('p', 'note'), { textContent: `가운데에서 항목을 고르고 오른쪽 속성에서 고칩니다. 저장(⌘S)하면 개발 서버가 다시 시작되어 게임에 반영됩니다. 파일: content/${info.file}` }));
   const toolbar = el('div');
-  toolbar.innerHTML = `<button type="button" data-r="undo" title="되돌리기 (⌘Z)">↶</button><button type="button" data-r="redo" title="다시 하기 (⌘⇧Z)">↷</button>
-    <span class="sep"></span><button type="button" class="primary" data-r="save" title="저장 (⌘S)">저장</button><span class="status" data-r="status"></span>`;
+  toolbar.innerHTML = `<span class="grp"><button type="button" data-r="undo" title="되돌리기 (⌘Z)">↶</button><button type="button" data-r="redo" title="다시 하기 (⌘⇧Z)">↷</button></span>
+    <span class="grow"></span><span class="grp"><span class="status" data-r="status"></span><button type="button" class="primary" data-r="save" title="저장 (⌘S)">저장</button></span>`;
   const inspector = el('div');
   const r = n => toolbar.querySelector(`[data-r="${n}"]`);
 
@@ -144,7 +152,7 @@ export async function createDataDoc(ctx, id) {
       page.appendChild(box);
     }
     r('save').disabled = !!errors.length;
-    const d = isDirty(); r('status').textContent = d ? '저장 안 됨' : '저장됨'; r('status').className = `status${d ? ' dirty' : ''}`;
+    const d = isDirty(); r('status').textContent = d ? '● 저장 안 됨' : '✓ 저장됨'; r('status').className = `status${d ? ' dirty' : ''}`;
   }
 
   // ───────── 오른쪽: 고른 항목의 입력 칸 ─────────
@@ -181,6 +189,13 @@ export async function createDataDoc(ctx, id) {
     kind: 'data', id, title: info.title, icon: '≡', is3D: false, overlay, tools, toolbar, inspector,
     activate() {}, deactivate() {}, resize() {}, frame() {},
     isDirty, save,
+    // 홈에서 고른 항목으로 바로 간다 ({ select: id, slot })
+    focus({ select, slot: s }) {
+      if (id === 'parts' && s) slot = s;
+      const i = list().findIndex(x => x.id === select);
+      if (i >= 0) cur = i;
+      render(); renderInspector();
+    },
     onKeyDown(e) {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }

@@ -113,14 +113,14 @@ function dictField(parent, spec, get, set, h) {
   const free = (spec.keys || []).filter(k => !(k in cur));
   if (free.length) {
     const pickKey = el('select'); pickKey.appendChild(new Option('+ 추가', ''));
-    for (const k of free) pickKey.appendChild(new Option(k, k));
+    for (const k of free) pickKey.appendChild(new Option((spec.keyLabels && spec.keyLabels[k]) || k, k));
     pickKey.addEventListener('change', () => { if (!pickKey.value) return; set({ ...(get() || {}), [pickKey.value]: 1 }); h.onInput(); h.onCommit(); });
     head.appendChild(pickKey);
   }
   box.appendChild(head);
   for (const k of Object.keys(cur)) {
     const line = el('div', 'litem');
-    line.append(el('span', 'lbl', k));
+    line.append(el('span', 'lbl', (spec.keyLabels && spec.keyLabels[k]) || k));
     line.appendChild(input(spec.of, () => get()[k], v => { const o = { ...get() }; if (v === undefined) delete o[k]; else o[k] = v; set(o); }, h));
     const del = el('button', 'mini del', '×'); del.type = 'button'; del.title = '삭제';
     del.addEventListener('click', () => { const o = { ...get() }; delete o[k]; set(o); h.onInput(); h.onCommit(); });
