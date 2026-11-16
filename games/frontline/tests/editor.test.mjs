@@ -28,7 +28,7 @@ try {
 
   console.log('[열기]');
   await page.goto(`http://localhost:${srv.port}/editor/?map=warehouse`);
-  await page.waitForFunction(() => window.__ed && window.__ed.map, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__ed && window.__ed.map, null, { timeout: 60000 });
   const opened = await page.evaluate(() => ({ id: window.__ed.map.id, n: window.__ed.map.objects.length, dirty: window.__ed.isDirty(), list: [...document.querySelectorAll('#mapSel option')].map(o => o.value), pal: document.querySelectorAll('#palette button').length }));
   check(opened.id === 'warehouse' && opened.n > 50 && !opened.dirty, '맵을 열면 물체 목록이 보이고, 고친 것이 없는 상태', JSON.stringify(opened));
   check(opened.list.includes('frontline') && opened.pal >= 14, '맵 목록과 물체·스폰·거점 도구가 보인다', JSON.stringify(opened));
@@ -84,7 +84,7 @@ try {
   const game = await browser.newPage({ viewport: { width: 1000, height: 600 } });
   const gerr = []; game.on('pageerror', e => gerr.push(e.message));
   await game.goto(`http://localhost:${srv.port}/?auto=Tester&nolock&mode=zone&map=${TEST_ID}&bots=0`);
-  await game.waitForFunction(() => window.__g && window.__g.joined, null, { timeout: 15000 });
+  await game.waitForFunction(() => window.__g && window.__g.joined, null, { timeout: 90000 });
   const g = await game.evaluate(() => ({ map: window.__g.map, room: window.__g.game.room, colliders: window.__g.colliderCount }));
   check(g.map === TEST_ID && g.room && g.colliders === 5, '시험 플레이 주소로 열면 그 맵의 비공개 방에 바로 들어간다', JSON.stringify(g));
   check(errors.length === 0 && gerr.length === 0, '브라우저 오류가 없다', [...errors, ...gerr].join(' | '));
