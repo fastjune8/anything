@@ -188,6 +188,43 @@ console.log('\n[미니맵 좌표]');
   check(enemyVisible(1000, 0, 2000) === true && enemyVisible(2500, 0, 2000) === false && enemyVisible(0, -1e9) === false, '적은 총을 쏜 뒤 2초 동안만 보이고, 한 번도 안 쐈으면 보이지 않는다');
 }
 
+console.log('\n[이동 물리: shared/movement.js]');
+{
+  const { stepMovement, advanceMovement, newMoveState, NO_INPUT, SPEED, BODY } = await import('../shared/movement.js');
+  const box = (x0, x1, y0, y1, z0, z1) => ({ minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+  const run = (s, input, cs, sec, fps) => { for (let t = 0; t < sec - 1e-9; t += 1 / fps) advanceMovement(s, input, cs, 1 / fps); return s; };
+  const fwd = { ...NO_INPUT, fwd: 1 };
+
+  const a = run(newMoveState(), fwd, [], 2, 60);
+  check(a.pos.z < -8 && a.pos.z > -SPEED.walk * 2 - 0.01 && Math.abs(a.pos.x) < 1e-9, '앞으로(yaw 0 = -z) 걷는다, 걷는 속도를 넘지 않는다', a.pos.z.toFixed(2));
+  const slow = run(newMoveState(), fwd, [], 2, 4), fast = run(newMoveState(), fwd, [], 2, 120);
+  check(Math.abs(slow.pos.z - fast.pos.z) < 0.15, '화면이 1초에 4장이어도 120장일 때와 같은 거리를 간다 (게임 시간이 늦게 흐르지 않는다)', `${slow.pos.z.toFixed(2)} vs ${fast.pos.z.toFixed(2)}`);
+
+  const wall = [box(-5, 5, 0, 3, -2.2, -2)];
+  const b = run(newMoveState(), fwd, wall, 2, 60);
+  check(b.pos.z > -2 + BODY.RADIUS - 0.01 && b.pos.z < -1.5, '벽에 막힌다 (몸 반지름만큼 떨어져서)', b.pos.z.toFixed(2));
+  const stair = [box(-5, 5, 0, 0.3, -10, -1)];
+  const c = run(newMoveState(), fwd, stair, 1, 60);
+  check(Math.abs(c.pos.y - 0.3) < 1e-6 && c.pos.z < -1.2, '낮은 턱(0.3m)은 걸어서 올라선다', `${c.pos.y} ${c.pos.z.toFixed(2)}`);
+
+  const j = newMoveState(); let top = 0;
+  stepMovement(j, { ...NO_INPUT, jump: true }, [], 1 / 60);
+  for (let i = 0; i < 120; i++) { stepMovement(j, NO_INPUT, [], 1 / 60); top = Math.max(top, j.pos.y); }
+  check(top > 0.9 && top < 1.2 && j.onGround && j.pos.y === 0, '점프는 1m 남짓 올라갔다 내려와 착지한다', top.toFixed(2));
+
+  const win = [box(-3, 3, 0, 1.0, -1.3, -1.0), box(-3, 3, 2.0, 3, -1.3, -1.0)]; // 창문 (턱 1.0m, 위 2.0m)
+  const v = newMoveState(); v.pos.z = -0.3;
+  const ev = stepMovement(v, { ...NO_INPUT, fwd: 1, jump: true }, win, 1 / 60);
+  check(ev.vaultStart && v.vault && v.vault.type === 'vault', '창문 앞에서 점프 키를 누르면 넘어가기가 시작된다');
+  run(v, NO_INPUT, win, 1.2, 60);
+  check(!v.vault && v.pos.z < -1.3, '넘어가기가 끝나면 창문 건너편에 있다', v.pos.z.toFixed(2));
+
+  const l = newMoveState(); l.yaw = 0;
+  run(l, { ...NO_INPUT, leanR: true }, [box(0.2, 0.4, 0, 3, -1, 1)], 1, 60);
+  const free = run(newMoveState(), { ...NO_INPUT, leanR: true }, [], 1, 60);
+  check(free.leanOff > 0.38 && l.leanOff < 0.1, '기울이기: 빈 곳은 끝까지, 옆이 벽이면 벽을 뚫지 않을 만큼만', `${free.leanOff.toFixed(2)} / ${l.leanOff.toFixed(2)}`);
+}
+
 console.log('\n[콘텐츠 데이터: 스키마 검사, 맵 펼치기, 저장 형식]');
 {
   const fs = await import('node:fs');

@@ -2,10 +2,11 @@
 // 모듈 간에 값을 공유하려면 객체의 속성으로 바꿔야 하므로 (wp.cur = 3), 변수 대신 이 객체들을 쓴다.
 import { MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
+import { BODY } from '/shared/movement.js';
 import { V3, DEG, MODE_CFG, lerp } from './util.js';
 
 // ───── 플레이어(나) ─────
-export const STAND_H = 1.75, CROUCH_H = 1.2, RADIUS = 0.35, STEP = 0.45, GRAVITY = 19, JUMP_V = 6.4;
+export const { STAND_H, CROUCH_H, RADIUS, STEP, GRAVITY, JUMP_V } = BODY; // 몸 크기·중력 (이동 물리와 같은 값)
 export const PITCH_MAX = 88 * DEG;
 
 export const me = {

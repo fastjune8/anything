@@ -20,11 +20,12 @@ import { $, params, BASE_FOV, lerp, clamp, smooth } from './util.js';
 let last = performance.now(), menuAngle = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const real = Math.min(0.25, (now - last) / 1000); last = now; // 실제로 흐른 시간 (탭을 오래 비웠을 때만 자른다)
+  const dt = Math.min(0.05, real); // 연출·무기는 한 프레임에 너무 많이 진행하지 않게
   const active = isActive();
 
   if (game.joined) {
-    updateMovement(dt, active);
+    updateMovement(real, active); // 이동은 실제 시간대로 (느린 컴퓨터에서도 게임 시간이 늦게 흐르지 않는다)
     updateWeapon(dt, active);
     const w = eff[wp.cur];
     const fov = lerp(BASE_FOV, w.adsFov, smooth(0, 1, wp.adsT)) + wp.sprintT * 4;
