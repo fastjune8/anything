@@ -1,8 +1,8 @@
-// HTTP: 정적 파일(client/, shared/, three.js) 제공과 /status
+// HTTP: 정적 파일(client/, shared/, content/, three.js) 제공과 /status
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { APP_ENV, CLIENT_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
+import { APP_ENV, CLIENT_DIR, CONTENT_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
 import { roomStats, listCustomRooms } from './rooms.js';
 
 const MIME = {
@@ -14,6 +14,7 @@ const MIME = {
 // URL 앞부분 → 제공할 폴더. 위에서부터 먼저 맞는 것을 쓴다.
 const MOUNTS = [
   { prefix: '/shared/', dir: SHARED_DIR, cache: 'no-cache' },
+  { prefix: '/content/', dir: CONTENT_DIR, cache: 'no-cache' },
   { prefix: '/vendor/three/', dir: THREE_DIR, cache: 'max-age=86400' },
   { prefix: '/', dir: CLIENT_DIR, cache: 'no-cache' },
 ];

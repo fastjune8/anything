@@ -8,6 +8,7 @@ import { MATCH_RESTART_MS, MATCH_TIME_MS } from '../shared/constants.js';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const CLIENT_DIR = path.join(ROOT, 'client');
 export const SHARED_DIR = path.join(ROOT, 'shared');
+export const CONTENT_DIR = path.join(ROOT, 'content'); // 맵·무기·파츠 데이터 (에디터가 쓴다)
 export const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
 
 export const PORT = Number(process.env.PORT) || 3000;

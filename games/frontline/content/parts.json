@@ -1,0 +1,35 @@
+{
+  "slots": [
+    {"id":"optic","name":"조준경"},
+    {"id":"barrel","name":"총열"},
+    {"id":"grip","name":"손잡이"},
+    {"id":"mag","name":"탄창"},
+    {"id":"stock","name":"개머리판"}
+  ],
+  "parts": {
+    "optic": [
+      {"id":"reddot","name":"도트 사이트","mul":{"adsTime":0.88,"ads":1.2},"not":["awm"]},
+      {"id":"acog","name":"4배율 조준경","mul":{"adsFov":0.55,"ads":0.8,"adsTime":1.22,"hip":1.1},"only":["m4","ak","mp5","m249"]},
+      {"id":"scope_lo","name":"저배율 스코프","mul":{"adsTime":0.78,"move":1.03,"adsFov":1.8},"only":["awm"]},
+      {"id":"scope_hi","name":"고배율 스코프","mul":{"adsFov":0.62,"adsTime":1.2,"hip":1.15},"only":["awm"]}
+    ],
+    "barrel": [
+      {"id":"suppressor","name":"소음기","quiet":true,"mul":{"range":0.82,"adsTime":1.08,"draw":1.1}},
+      {"id":"comp","name":"보정기","mul":{"recoilV":0.8,"recoilH":1.15,"bloom":1.1}},
+      {"id":"long","name":"장총열","mul":{"range":1.2,"ads":0.85,"hip":0.92,"adsTime":1.12,"draw":1.12,"move":0.97},"not":["awm"]}
+    ],
+    "grip": [
+      {"id":"vertical","name":"수직 손잡이","mul":{"recoilV":0.85,"adsTime":1.08},"only":["m4","ak","mp5","m249"]},
+      {"id":"angled","name":"앵글 손잡이","mul":{"adsTime":0.88,"draw":0.9,"recoilH":1.12},"only":["m4","ak","mp5","m249"]},
+      {"id":"stubby","name":"스터비 손잡이","mul":{"hip":0.8,"adsTime":1.05,"recoilH":1.05},"only":["m4","ak","mp5","m249"]}
+    ],
+    "mag": [
+      {"id":"ext","name":"확장 탄창","mul":{"mag":1.34,"reload":1.15,"adsTime":1.05,"move":0.98}},
+      {"id":"fast","name":"신속 탄창","mul":{"reload":0.75,"mag":0.84}}
+    ],
+    "stock": [
+      {"id":"light","name":"경량 개머리판","mul":{"move":1.04,"adsTime":0.9,"recoilV":1.12,"recoilH":1.1},"not":["m9"]},
+      {"id":"heavy","name":"중량 개머리판","mul":{"recoilV":0.88,"recoilH":0.9,"move":0.96,"adsTime":1.08},"not":["m9"]}
+    ]
+  }
+}

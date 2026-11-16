@@ -1,44 +1,18 @@
 // 총기 파츠와 출전 무기(무기고에서 고른 2개) 규칙. 서버와 클라이언트 공용.
 //  - 파츠는 성능 값에 배율(mul)을 곱한다. 모든 파츠는 좋아지는 값과 나빠지는 값을 함께 가진다 (단위 테스트가 확인한다).
 //  - 서버는 입장할 때 받은 출전 무기를 sanitizeLoadout 으로 정리하고, 피해 계산에 applyParts 결과를 쓴다.
+import data from '../content/parts.json' with { type: 'json' };
 import { WEAPONS } from './weapons.js';
+import { checkParts } from './content/schema.js';
 
-export const SLOTS = [
-  { id: 'optic', name: '조준경' },
-  { id: 'barrel', name: '총열' },
-  { id: 'grip', name: '손잡이' },
-  { id: 'mag', name: '탄창' },
-  { id: 'stock', name: '개머리판' },
-];
-
-// mul 의 키는 shared/weapons.js 의 성능 이름. 예외: range = 피해가 줄기 시작하는/끝나는 거리(falloff) 둘 다.
+// 자리와 파츠 데이터는 content/parts.json. mul 의 키는 shared/weapons.js 의 성능 이름. 예외: range = 피해가 줄기 시작하는/끝나는 거리(falloff) 둘 다.
 // only / not: 장착할 수 있는 / 없는 무기 id.  quiet: 총소리가 작고 미니맵에 표시되지 않는다.
-export const PARTS = {
-  optic: [
-    { id: 'reddot', name: '도트 사이트', mul: { adsTime: 0.88, ads: 1.2 }, not: ['awm'] },
-    { id: 'acog', name: '4배율 조준경', mul: { adsFov: 0.55, ads: 0.8, adsTime: 1.22, hip: 1.1 }, only: ['m4', 'ak', 'mp5', 'm249'] },
-    { id: 'scope_lo', name: '저배율 스코프', mul: { adsTime: 0.78, move: 1.03, adsFov: 1.8 }, only: ['awm'] },
-    { id: 'scope_hi', name: '고배율 스코프', mul: { adsFov: 0.62, adsTime: 1.2, hip: 1.15 }, only: ['awm'] },
-  ],
-  barrel: [
-    { id: 'suppressor', name: '소음기', quiet: true, mul: { range: 0.82, adsTime: 1.08, draw: 1.1 } },
-    { id: 'comp', name: '보정기', mul: { recoilV: 0.8, recoilH: 1.15, bloom: 1.1 } },
-    { id: 'long', name: '장총열', mul: { range: 1.2, ads: 0.85, hip: 0.92, adsTime: 1.12, draw: 1.12, move: 0.97 }, not: ['awm'] },
-  ],
-  grip: [
-    { id: 'vertical', name: '수직 손잡이', mul: { recoilV: 0.85, adsTime: 1.08 }, only: ['m4', 'ak', 'mp5', 'm249'] },
-    { id: 'angled', name: '앵글 손잡이', mul: { adsTime: 0.88, draw: 0.9, recoilH: 1.12 }, only: ['m4', 'ak', 'mp5', 'm249'] },
-    { id: 'stubby', name: '스터비 손잡이', mul: { hip: 0.8, adsTime: 1.05, recoilH: 1.05 }, only: ['m4', 'ak', 'mp5', 'm249'] },
-  ],
-  mag: [
-    { id: 'ext', name: '확장 탄창', mul: { mag: 1.34, reload: 1.15, adsTime: 1.05, move: 0.98 } },
-    { id: 'fast', name: '신속 탄창', mul: { reload: 0.75, mag: 0.84 } },
-  ],
-  stock: [
-    { id: 'light', name: '경량 개머리판', mul: { move: 1.04, adsTime: 0.9, recoilV: 1.12, recoilH: 1.1 }, not: ['m9'] },
-    { id: 'heavy', name: '중량 개머리판', mul: { recoilV: 0.88, recoilH: 0.9, move: 0.96, adsTime: 1.08 }, not: ['m9'] },
-  ],
-};
+export const SLOTS = data.slots;
+export const PARTS = data.parts;
+{
+  const errors = checkParts(data, WEAPONS.map(w => w.id));
+  if (errors.length) throw new Error('파츠 데이터 오류 (content/parts.json):\n  ' + errors.join('\n  '));
+}
 
 // 성능 이름 → [표시 이름, 값이 클수록 좋은가]
 const STAT = {

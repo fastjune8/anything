@@ -1,56 +1,14 @@
 // 무기 데이터와 피해 계산 (서버와 클라이언트 공용)
 // 각도 단위는 도(degree), 거리 m, 시간 s
-export const WEAPONS = [
-  {
-    id: 'm4', name: 'M4A1', cls: '돌격소총', auto: true, rpm: 800,
-    dmg: 22, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.2,
-    hip: 2.0, ads: 0.12, bloom: 0.12, bloomMax: 1.4, recoilV: 0.55, recoilH: 0.25,
-    adsFov: 48, adsTime: 0.2, falloff: [35, 80, 0.7], move: 0.95, draw: 0.45,
-    snd: { f: 1900, dur: 0.16, vol: 0.8, thump: 130 },
-  },
-  {
-    id: 'ak', name: 'AK-47', cls: '돌격소총', auto: true, rpm: 600,
-    dmg: 28, head: 2.0, pellets: 1, mag: 30, reserve: 120, reload: 2.5,
-    hip: 2.4, ads: 0.18, bloom: 0.18, bloomMax: 1.8, recoilV: 0.85, recoilH: 0.4,
-    adsFov: 50, adsTime: 0.22, falloff: [40, 90, 0.72], move: 0.93, draw: 0.5,
-    snd: { f: 1400, dur: 0.2, vol: 0.9, thump: 105 },
-  },
-  {
-    id: 'mp5', name: 'MP5', cls: '기관단총', auto: true, rpm: 800,
-    dmg: 18, head: 1.8, pellets: 1, mag: 30, reserve: 150, reload: 1.9,
-    hip: 1.4, ads: 0.3, bloom: 0.09, bloomMax: 1.1, recoilV: 0.38, recoilH: 0.2,
-    adsFov: 55, adsTime: 0.15, falloff: [15, 40, 0.55], move: 1.0, draw: 0.35,
-    snd: { f: 2400, dur: 0.11, vol: 0.6, thump: 160 },
-  },
-  {
-    id: 'm870', name: 'M870', cls: '산탄총', auto: false, rpm: 75,
-    dmg: 13, head: 1.5, pellets: 9, mag: 6, reserve: 30, reload: 0.5, shell: true,
-    hip: 3.4, ads: 2.8, bloom: 0, bloomMax: 0, recoilV: 3.6, recoilH: 0.8,
-    adsFov: 58, adsTime: 0.2, falloff: [8, 28, 0.25], move: 0.95, draw: 0.5,
-    snd: { f: 900, dur: 0.3, vol: 1.0, thump: 80 },
-  },
-  {
-    id: 'awm', name: 'AWM', cls: '저격소총', auto: false, rpm: 40,
-    dmg: 90, head: 2.5, pellets: 1, mag: 5, reserve: 25, reload: 3.4, bolt: true,
-    hip: 5.0, ads: 0.0, bloom: 0, bloomMax: 0, recoilV: 4.2, recoilH: 0.6,
-    adsFov: 9, adsTime: 0.32, scope: true, falloff: null, move: 0.88, draw: 0.7,
-    snd: { f: 1000, dur: 0.42, vol: 1.0, thump: 60 },
-  },
-  {
-    id: 'm249', name: 'M249', cls: '경기관총', auto: true, rpm: 750,
-    dmg: 24, head: 2.0, pellets: 1, mag: 100, reserve: 200, reload: 5.2,
-    hip: 3.2, ads: 0.35, bloom: 0.1, bloomMax: 1.6, recoilV: 0.6, recoilH: 0.38,
-    adsFov: 50, adsTime: 0.35, falloff: [45, 100, 0.75], move: 0.82, draw: 0.8,
-    snd: { f: 1500, dur: 0.18, vol: 0.9, thump: 95 },
-  },
-  {
-    id: 'm9', name: 'M9', cls: '권총', auto: false, rpm: 420,
-    dmg: 24, head: 2.0, pellets: 1, mag: 15, reserve: 60, reload: 1.5,
-    hip: 1.2, ads: 0.25, bloom: 0.25, bloomMax: 1.5, recoilV: 1.1, recoilH: 0.35,
-    adsFov: 60, adsTime: 0.12, falloff: [15, 40, 0.6], move: 1.05, draw: 0.25,
-    snd: { f: 2600, dur: 0.1, vol: 0.55, thump: 170 },
-  },
-];
+import data from '../content/weapons.json' with { type: 'json' };
+import { checkWeapons } from './content/schema.js';
+
+// 무기 데이터는 content/weapons.json (칸 설명은 shared/content/schema.js 의 WEAPON_SCHEMA)
+export const WEAPONS = data;
+{
+  const errors = checkWeapons(WEAPONS);
+  if (errors.length) throw new Error('무기 데이터 오류 (content/weapons.json):\n  ' + errors.join('\n  '));
+}
 
 // w: 무기 번호, 또는 파츠가 반영된 성능 객체(shared/parts.js 의 applyParts 결과)
 export function calcDamage(w, part, dist) {

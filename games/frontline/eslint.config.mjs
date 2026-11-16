@@ -2,7 +2,7 @@
 import globals from 'globals';
 
 const common = {
-  languageOptions: { ecmaVersion: 2023, sourceType: 'module' },
+  languageOptions: { ecmaVersion: 2025, sourceType: 'module' },
   rules: {
     'no-undef': 'error',
     'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }],
