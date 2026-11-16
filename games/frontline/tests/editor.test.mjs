@@ -1,4 +1,7 @@
-// 맵 에디터 테스트: 열기 → 새 맵 → 마우스로 물체 놓기 → 검사 → 저장 → 서버/게임에서 그 맵으로 플레이. 라이브(prod)에서는 꺼져 있는지도 확인.
+// 에디터 테스트
+//  - 맵 에디터: 열기 → 새 맵 → 마우스로 물체 놓기 → 검사 → 저장 → 서버/게임에서 그 맵으로 플레이
+//  - 총기 뷰어: 예시 총(규칙대로 만든 .glb) 열기 → 검사 → 1인칭/정조준/파츠/스킨 → 규칙을 어긴 모델 → 저장
+//  - 라이브(prod)에서는 둘 다 꺼져 있는지
 // 저장은 실제 content/maps 에 쓰므로, 끝나면 만든 파일과 목록을 원래대로 되돌린다.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +17,13 @@ if (!fs.existsSync(CHROME)) {
 const MAPS = path.join(ROOT, 'content', 'maps'), INDEX = path.join(MAPS, 'index.json');
 const TEST_ID = 'zz_editor_test';
 const indexBefore = fs.readFileSync(INDEX, 'utf8');
-const cleanup = () => { fs.writeFileSync(INDEX, indexBefore); fs.rmSync(path.join(MAPS, `${TEST_ID}.json`), { force: true }); };
+const GUNS = path.join(ROOT, 'content', 'guns'), GUN_INDEX = path.join(GUNS, 'index.json'), GUN_ID = 'zz_gun_test';
+const gunIndexBefore = fs.existsSync(GUN_INDEX) ? fs.readFileSync(GUN_INDEX, 'utf8') : null;
+const cleanup = () => {
+  fs.writeFileSync(INDEX, indexBefore); fs.rmSync(path.join(MAPS, `${TEST_ID}.json`), { force: true });
+  if (gunIndexBefore !== null) fs.writeFileSync(GUN_INDEX, gunIndexBefore); else fs.rmSync(GUN_INDEX, { force: true });
+  fs.rmSync(path.join(GUNS, `${GUN_ID}.glb`), { force: true });
+};
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const servers = [];
@@ -126,11 +135,58 @@ try {
   check(errors.length === 0 && gerr.length === 0, '브라우저 오류가 없다', [...errors, ...gerr].join(' | '));
   await game.close(); await page.close();
 
+  console.log('\n[총기 뷰어]');
+  const gv = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const gverr = []; gv.on('pageerror', e => gverr.push(e.message)); gv.on('console', m => { if (m.type() === 'error') gverr.push(m.text()); });
+  await gv.goto(`http://localhost:${srv.port}/editor/guns.html`);
+  await gv.waitForFunction(() => window.__gv, null, { timeout: 60000 });
+  await gv.click('#sample');
+  await gv.waitForFunction(() => window.__gv.model, null, { timeout: 20000 });
+  const sm = await gv.evaluate(() => { const m = window.__gv.model; return { levels: m.checks.map(c => c.level), spec: m.spec && { sightY: m.spec.sightY, adsZ: m.spec.adsZ, muzzleZ: m.spec.muzzleZ, optic: m.spec.optic, mag: !!m.spec.mag, irons: m.spec.irons.length }, sum: document.querySelector('#checks .sum').textContent }; });
+  check(sm.levels.every(l => l === 'ok') && sm.sum === '모두 통과', '규칙대로 만든 예시 총은 검사를 모두 통과한다', JSON.stringify(sm.levels));
+  check(sm.spec && Math.abs(sm.spec.sightY - 0.064) < 1e-3 && Math.abs(sm.spec.adsZ - (-0.12 - 0.09)) < 1e-3 && Math.abs(sm.spec.muzzleZ + 0.52) < 1e-3 && sm.spec.mag && sm.spec.irons === 2,
+    '.glb 의 부착 지점·부품이 게임 기준점(조준선 높이·눈 위치·총구·탄창·가늠자)으로 바뀐다', JSON.stringify(sm.spec));
+  await gv.click('[data-view="ads"]');
+  const ads = await gv.evaluate(() => { const g = window.__gv.model.gun, h = window.__gv.holder; return { y: h.position.y, z: h.position.z, sightY: g.sightY, adsZ: g.adsZ }; });
+  check(Math.abs(ads.y + ads.sightY) < 1e-6 && Math.abs(ads.z - ads.adsZ) < 1e-6, '정조준 보기: 게임과 같은 계산으로 조준선이 화면 가운데에 온다', JSON.stringify(ads));
+  await gv.selectOption('#partSels select[data-slot="optic"]', 'reddot');
+  await gv.selectOption('#partSels select[data-slot="mag"]', 'ext');
+  const withParts = await gv.evaluate(() => { const g = window.__gv.model.gun; return { sightY: g.sightY, irons: g.irons.every(o => !o.visible), magScale: g.mag.scale.y, att: g.att.children.length }; });
+  check(withParts.sightY > sm.spec.sightY && withParts.irons && withParts.magScale > 1.2 && withParts.att > 0, '파츠를 달면 socket_optic 위에 조준경이 붙고(가늠자는 숨김), 확장 탄창은 길어진다', JSON.stringify(withParts));
+  await gv.selectOption('#skinSel', '네온');
+  const skin = await gv.evaluate(() => { const m = window.__gv.model.scan.materials.find(x => x.name === 'body'); return '#' + m.color.getHexString(); });
+  check(skin === '#ff3fa4', '스킨을 고르면 색 칸(body …)의 색이 바뀐다', skin);
+
+  // 규칙을 어긴 모델: 필수 지점 하나 빼고, cm 로 내보낸 것처럼 100배
+  await gv.evaluate(async () => {
+    const { buildSampleGun } = await import('/editor/samplegun.js');
+    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+    const g = buildSampleGun(); g.remove(g.getObjectByName('socket_ads')); g.scale.setScalar(100);
+    await window.__gv.loadBuffer(await new GLTFExporter().parseAsync(g, { binary: true }), 'broken.glb');
+  });
+  const broken = await gv.evaluate(() => ({ fails: window.__gv.model.checks.filter(c => c.level === 'fail').map(c => c.text), save: document.getElementById('saveGun').disabled }));
+  check(broken.fails.some(t => t.includes('socket_ads')) && broken.fails.some(t => t.includes('cm')) && broken.save, '필수 지점이 없거나 크기가 100배면 알려 주고 저장이 잠긴다', JSON.stringify(broken.fails));
+
+  await gv.click('#sample');
+  await gv.waitForFunction(() => window.__gv.model && window.__gv.model.name.startsWith('예시'), null, { timeout: 20000 });
+  await gv.fill('#gunId', GUN_ID);
+  await gv.click('#saveGun');
+  await gv.waitForFunction(id => [...document.querySelectorAll('#savedSel option')].some(o => o.value === id), GUN_ID, { timeout: 10000 });
+  const glb = path.join(GUNS, `${GUN_ID}.glb`);
+  check(fs.existsSync(glb) && fs.readFileSync(glb).toString('ascii', 0, 4) === 'glTF' && JSON.parse(fs.readFileSync(GUN_INDEX, 'utf8')).includes(GUN_ID), '프로젝트에 저장하면 content/guns/<id>.glb 와 목록이 생긴다');
+  await gv.selectOption('#savedSel', GUN_ID);
+  await gv.waitForFunction(id => window.__gv.model && window.__gv.model.name === `${id}.glb`, GUN_ID, { timeout: 10000 });
+  check(true, '저장한 총을 목록에서 다시 열 수 있다');
+  check(gverr.length === 0, '총기 뷰어 브라우저 오류가 없다', gverr.join(' | '));
+  await gv.close();
+
   console.log('\n[라이브(prod)에서는 에디터가 꺼져 있다]');
   const prod = await startServer({ APP_ENV: 'prod' }); servers.push(prod);
   const ed = await fetch(`http://localhost:${prod.port}/editor/`);
   const api = await fetch(`http://localhost:${prod.port}/api/maps/${TEST_ID}`, { method: 'PUT', body: '{}' });
-  check(ed.status === 404 && api.status === 404, '에디터 페이지와 저장 API 가 없다', `${ed.status} ${api.status}`);
+  const gvp = await fetch(`http://localhost:${prod.port}/editor/guns.html`);
+  const gapi = await fetch(`http://localhost:${prod.port}/api/guns/${GUN_ID}`, { method: 'PUT', body: 'glTF0000000000' });
+  check(ed.status === 404 && api.status === 404 && gvp.status === 404 && gapi.status === 404, '맵 에디터·총기 뷰어 페이지와 저장 API 가 없다', `${ed.status} ${api.status} ${gvp.status} ${gapi.status}`);
 } catch (e) {
   console.error('테스트 중 오류:', e);
   exitCode = 1;

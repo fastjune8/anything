@@ -176,33 +176,43 @@ export function setGunParts(gun, parts = {}) {
   if (gun.grip && GRIP[parts.grip]) GRIP[parts.grip](a, gun.grip[0], gun.grip[1]);
 
   const ms = MAG_SCALE[parts.mag] || 1;
-  if (gun.mag) { // 탄창: 윗부분은 그대로 두고 아래로 길어지거나 짧아진다
-    const h = gun.mag.geometry ? gun.mag.geometry.parameters.height : 0;
+  if (gun.mag) { // 탄창: 윗부분은 그대로 두고 아래로 길어지거나 짧아진다 (Blender 모델은 원점이 탄창 윗면이라 그냥 늘리면 된다)
+    const prm = gun.mag.geometry && gun.mag.geometry.parameters;
+    const h = !gun.magPivotTop && prm ? prm.height : 0;
     gun.mag.scale.y = ms; gun.mag.position.copy(b.magPos); gun.mag.position.y -= h * (ms - 1) / 2;
     gun.magRest = gun.mag.position.clone();
   } else if (gun.tube && parts.mag === 'ext') cy(a, 0.012, 0.1, 0, gun.tube[0], gun.tube[1] - 0.045, M.steel); // 산탄총: 연장 튜브
 
   if (gun.stock) {
-    const st = gun.stock, p = st.geometry.parameters;
+    const st = gun.stock, p = st.geometry && st.geometry.parameters; // p: 코드로 만든 총의 상자 크기 (Blender 모델은 없음)
     if (parts.stock === 'light') st.scale.set(0.5, 0.62, 1);
-    else if (parts.stock === 'heavy') { st.scale.set(1.22, 1.12, 1.05); bx(a, 0.034, 0.02, p.depth * 0.6, 0, st.position.y + p.height * 0.56 + 0.008, st.position.z, M.polymer, st.rotation.x); }
+    else if (parts.stock === 'heavy') { st.scale.set(1.22, 1.12, 1.05); if (p) bx(a, 0.034, 0.02, p.depth * 0.6, 0, st.position.y + p.height * 0.56 + 0.008, st.position.z, M.polymer, st.rotation.x); }
     else st.scale.set(1, 1, 1);
   }
+}
+
+// 1인칭 팔 (손 위치: spec.gripZ/gripY = 오른손, supportZ/supportY = 왼손)
+export function attachArms(group, spec) {
+  const gy = spec.gripY ?? -0.085;
+  limb(group, [0.005, gy, spec.gripZ], [0.13, gy - 0.215, spec.gripZ + 0.42], 0.075);
+  if (spec.pistol) limb(group, [-0.02, (spec.supportY ?? -0.09), spec.supportZ], [-0.22, -0.3, 0.42], 0.075);
+  else limb(group, [-0.005, spec.supportY ?? -0.05, spec.supportZ], [-0.24, -0.3, spec.supportZ + 0.4], 0.075);
+}
+
+// 총 모델 그룹 + 기준점(spec) → 파츠를 달 수 있는 총 객체. 코드로 만든 총과 Blender 모델(gunmodel.js)이 같이 쓴다
+export function wrapGun(group, spec, parts) {
+  const att = new THREE.Group(); group.add(att); // 파츠 모델이 들어가는 곳
+  const gun = { group, att, ...spec, base: { muzzleZ: spec.muzzleZ, sightY: spec.sightY, adsZ: spec.adsZ, magPos: spec.mag ? spec.mag.position.clone() : null } };
+  setGunParts(gun, parts);
+  return gun;
 }
 
 // withArms: 1인칭 뷰모델용 팔 포함 여부
 export function buildGun(id, withArms, parts) {
   const group = new THREE.Group();
   const spec = BUILD[id](group);
-  if (withArms) {
-    limb(group, [0.005, -0.085, spec.gripZ], [0.13, -0.3, spec.gripZ + 0.42], 0.075);
-    if (spec.pistol) limb(group, [-0.02, -0.09, spec.supportZ], [-0.22, -0.3, 0.42], 0.075);
-    else limb(group, [-0.005, -0.05, spec.supportZ], [-0.24, -0.3, spec.supportZ + 0.4], 0.075);
-  }
-  const att = new THREE.Group(); group.add(att); // 파츠 모델이 들어가는 곳
-  const gun = { group, att, ...spec, base: { muzzleZ: spec.muzzleZ, sightY: spec.sightY, adsZ: spec.adsZ, magPos: spec.mag ? spec.mag.position.clone() : null } };
-  setGunParts(gun, parts);
-  return gun;
+  if (withArms) attachArms(group, spec);
+  return wrapGun(group, spec, parts);
 }
 
 // ───────── 3인칭 병사 모델 ─────────

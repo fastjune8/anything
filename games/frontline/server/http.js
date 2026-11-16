@@ -9,7 +9,7 @@ import { DEV_TOOLS, handleDevApi } from './devtools.js';
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary',
 };
 
 // URL 앞부분 → 제공할 폴더. 위에서부터 먼저 맞는 것을 쓴다.

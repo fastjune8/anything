@@ -136,7 +136,8 @@ try {
     // 기울이기: E 로 오른쪽, 벽 쪽으로는 벽에 막힌 만큼만, 상대에게 전달
     await page.evaluate(() => { const g = window.__g; g.me.pos.set(20, 0, 20); g.me.vel.set(0, 0, 0); });
     dummy.msgs.length = 0;
-    await page.evaluate(() => window.__g.input({ key: 'KeyE' })); await sleep(600);
+    await page.evaluate(() => window.__g.input({ key: 'KeyE' }));
+    await page.waitForFunction(() => window.__g.me.leanOff > 0.35, null, { timeout: 4000 }).catch(() => {}); // 느린 환경에서는 다 기울 때까지 시간이 더 걸린다
     const leanR = await page.evaluate(() => window.__g.me.leanOff);
     const sentLean = dummy.msgs.filter(m => m.t === 's' && m.id !== dummy.me).pop();
     await page.evaluate(() => window.__g.input({ keyUp: 'KeyE' })); await sleep(500);
