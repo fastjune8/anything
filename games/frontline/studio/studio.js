@@ -244,5 +244,20 @@ for (const k of want) await openAsset(k);
 if (q.get('active') && docs.has(q.get('active'))) activate(docs.get(q.get('active')));
 log('FRONTIER Studio 준비 완료 — 왼쪽 목록에서 열고, ⌘S 저장, ⌘P 시험 플레이', 'ok');
 
+// ───────── 업데이트 알림: GitHub 에 새 버전이 있으면 위쪽에 띠를 띄운다 (10분마다 다시 확인) ─────────
+let updateDismissed = false;
+async function checkUpdate() {
+  const v = await fetch('/api/version', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+  if (!v || !v.ok) return;
+  if (v.behind > 0 && !updateDismissed) {
+    $('update').querySelector('[data-r="msg"]').textContent = `(커밋 ${v.behind}개 · 최근: ${v.latest})${v.localChanges ? ' — 내가 고친 코드가 있으면 먼저 커밋하세요.' : ''}`;
+    $('update').hidden = false;
+    log(`새 버전 ${v.behind}개가 GitHub 에 있습니다 — git pull 후 새로고침`, 'warn');
+  }
+}
+$('updateClose').addEventListener('click', () => { updateDismissed = true; $('update').hidden = true; });
+checkUpdate();
+setInterval(checkUpdate, 10 * 60 * 1000);
+
 // 자동 테스트용
 window.__studio = { openAsset, activate: key => activate(docs.get(key)), closeDoc: key => closeDoc(docs.get(key)), get active() { return active; }, docs, stopPlay, isPlaying: () => playing, saveAll };

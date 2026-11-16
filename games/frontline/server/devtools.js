@@ -4,10 +4,12 @@
 //   PUT /api/content/<weapons|parts|modes>   데이터 파일 저장 (검사 후). 개발 서버는 이 파일이 바뀌면 다시 시작한다 (npm run dev)
 //   PUT /api/drafts/<맵 id>   저장하지 않은 맵을 시험 플레이용으로 서버 메모리에만 올린다 → { id: 'draft_<맵 id>' }
 //   GET /api/drafts/<draft id>   그 맵 데이터 (게임 화면이 받아 간다)
+//   GET /api/version   GitHub(origin/main) 에 내 컴퓨터보다 새 커밋이 있는지 (스튜디오 업데이트 알림)
 // 저장하면 서버 메모리의 맵도 바로 바뀐다 (새로 만드는 방부터 적용, 이미 열린 방은 그대로).
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
-import { APP_ENV, CONTENT_DIR } from './config.js';
+import { APP_ENV, CONTENT_DIR, ROOT } from './config.js';
 import { checkMap, checkWeapons, checkParts, checkModes, RULES } from '../shared/content/schema.js';
 import { formatContent } from '../shared/content/format.js';
 import { setMapDef, MAP_IDS } from '../shared/maps/index.js';
@@ -33,6 +35,7 @@ function readBody(req, max = MAX_BODY) { // 반환: Buffer
 // 처리했으면 true
 export function handleDevApi(req, res, url) {
   if (!DEV_TOOLS || !url.startsWith('/api/')) return false;
+  if (url === '/api/version' && req.method === 'GET') { versionInfo().then(v => send(res, 200, v)); return true; }
   const g = url.match(/^\/api\/guns\/([a-z0-9_]+)$/);
   if (g && req.method === 'PUT') { saveGun(req, res, g[1]); return true; }
   const c = url.match(/^\/api\/content\/(weapons|parts|modes)$/);
@@ -106,4 +109,21 @@ function putDraft(req, res, mapId) {
     drafts.set(id, draft); setMapDef(draft); forgetNav(id);
     send(res, 200, { ok: true, id });
   }).catch(() => send(res, 413, { ok: false, errors: ['데이터가 너무 큼'] }));
+}
+
+// ───────── 업데이트 알림 ─────────
+// git fetch 로 GitHub 의 main 을 받아 와서, 지금 컴퓨터(HEAD)에 없는 커밋이 몇 개인지 센다.
+// fetch 는 5분에 한 번만 (스튜디오를 여러 번 열어도 GitHub 에 자주 묻지 않게). git 이 없거나 오프라인이면 { ok: false }
+const git = args => new Promise(resolve => execFile('git', args, { cwd: ROOT, timeout: 15000 }, (err, out) => resolve(err ? null : String(out).trim())));
+let lastFetch = 0, fetching = null;
+async function versionInfo() {
+  if (Date.now() - lastFetch > 5 * 60 * 1000) {
+    fetching = fetching || git(['fetch', '--quiet', 'origin', 'main']).then(() => { lastFetch = Date.now(); fetching = null; });
+    await fetching;
+  }
+  const behind = await git(['rev-list', '--count', 'HEAD..origin/main']);
+  if (behind === null) return { ok: false };
+  const latest = Number(behind) > 0 ? await git(['log', '-1', '--format=%s (%cr)', 'origin/main']) : null;
+  const dirtyStudio = await git(['status', '--porcelain', '--', 'studio', 'server', 'shared', 'client']);
+  return { ok: true, behind: Number(behind), latest, localChanges: !!dirtyStudio };
 }

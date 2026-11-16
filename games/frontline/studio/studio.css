@@ -165,3 +165,9 @@ table.cmp tr { cursor: pointer; }
 table.cmp .bar { display: inline-block; height: 6px; background: var(--accent); opacity: .6; border-radius: 3px; vertical-align: middle; margin-left: 6px; }
 .dnote { color: var(--faint); font-size: 11px; margin-top: 8px; }
 .pc { font-size: 12px; } .pc .p { color: var(--good); } .pc .c { color: var(--danger); }
+
+/* 업데이트 알림 띠 */
+#update { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: #3a2a0c; border-bottom: 1px solid var(--accent); color: var(--ui); font-size: 12px; }
+#update b { color: var(--accent); }
+#update code { background: #0f1214; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--accent); }
+#update button { margin-left: auto; }
