@@ -1,5 +1,5 @@
 // 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
-import { RESPAWN_MIN_MS, MAX_HP, LEAN_DIST } from '/shared/constants.js';
+import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { applyParts } from '/shared/parts.js';
 import { loadoutMessage } from './loadout.js';
@@ -13,6 +13,7 @@ import { me, wp, inp, game, roster, net } from './state.js';
 import { $, V3, NOLOCK, MODE_CFG, setMode, lerp, esc, START_AT } from './util.js';
 import { setText, setDisplay } from './dom.js';
 import { placeMe } from './weapon.js';
+import { takeInputs, reconcile, resetPrediction, resetSession, teleport } from './player.js';
 
 const _v = new V3();
 const QUIET = WEAPONS.map(w => applyParts(w, { barrel: 'suppressor' })); // 소음기를 단 상대의 총소리
@@ -55,6 +56,7 @@ function onMessage(m) {
       game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0]; game.room = m.room || null;
       setMode(m.mode); loadMap(m.map || MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이). 친선전은 맵을 따로 고를 수 있다
       game.zone = m.zone || null;
+      resetSession(); // 서버에서 나는 새 플레이어 → 이동 예측 기록도 처음부터
       clearRemotes(); roster.clear(); clearChat();
       setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
       setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
@@ -83,15 +85,18 @@ function onMessage(m) {
       break;
     case 'spawn':
       if (m.id === me.id) {
-        // 스튜디오에서 "카메라 위치에서 시작" 을 고르면 처음 한 번은 그 자리에서 태어난다
-        const at = START_AT.length === 2 && !game.startedAt ? [START_AT[0], 0, START_AT[1]] : m.p;
+        placeMe(m.p); resetPrediction(); game.invUntil = performance.now() + (m.inv || 0);
+        // 스튜디오에서 "여기서 시작" 을 고르면 처음 한 번은 그 자리로 옮긴다 (개발 서버만 받아 준다)
+        if (START_AT.length === 2 && !game.startedAt) teleport(START_AT[0], 0, START_AT[1]);
         game.startedAt = true;
-        placeMe(at); game.invUntil = performance.now() + (m.inv || 0);
       }
       else {
         const r = remotes.get(m.id);
         if (r) { r.alive = true; r.hasPos = true; r.deadT = 0; r.hp = MAX_HP; r.invUntil = performance.now() + (m.inv || 0); r.tpos.fromArray(m.p); r.pos.fromArray(m.p); }
       }
+      break;
+    case 'me': // 서버가 계산한 내 이동 상태 → 맞추고 남은 입력을 다시 적용 (player.js)
+      if (game.joined) reconcile(m.q, m.st, m.k);
       break;
     case 's': { // 다른 사람의 위치/시선
       const r = remotes.get(m.id);
@@ -169,15 +174,12 @@ function onMessage(m) {
   }
 }
 
-// 내 위치/시선을 0.05초마다 서버로 (20회/초)
+// 이동 입력을 0.05초마다 서버로 (한 번에 1/60초 입력 3개쯤). 위치는 서버가 계산한다
 let sendAcc = 0;
 export function sendState(dt) {
   sendAcc += dt;
   if (!game.joined || sendAcc < 0.05) return;
   sendAcc = 0;
-  net.send({
-    t: 's', p: [+me.pos.x.toFixed(3), +me.pos.y.toFixed(3), +me.pos.z.toFixed(3)],
-    y: +me.yaw.toFixed(3), x: +(me.pitch + wp.kickP).toFixed(3), c: me.crouch || me.vault ? 1 : 0, w: wp.cur, // 넘어가는 동안은 다른 사람 화면에서 몸을 숙인다
-    l: +(me.leanOff / LEAN_DIST).toFixed(2), // 기울이기 (-1 ~ 1)
-  });
+  const m = takeInputs();
+  if (m) net.send({ t: 'in', ...m });
 }

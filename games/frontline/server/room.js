@@ -10,6 +10,7 @@ import { BOT_NAMES } from './bots/names.js';
 import { sanitizeChat, allowChat } from './chat.js';
 import { resolveHits } from './combat.js';
 import { createRules } from './modes/index.js';
+import { resetMotion, selfState, publicState } from './motion.js';
 import { PORT, TICK_MS, MATCH_MS, RESTART_MS, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -154,6 +155,7 @@ export class Room {
     p.invulnUntil = Date.now() + SPAWN_PROTECT_MS;
     clearTimeout(p.respawnTimer);
     if (p.bot) p.bot.reset(p.pos);
+    else resetMotion(p, p.pos); // 사람: 서버가 이동을 계산한다
     this.broadcast({ t: 'spawn', id: p.id, p: p.pos, inv: SPAWN_PROTECT_MS });
   }
 
@@ -238,6 +240,13 @@ export class Room {
       if (p.alive) {
         this.broadcast({ t: 's', id: p.id, p: [r2(p.pos[0]), 0, r2(p.pos[2])], y: +p.bot.yaw.toFixed(3), x: +p.bot.pitch.toFixed(3), c: 0, w: p.bot.weapon });
       }
+    }
+    // 사람: 서버가 계산한 위치를 본인(전체 상태)과 다른 사람(위치·시선)에게
+    for (const p of this.players.values()) {
+      if (p.bot || !p.ms || !p.msDirty) continue;
+      p.msDirty = false;
+      this.sendTo(p, selfState(p));
+      if (p.alive) this.broadcast(publicState(p), p);
     }
     if (this.state !== 'playing') return;
     if (this.rules.tick(dt)) { this.endMatch(); return; } // 모드 규칙 (예: 점령전 거점 점수)

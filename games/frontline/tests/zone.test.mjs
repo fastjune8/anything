@@ -44,7 +44,7 @@ try {
   const w = await a.waitFor('welcome');
   check(w && w.mode === 'zone' && w.map === 'warehouse' && w.zone && w.zone.o === -1, '점령전에 들어가면 맵과 거점 상태(주인 없음)를 받는다', JSON.stringify(w && { mode: w.mode, map: w.map, zone: w.zone }));
   const team = w.team, zone = getMap('warehouse').zones[0];
-  a.send({ t: 's', p: [zone.x + 2, 0, zone.z + 2], y: 0, x: 0, c: 0, w: 0 });
+  a.send({ t: 'tp', p: [zone.x + 2, 0, zone.z + 2] }); // 위치는 서버가 정한다 → 테스트용 순간이동
   const half = await a.waitFor('zone', m => m.ct === team && m.p >= 0.4, 7000);
   check(!!half, '거점 안에 들어가면 내 팀 게이지가 찬다', JSON.stringify(a.msgs.filter(m => m.t === 'zone').slice(-1)));
   const cap = await a.waitFor('zcap', m => m.team === team, 8000);
@@ -55,14 +55,14 @@ try {
   const b = connect(srv.port, 'bravo', { mode: 'zone' }); await b.open;
   const bw = await b.waitFor('welcome');
   check(bw.team !== team && bw.zone.o === team, '나중에 들어온 사람은 다른 팀 + 지금 거점 상태를 받는다');
-  b.send({ t: 's', p: [zone.x - 2, 0, zone.z - 2], y: 0, x: 0, c: 0, w: 0 });
+  b.send({ t: 'tp', p: [zone.x - 2, 0, zone.z - 2] });
   const contested = await a.waitFor('zone', m => m.c === 1, 3000);
   const scoreAt = contested ? contested.ts[team] : -1;
   await sleep(2200);
   const last = [...a.msgs].reverse().find(m => m.t === 'zone');
   check(contested && last.c === 1 && last.ts[team] === scoreAt, '양 팀이 함께 있으면 교전 중 — 점수가 멈춘다', JSON.stringify(last));
 
-  b.send({ t: 's', p: [30, 0, 40], y: 0, x: 0, c: 0, w: 0 }); // 상대가 거점을 떠난다
+  b.send({ t: 'tp', p: [30, 0, 40] }); // 상대가 거점을 떠난다
   const end = await a.waitFor('end', () => true, 10000);
   check(end && end.wt === team && end.ts[team] === GOAL, '목표 점수에 먼저 닿은 팀이 이긴다', JSON.stringify(end && { wt: end.wt, ts: end.ts }));
   const again = await a.waitFor('start', () => true, 5000);
@@ -80,7 +80,7 @@ const srv2 = await startServer({ MATCH_SECONDS: '90' });
 try {
   const c = connect(srv2.port, 'watcher', { mode: 'zone' }); await c.open;
   await c.waitFor('welcome');
-  c.send({ t: 's', p: [0, 30, 0], y: 0, x: 0, c: 0, w: 0 }); // 하늘 위 (거점 높이 밖, 봇 시야에도 잘 안 걸린다)
+  c.send({ t: 'tp', p: [0, 30, 0] }); // 하늘 위 (거점 높이 밖, 봇 시야에도 잘 안 걸린다)
   const got = await c.waitFor('zone', m => m.n[0] + m.n[1] >= 2, 45000) // 스폰에서 거점까지 걸어오는 데 보통 15~25초 (기기가 바쁘면 더);
   check(!!got, '봇들이 거점에 들어간다', JSON.stringify([...c.msgs].reverse().find(m => m.t === 'zone')));
   const owned = await c.waitFor('zcap', () => true, 50000); // 보통 20초 안팎 (서로 싸우느라 늦어질 수 있다)

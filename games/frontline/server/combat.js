@@ -14,7 +14,9 @@ export function resolveHits(players, attacker, m) {
     const victim = players.get(h[2] | 0);
     if (!victim || victim === attacker || !victim.alive) continue;
     const part = h[0] === 'head' || h[0] === 'leg' ? h[0] : 'body';
-    const dist = Math.min(400, Math.max(0, Number(h[1]) || 0));
+    // 거리: 서버가 아는 두 사람의 위치로 잰다 (브라우저가 보낸 거리는 위치를 모를 때만 = 단위 테스트의 단순 객체)
+    const dist = attacker.pos && victim.pos ? Math.hypot(attacker.pos[0] - victim.pos[0], attacker.pos[1] - victim.pos[1], attacker.pos[2] - victim.pos[2])
+      : Math.min(400, Math.max(0, Number(h[1]) || 0));
     const acc = byVictim.get(victim) || { dmg: 0, head: false };
     acc.dmg += calcDamage(weapon, part, dist);
     if (part === 'head') acc.head = true;

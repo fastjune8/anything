@@ -1,15 +1,17 @@
 // WebSocket: 접속을 받아 메시지를 해당 방의 처리 함수로 넘긴다. 메시지 종류는 docs/PROTOCOL.md 참고.
 import { WebSocketServer } from 'ws';
 import { resolveRoom } from './rooms.js';
+import { applyInputs, teleport } from './motion.js';
+import { APP_ENV } from './config.js';
 
 // join 이후에 받는 메시지별 처리. me = 보낸 플레이어, room = 그 플레이어의 방
 const HANDLERS = {
-  // 내 위치/시선 → 다른 사람에게 그대로 전달
-  s(me, m, room) {
-    if (!(Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite))) return;
-    me.pos = m.p; me.crouch = m.c ? 1 : 0;
-    me.yaw = Number(m.y) || 0; me.lean = Math.max(-1, Math.min(1, Number(m.l) || 0)); // 봇이 기울여 내민 머리를 볼 수 있게
-    m.id = me.id; room.broadcast(m, me);
+  // 이동 입력 (1/60초 단위). 위치는 서버가 계산한다 (server/motion.js). 결과는 방의 tick 이 보낸다
+  in(me, m, room) { applyInputs(me, m, room.map.layout.colliders); },
+  // 개발·테스트용 순간이동 (라이브에서는 무시). 스튜디오의 "여기서 시작", 자동 테스트가 쓴다
+  tp(me, m) {
+    if (APP_ENV === 'prod' || !(Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite))) return;
+    teleport(me, m.p, Number(m.y));
   },
   // 사격 / 재장전 → 소리와 이펙트용으로 다른 사람에게 전달
   shot(me, m, room) {

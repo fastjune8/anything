@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch-path=server --watch-path=shared --watch-path=content/weapons.json --watch-path=content/parts.json --watch-path=content/modes.json --watch-path=content/models.json server/index.js",
-    "test": "node tests/unit.test.mjs && node tests/rules.test.mjs && node tests/tdm.test.mjs && node tests/custom.test.mjs && node tests/loadout.test.mjs && node tests/zone.test.mjs && node tests/protocol.test.mjs",
+    "test": "node tests/unit.test.mjs && node tests/rules.test.mjs && node tests/tdm.test.mjs && node tests/custom.test.mjs && node tests/loadout.test.mjs && node tests/zone.test.mjs && node tests/movement.test.mjs && node tests/protocol.test.mjs",
     "test:browser": "node tests/browser.test.mjs && node tests/studio.test.mjs",
     "test:all": "eslint . && npm test && node tests/browser.test.mjs && node tests/studio.test.mjs",
     "deploy:prod": "./deploy/deploy.sh prod",

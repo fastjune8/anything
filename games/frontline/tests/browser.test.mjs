@@ -67,8 +67,10 @@ try {
     const dummy = connect(srv.port, 'dummy'); await dummy.open;
     await dummy.waitFor('welcome');
     const dummyPos = [10, 0, 10];
-    let dummyLean = 0;
-    const hold = setInterval(() => dummy.send({ t: 's', p: dummyPos, y: 0, x: 0, c: 0, w: 0, l: dummyLean }), 50);
+    let dummyLean = 0, dummySeq = 0;
+    dummy.send({ t: 'tp', p: dummyPos, y: 0 }); // 위치는 서버가 정한다 (M1) → 개발·테스트용 순간이동으로 세워 둔다
+    // 0.05초마다 1/60초 입력 3개 (기울이기만 바꾼다: 16 = 오른쪽)
+    const hold = setInterval(() => { dummy.send({ t: 'in', s: dummySeq, i: [0, 1, 2].map(() => [0, 0, dummyLean > 0 ? 16 : 0, 0, 0, 0, 0]) }); dummySeq += 3; }, 50);
     await page.waitForFunction(() => window.__g.me.alive && [...window.__g.remotes.values()].some(r => r.hasPos), null, { timeout: 10000 });
     await sleep(500);
 
@@ -115,7 +117,7 @@ try {
 
     const home = await page.evaluate(() => ({ p: window.__g.me.pos.toArray(), yaw: window.__g.me.yaw })); // 시험이 끝나면 원래 자리로
     // 넘어가기: 중앙 폐허 남쪽 창문 앞에서 Space → 창문을 넘어 건물 안으로
-    await page.evaluate(() => { const g = window.__g; g.me.pos.set(3, 0, -7); g.me.vel.set(0, 0, 0); g.me.yaw = Math.PI; g.me.pitch = 0; });
+    await page.evaluate(() => { const g = window.__g; g.teleport(3, 0, -7, Math.PI); g.me.pitch = 0; });
     await sleep(200);
     await page.evaluate(() => window.__g.input({ key: 'Space' }));
     await sleep(120);
@@ -125,7 +127,7 @@ try {
     await sleep(300);
     const after = await page.evaluate(() => ({ x: window.__g.me.pos.x, y: window.__g.me.pos.y, z: window.__g.me.pos.z, v: !!window.__g.me.vault }));
     check(vaulting && !after.v && after.z > -5.5 && Math.abs(after.y) < 0.05, '창문 앞에서 Space 를 누르면 창문을 넘어 건물 안으로 들어간다', JSON.stringify({ vaulting, ...after }));
-    await page.evaluate(() => { const g = window.__g; g.me.pos.set(0, 0, -7); g.me.vel.set(0, 0, 0); g.me.yaw = Math.PI; });
+    await page.evaluate(() => { const g = window.__g; g.teleport(0, 0, -7, Math.PI); });
     await sleep(200);
     await page.evaluate(() => window.__g.input({ key: 'Space' })); await sleep(120);
     const wallJump = await page.evaluate(() => ({ v: !!window.__g.me.vault, air: !window.__g.me.onGround }));
@@ -134,16 +136,17 @@ try {
     check(!wallJump.v && wallJump.air, '높은 벽 앞에서는 넘지 않고 그냥 점프한다', JSON.stringify(wallJump));
 
     // 기울이기: E 로 오른쪽, 벽 쪽으로는 벽에 막힌 만큼만, 상대에게 전달
-    await page.evaluate(() => { const g = window.__g; g.me.pos.set(20, 0, 20); g.me.vel.set(0, 0, 0); });
+    await page.evaluate(() => { const g = window.__g; g.teleport(20, 0, 20); });
     dummy.msgs.length = 0;
     await page.evaluate(() => window.__g.input({ key: 'KeyE' }));
     await page.waitForFunction(() => window.__g.me.leanOff > 0.35, null, { timeout: 4000 }).catch(() => {}); // 느린 환경에서는 다 기울 때까지 시간이 더 걸린다
     const leanR = await page.evaluate(() => window.__g.me.leanOff);
-    const sentLean = dummy.msgs.filter(m => m.t === 's' && m.id !== dummy.me).pop();
+    // 위치·기울기는 서버가 계산해서 다른 사람에게 보낸다 (M1) → 서버도 다 기울 때까지 잠깐 기다린다
+    const sentLean = await dummy.waitFor('s', m => m.id !== dummy.me && m.l > 0.85, 3000) || dummy.msgs.filter(m => m.t === 's' && m.id !== dummy.me).pop();
     await page.evaluate(() => window.__g.input({ keyUp: 'KeyE' })); await sleep(500);
     check(leanR > 0.35 && (await page.evaluate(() => Math.abs(window.__g.me.leanOff))) < 0.05, 'E 를 누르면 오른쪽으로 기울고, 떼면 돌아온다', `${leanR.toFixed(2)}`);
     check(sentLean && sentLean.l > 0.85, '기울이기가 다른 플레이어에게 전달된다 (l)', JSON.stringify(sentLean));
-    await page.evaluate(() => { const g = window.__g; g.me.pos.set(0, 0, -6.5); g.me.yaw = Math.PI / 2; }); // 왼쪽 0.5m 에 벽
+    await page.evaluate(() => { const g = window.__g; g.teleport(0, 0, -6.5, Math.PI / 2); }); // 왼쪽 0.5m 에 벽
     await page.evaluate(() => window.__g.input({ key: 'KeyQ' })); await sleep(600);
     const leanWall = await page.evaluate(() => window.__g.me.leanOff);
     await page.evaluate(() => window.__g.input({ keyUp: 'KeyQ' })); await sleep(400);
@@ -156,7 +159,7 @@ try {
     const withLean = await headRay();
     dummyLean = 0;
     check(noLean === null && withLean === 'head', '상대가 오른쪽으로 기울이면 옆으로 나온 머리가 맞는다', `${noLean} → ${withLean}`);
-    await page.evaluate(h => { const g = window.__g; g.me.pos.fromArray(h.p); g.me.vel.set(0, 0, 0); g.me.yaw = h.yaw; }, home);
+    await page.evaluate(h => { const g = window.__g; g.teleport(h.p[0], h.p[1], h.p[2], h.yaw); }, home);
     await sleep(200);
 
     // 채팅: Enter 로 열고, 입력 중에는 이동하지 않고, Enter 로 보내고, Esc 로 취소한다
@@ -202,7 +205,7 @@ try {
 
     // 실제 사격으로 명중 → 서버가 피해로 인정하는지 (대상: 가짜 플레이어를 정면에서)
     await page.evaluate(([x, , z]) => {
-      const g = window.__g; g.me.pos.set(x - 6, 0, z); g.me.yaw = Math.atan2(-6, 0) + 0; g.me.pitch = 0.0;
+      const g = window.__g; g.teleport(x - 6, 0, z, Math.atan2(-6, 0)); g.me.pitch = 0.0;
     }, dummyPos);
     await page.evaluate(([x, , z]) => {  // 대상을 정확히 향하도록 (yaw: 전방 = (-sin, -cos))
       const g = window.__g, dx = x - g.me.pos.x, dz = z - g.me.pos.z;
@@ -244,6 +247,8 @@ try {
     await page.waitForFunction(() => window.__g.me.alive, null, { timeout: 3000 }).catch(() => {});
     check(await page.evaluate(() => window.__g.me.alive), '아무 키나 누르면 부활한다');
 
+    const ns = await page.evaluate(() => window.__g.netStats); // 서버 권한 이동(M1): 예측이 서버 결과와 맞는가
+    check(ns.acks > 20 && ns.maxErr < 0.05, '걷기·점프·넘어가기·기울이기 내내 브라우저 예측이 서버 계산과 맞는다 (보정이 눈에 띄지 않는다)', JSON.stringify(ns));
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     clearInterval(hold); dummy.ws.close();
     await page.close();
@@ -325,7 +330,7 @@ try {
     check(out.map === 'warehouse' && out.box !== 'none', '점령전에 들어가면 거점 상태가 화면 위에 보인다', JSON.stringify(out));
     check(out.mark !== 'none' && out.state.includes('중립'), '거점 밖에서는 거점 방향 표식이 보이고, 처음엔 중립', JSON.stringify(out));
     check(out.goal.includes('점 선승'), '목표가 킬이 아니라 점수로 표시된다', out.goal);
-    await page.evaluate(() => { window.__g.me.pos.set(4, 0, 1); });
+    await page.evaluate(() => { window.__g.teleport(4, 0, 1); });
     await page.waitForFunction(() => document.getElementById('zoneState').textContent.includes('점령 중'), null, { timeout: 8000 });
     const inside = await page.evaluate(() => ({ cls: document.getElementById('zonebox').className, mark: getComputedStyle(document.getElementById('zmark')).display, z: window.__g.game.zone }));
     check(inside.cls.includes('inside') && inside.mark === 'none' && inside.z.ct >= 0, '거점 안에 들어가면 점령 게이지가 차고, 방향 표식은 숨는다', JSON.stringify(inside));
@@ -487,6 +492,11 @@ try {
     const again = await lobby.evaluate(() => ({ marker: window.__marker, map: window.__g.map, team: window.__g.me.team, room: window.__g.game.room, remotes: window.__g.remotes.size, goal: document.getElementById('goal').textContent }));
     check(again.marker === 'same-page' && again.map === 'frontline' && again.team === -1 && again.room === null && again.remotes === 5, '같은 페이지에서 개인전으로 다시 입장한다 (전선 맵, 팀 없음, 봇 5명)', JSON.stringify(again));
     check(again.goal.includes('킬 선승') && !again.goal.includes('아군'), '개인전 표시(팀 점수 없음)로 돌아온다', again.goal);
+    // 같은 페이지에서 방을 옮겨도 서버 권한 이동(M1)이 이어진다: 순간이동·걷기가 서버 결과로 맞춰진다
+    const a0 = await lobby.evaluate(() => window.__g.netStats.acks);
+    await lobby.evaluate(() => window.__g.teleport(30, 0, 30, Math.PI / 2)); await sleep(800);
+    const m1 = await lobby.evaluate(() => ({ x: window.__g.me.pos.x, z: window.__g.me.pos.z, acks: window.__g.netStats.acks, err: window.__g.netStats.lastErr }));
+    check(m1.acks > a0 + 3 && Math.abs(m1.x - 30) < 0.01 && Math.abs(m1.z - 30) < 0.01 && m1.err < 0.05, '방을 옮긴 뒤에도 서버 결과가 계속 적용되고 순간이동이 맞는다', JSON.stringify({ ...m1, a0 }));
     check(lerrors.length === 0, '방장 쪽 브라우저 오류가 없다', lerrors.join(' | '));
     await lobby.close();
   }

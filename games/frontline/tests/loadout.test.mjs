@@ -24,6 +24,8 @@ try {
   c.ws.close();
 
   console.log('\n[명중: 들고 온 무기와 파츠 성능]');
+  // 명중 거리는 서버가 두 사람의 위치로 잰다 (M1) → 정확히 60m 떨어뜨려 세운다 (개발·테스트용 순간이동)
+  a.send({ t: 'tp', p: [0, 0, -30] }); b.send({ t: 'tp', p: [0, 0, 30] });
   await sleep(3300); // 스폰 무적이 끝날 때까지
   a.send({ t: 'hit', w: AWM, hits: [['head', 5, b.me]] });
   a.send({ t: 'hit', w: M9, hits: [['body', 5, b.me]] });

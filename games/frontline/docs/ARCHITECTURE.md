@@ -13,7 +13,8 @@ games/frontline/
 │   ├── rooms.js            방 목록. 빠른 시작(빈 방 찾기)과 친선전(만들기·코드 입장·목록)
 │   ├── room.js             방 하나: 입장/퇴장, 봇 채우기, 스폰, 피해·킬, 경기 진행, 채팅
 │   ├── chat.js             채팅 규칙 (글자 정리, 도배 방지)       ← 순수 함수
-│   ├── combat.js           명중 신고 검증·피해 합산               ← 순수 함수
+│   ├── combat.js           명중 신고 검증·피해 합산 (거리는 서버 위치로)  ← 순수 함수
+│   ├── motion.js           서버 권한 이동 (M1): 입력 → shared/movement.js → 위치. 속도 핵 방지, 본인/다른 사람에게 보낼 상태
 │   ├── devtools.js         스튜디오용 API: 맵·총 모델·데이터 저장, 시험 플레이용 임시 맵 (개발 서버에서만)
 │   ├── modes/              모드 규칙: 점수·승리·봇 목표 (index.js 에 규칙 객체가 갖출 것 설명)
 │   │   ├── deathmatch.js   개인·팀 데스매치 (킬 = 점수)
@@ -50,7 +51,7 @@ games/frontline/
 │       ├── main.js         시작 + 프레임 루프
 │       ├── state.js        공유 상태 (me, wp, inp, game, roster, net)
 │       ├── scene.js        렌더러·카메라       world.js  맵/하늘 그리기
-│       ├── player.js       키 입력 → 이동 물리(shared/movement.js) → 소리·연출   weapon.js 사격·재장전·교체
+│       ├── player.js       1/60초 입력 → 예측 이동(shared/movement.js) → 서버로. 서버 결과(me)로 보정·재적용, 화면 위치는 부드럽게   weapon.js 사격·재장전·교체
 │       ├── gunmodel.js     Blender 총 모델(.glb) 읽기·규칙 검사·스킨
 │       ├── gunmodels.js    등록된 모델(content/models.json) 중 무기에 연결된 것을 미리 불러온다 → guns.js 가 그 모델로 총을 만든다
 │       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성, 파츠 모델 달기(setGunParts)
