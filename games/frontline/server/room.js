@@ -9,6 +9,7 @@ import { Bot } from './bots/bot.js';
 import { BOT_NAMES } from './bots/names.js';
 import { sanitizeChat, allowChat } from './chat.js';
 import { resolveHits } from './combat.js';
+import { createRules } from './modes/index.js';
 import { PORT, TICK_MS, MATCH_MS, RESTART_MS, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -16,18 +17,21 @@ const SAFE_SPAWN_DIST = 25; // 이 거리(m) 안에 적이 있는 스폰 지점�
 
 export class Room {
   // number: 방 번호(로그용), mode: 'ffa' | 'tdm', onDestroy: 사람이 모두 나가 방이 사라질 때 호출
-  // custom: 친선전이면 { code, name, isPrivate, bots, matchMs } (빠른 시작 방은 null)
+  // custom: 친선전이면 { code, name, isPrivate, bots, matchMs, map } (빠른 시작 방은 null). map 을 주면 모드 기본 맵 대신 그 맵
+  // 점수·승리 규칙은 모드마다 다르므로 this.rules (server/modes/) 가 맡는다
   constructor({ number, mode = 'ffa', onDestroy, custom = null }) {
     this.number = number;
     this.onDestroy = onDestroy;
     this.mode = mode;
     this.custom = custom;
     this.matchMs = custom ? custom.matchMs : MATCH_MS;
-    this.cfg = MODES[mode];             // 인원·팀 수·목표 킬 등
-    this.map = getMap(this.cfg.map);
-    this.nav = navFor(this.cfg.map);    // 봇 길찾기
+    this.cfg = MODES[mode];             // 인원·팀 수·목표 점수 등
+    this.mapId = (custom && custom.map) || this.cfg.map;
+    this.map = getMap(this.mapId);
+    this.nav = navFor(this.mapId);      // 봇 길찾기
     this.goal = goalFor(this.cfg);
-    this.teamScores = [0, 0];           // 팀전: 팀별 킬 합계
+    this.teamScores = [0, 0];           // 팀전: 팀 점수 (데스매치 = 킬 합계, 점령전 = 거점 점수)
+    this.rules = createRules(this);
     this.players = new Map();          // id → player
     this.state = 'playing';            // playing | ended
     this.endsAt = Date.now() + this.matchMs;
@@ -41,7 +45,7 @@ export class Room {
   // lo: 사람이 들고 온 무기 [[무기번호, 파츠], …] (다른 사람 화면에서 총에 파츠를 그려 주는 용도). 봇은 null
   info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp, team: p.team, lo: p.loadout ? p.loadout.map(l => [l.wi, l.parts]) : null }; }
   // 방 목록에 보여 줄 요약
-  summary() { return { code: this.custom.code, name: this.custom.name, mode: this.mode, humans: this.humans().length, max: this.cfg.max, state: this.state, minutes: Math.round(this.matchMs / 60000), bots: this.custom.bots }; }
+  summary() { return { code: this.custom.code, name: this.custom.name, mode: this.mode, map: this.mapId, humans: this.humans().length, max: this.cfg.max, state: this.state, minutes: Math.round(this.matchMs / 60000), bots: this.custom.bots }; }
   // 서로 적인가 (개인전: 나 빼고 전부, 팀전: 다른 팀)
   isEnemy(a, b) { return a !== b && (!this.cfg.teams || a.team !== b.team); }
   teamCount(team) { let n = 0; for (const p of this.players.values()) if (p.team === team) n++; return n; }
@@ -77,7 +81,7 @@ export class Room {
     for (const l of p.loadout) p.wstats[l.wi] = applyParts(WEAPONS[l.wi], l.parts);
     this.players.set(p.id, p);
     this.sendTo(p, {
-      t: 'welcome', id: p.id, mode: this.mode, room: this.custom ? { code: this.custom.code, name: this.custom.name, minutes: Math.round(this.matchMs / 60000) } : null, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
+      t: 'welcome', id: p.id, mode: this.mode, map: this.mapId, ...this.rules.snapshot(), room: this.custom ? { code: this.custom.code, name: this.custom.name, minutes: Math.round(this.matchMs / 60000) } : null, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
       players: [...this.players.values()].map(q => this.info(q)), lan: lanAddresses(), port: PORT,
     });
     this.broadcast({ t: 'pj', player: this.info(p) }, p);
@@ -134,7 +138,7 @@ export class Room {
   // ───────── 스폰 ─────────
   // 살아있는 다른 플레이어와 충분히 떨어진 지점 중에서 무작위. 직전에 태어난 곳은 피한다.
   pickSpawn(p) {
-    const spawns = this.cfg.teams ? this.map.spawns.team[p.team] : this.map.spawns.ffa; // 팀전은 자기 진영에서만
+    const spawns = this.cfg.teams && this.map.spawns.team ? this.map.spawns.team[p.team] : this.map.spawns.ffa; // 팀전은 자기 진영에서만
     const others = [...this.players.values()].filter(o => this.isEnemy(p, o) && o.alive && o.pos);
     const dist = s => (others.length ? Math.min(...others.map(o => Math.hypot(s[0] - o.pos[0], s[1] - o.pos[2]))) : Infinity);
     const fresh = spawns.filter(s => s !== p.lastSpawn);
@@ -164,9 +168,8 @@ export class Room {
     if (victim.hp > 0) return;
 
     victim.alive = false; victim.deaths++; attacker.kills++;
-    if (this.cfg.teams) this.teamScores[attacker.team]++;
+    const reached = this.rules.onKill(attacker, victim); // 점수 반영 (모드 규칙)
     this.broadcast({ t: 'kill', killer: attacker.id, victim: victim.id, w: wi, head, sc: this.scoreList(), ts: this.teamScores });
-    const reached = this.cfg.teams ? this.teamScores[attacker.team] >= this.goal : attacker.kills >= this.goal;
     if (reached) { this.endMatch(); return; }
     victim.diedAt = Date.now();
     // 봇은 자동으로 부활한다. 사람은 자동 부활이 없고, 입력을 하면 부활을 요청한다 (onRespawn).
@@ -218,7 +221,8 @@ export class Room {
     this.endsAt = Date.now() + this.matchMs;
     for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.alive = false; }
     this.teamScores = [0, 0];
-    this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: this.matchMs, players: [...this.players.values()].map(p => this.info(p)) });
+    this.rules.reset();
+    this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: this.matchMs, ...this.rules.snapshot(), players: [...this.players.values()].map(p => this.info(p)) });
     for (const p of this.players.values()) this.spawn(p);
   }
 
@@ -235,6 +239,8 @@ export class Room {
         this.broadcast({ t: 's', id: p.id, p: [r2(p.pos[0]), 0, r2(p.pos[2])], y: +p.bot.yaw.toFixed(3), x: +p.bot.pitch.toFixed(3), c: 0, w: p.bot.weapon });
       }
     }
+    if (this.state !== 'playing') return;
+    if (this.rules.tick(dt)) { this.endMatch(); return; } // 모드 규칙 (예: 점령전 거점 점수)
 
     // 체력 자동 회복 (5초간 피해 없으면)
     this.regenAcc += TICK_MS;

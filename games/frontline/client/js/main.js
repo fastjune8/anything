@@ -8,6 +8,7 @@ import { updateViewmodel } from './viewmodel.js';
 import { updateMovement } from './player.js';
 import { updateWeapon, startReload, switchTo } from './weapon.js';
 import { updateHud } from './hud.js';
+import { updateObjective } from './objective.js';
 import { updateMinimap, lastStats as minimapStats } from './minimap.js';
 import { sendState } from './net.js';
 import { isActive } from './input.js';
@@ -54,6 +55,7 @@ function frame(now) {
   updateRemotes(dt);
   updateTracers(dt);
   updateParts(dt);
+  updateObjective(dt); // 점령전 거점 (방에 없으면 숨긴다)
   if (game.joined) { updateHud(dt); updateMinimap(); }
 
   renderer.clear();

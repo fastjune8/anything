@@ -58,6 +58,17 @@ export class Bot {
     return true;
   }
 
+  // 목표 지점으로 가고, 도착하면 그 안에서 자리를 조금씩 옮기며 머문다 (가만히 서 있으면 쉬운 표적이 된다)
+  holdObjective(dt, a) {
+    const inside = Math.hypot(this.x - a.x, this.z - a.z) <= a.r;
+    if (this.followPath(dt, inside ? SPEED * 0.5 : SPEED)) return;
+    this.holdT = (this.holdT || 0) - dt;
+    if (inside && this.holdT > 0) return;
+    this.holdT = 0.6 + Math.random() * 1.8;
+    const g = this.nav.pointNear(a.x, a.z, a.r * 0.75);
+    if (!g || !this.setGoal(g[0], g[1])) { const r = this.nav.randomReachablePoint(); this.setGoal(r[0], r[1]); }
+  }
+
   canSee(pt) {
     const dx = pt[0] - this.x, dy = pt[1] - EYE, dz = pt[2] - this.z;
     const dist = Math.hypot(dx, dy, dz) || 1;
@@ -120,7 +131,9 @@ export class Bot {
       if (!this.path || this.repath <= 0) { this.setGoal(this.lastKnown.x, this.lastKnown.z); this.repath = 1.2; }
       if (!this.followPath(dt, SPEED)) { this.lastKnown = null; moving = false; }
     } else {
-      if (!this.followPath(dt, SPEED * 0.85)) {
+      const goal = this.room.rules.objective(p); // 모드 목표 (점령전: 거점). 없으면 돌아다닌다
+      if (goal) this.holdObjective(dt, goal);
+      else if (!this.followPath(dt, SPEED * 0.85)) {
         const g = this.nav.randomReachablePoint();
         this.setGoal(g[0], g[1]);
       }

@@ -4,9 +4,10 @@
 import { getMap } from '/shared/maps/index.js';
 import { currentMap } from './scene.js';
 import { remotes } from './remotes.js';
-import { me, isAlly } from './state.js';
+import { me, game, isAlly } from './state.js';
 import { $ } from './util.js';
 import { inMini, enemyVisible, toMini } from './minimath.js';
+import { currentZone, sideOfTeam, CSS } from './objective.js';
 
 const canvas = $('minimap');
 const ctx = canvas.getContext('2d');
@@ -46,6 +47,20 @@ export function updateMinimap() {
   ctx.translate(R, R); ctx.rotate(me.yaw); ctx.scale(K, K); ctx.translate(-me.pos.x, -me.pos.z);
   ctx.drawImage(bg, -half, -half, half * 2, half * 2);
   ctx.restore();
+
+  // 점령전 거점: 주인 팀 색 원 + 글자 (가장자리 밖이면 가장자리에 붙여 방향만)
+  const zn = currentZone();
+  if (zn) {
+    const s = game.zone || { o: -1, c: 0 };
+    const color = s.c ? CSS.none : CSS[sideOfTeam(s.o)];
+    let p = toMini(me.pos.x, me.pos.z, me.yaw, zn.x, zn.z, K);
+    const d = Math.hypot(p.x, p.y), lim = R - 12;
+    if (d > lim) p = { x: p.x / d * lim, y: p.y / d * lim };
+    ctx.beginPath(); ctx.arc(R + p.x, R + p.y, Math.max(7, zn.r * K), 0, Math.PI * 2);
+    ctx.fillStyle = color + '33'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+    ctx.fillStyle = color; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(zn.id, R + p.x, R + p.y);
+  }
 
   // 다른 플레이어
   lastStats.allies = 0; lastStats.enemies = 0;

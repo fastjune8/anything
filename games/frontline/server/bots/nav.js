@@ -8,7 +8,7 @@ export function navFor(mapId) {
   return cache.get(mapId);
 }
 
-// 반환: { COLLIDERS, isBlocked(x,z), findPath(sx,sz,tx,tz), randomReachablePoint() }
+// 반환: { COLLIDERS, isBlocked(x,z), findPath(sx,sz,tx,tz), randomReachablePoint(), pointNear(x,z,r) }
 export function createNav(map) {
   const COLLIDERS = map.layout.colliders;
   const half = map.half;
@@ -173,5 +173,15 @@ export function createNav(map) {
     return map.spawns.ffa[0];
   }
 
-  return { COLLIDERS, isBlocked, findPath, randomReachablePoint };
+  // (x, z) 에서 반지름 r 안의, 걸어서 갈 수 있는 무작위 지점 (점령전 거점 등). 못 찾으면 null
+  function pointNear(x, z, r) {
+    for (let k = 0; k < 60; k++) {
+      const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * r;
+      const px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, i = cellOf(pz) * N + cellOf(px);
+      if (reach[i] && !blocked[i]) return [centerOf(cellOf(px)), centerOf(cellOf(pz))];
+    }
+    return null;
+  }
+
+  return { COLLIDERS, isBlocked, findPath, randomReachablePoint, pointNear };
 }

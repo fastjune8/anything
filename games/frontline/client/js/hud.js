@@ -45,9 +45,9 @@ const byRank = (a, b) => b.k - a.k || a.d - b.d;
 function updateScoreboard() {
   const left = Math.max(0, game.matchEndsAt - performance.now());
   setText($('timer'), game.matchState === 'ended' ? '종료' : `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`);
-  // 가운데 위: 개인전은 목표 킬, 팀전은 팀 점수
-  const ts = game.teamScores, mt = me.team === 1 ? 1 : 0;
-  setText($('goal'), MODE_CFG.teams ? `아군 ${ts[mt]} : ${ts[1 - mt]} 적군 · ${game.goalKills}킬 선승` : `${game.goalKills}킬 선승`);
+  // 가운데 위: 개인전은 목표 킬, 팀전은 팀 점수 (점령전은 거점 점수)
+  const ts = game.teamScores, mt = me.team === 1 ? 1 : 0, unit = MODE_CFG.rules === 'zone' ? '점' : '킬';
+  setText($('goal'), MODE_CFG.teams ? `아군 ${ts[mt]} : ${ts[1 - mt]} 적군 · ${game.goalKills}${unit} 선승` : `${game.goalKills}킬 선승`);
   const list = [...roster.values()].sort(byRank);
   const rows = list.slice(0, 5);
   const mine = roster.get(me.id);

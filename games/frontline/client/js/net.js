@@ -53,7 +53,8 @@ function onMessage(m) {
   switch (m.t) {
     case 'welcome': {
       game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0]; game.room = m.room || null;
-      setMode(m.mode); loadMap(MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이)
+      setMode(m.mode); loadMap(m.map || MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이). 친선전은 맵을 따로 고를 수 있다
+      game.zone = m.zone || null;
       clearRemotes(); roster.clear(); clearChat();
       setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
       setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
@@ -75,7 +76,7 @@ function onMessage(m) {
       break;
     }
     case 'start':
-      game.matchState = 'playing'; game.goalKills = m.goal; game.matchEndsAt = performance.now() + m.left; game.teamScores = m.ts || [0, 0];
+      game.matchState = 'playing'; game.goalKills = m.goal; game.matchEndsAt = performance.now() + m.left; game.teamScores = m.ts || [0, 0]; game.zone = m.zone || null;
       roster.clear();
       for (const p of m.players) { rosterSet(p); if (p.id !== me.id) addRemote(p); }
       feed('<span class="w">새 경기 시작</span>');
@@ -144,6 +145,15 @@ function onMessage(m) {
         const r = remotes.get(m.victim);
         if (r) { r.alive = false; r.hp = 0; }
       }
+      break;
+    }
+    case 'zone': // 점령전 거점 상태 (바뀔 때만 온다)
+      game.zone = { o: m.o, ct: m.ct, p: m.p, c: m.c, n: m.n }; if (m.ts) game.teamScores = m.ts;
+      break;
+    case 'zcap': {
+      const ours = m.team === me.team;
+      feed(`<span class="${ours ? 'a' : 'e'}">${ours ? '아군이 거점을 점령했습니다' : '적이 거점을 점령했습니다'}</span>`);
+      if (ours) sfx.kill();
       break;
     }
     case 'end':

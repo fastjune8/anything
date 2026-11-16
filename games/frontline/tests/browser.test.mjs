@@ -23,7 +23,7 @@ async function openPage(env, query = '') {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto(`http://localhost:${srv.port}/?auto=Tester&nolock${query}`);
+  await page.goto(`http://localhost:${srv.port}/?auto=Tester&nolock${query.includes('mode=') ? query : '&mode=ffa' + query}`); // 모드를 안 주면 개인전
   await page.waitForFunction(() => window.__g && window.__g.me.id >= 0, null, { timeout: 15000 });
   return { srv, page, errors };
 }
@@ -256,7 +256,7 @@ try {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-    await page.goto(`http://localhost:${srv.port}/?nolock`);
+    await page.goto(`http://localhost:${srv.port}/?nolock&mode=ffa`); // 확인용 클라이언트(개인전)와 같은 방에 들어가도록
     await page.waitForFunction(() => window.__g, null, { timeout: 15000 });
     check((await page.textContent('#loadoutSum')).includes('M4A1') && (await page.textContent('#loadoutSum')).includes('M9'), '로비에 지금 출전 무기(M4A1, M9)가 보인다');
 
@@ -308,6 +308,29 @@ try {
     check(!!shot && shot.q === 1 && shot.w === 1, '소음기를 단 총의 사격은 다른 사람에게 조용한 사격(q)으로 전달된다', JSON.stringify(shot));
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     peer.ws.close();
+    await page.close();
+  }
+
+  // ───────── 점령전 ─────────
+  console.log('\n[점령전]  (거점 표시와 점령 게이지)');
+  {
+    const { page, errors } = await openPage({ MATCH_SECONDS: '120', GOAL: '999', BOT_FILL: '0' }, '&mode=zone');
+    await page.waitForFunction(() => window.__g.me.alive, null, { timeout: 8000 });
+    await sleep(800);
+    const out = await page.evaluate(() => ({
+      map: window.__g.map, box: getComputedStyle(document.getElementById('zonebox')).display, mark: getComputedStyle(document.getElementById('zmark')).display,
+      state: document.getElementById('zoneState').textContent, goal: document.getElementById('goal').textContent,
+    }));
+    check(out.map === 'warehouse' && out.box !== 'none', '점령전에 들어가면 거점 상태가 화면 위에 보인다', JSON.stringify(out));
+    check(out.mark !== 'none' && out.state.includes('중립'), '거점 밖에서는 거점 방향 표식이 보이고, 처음엔 중립', JSON.stringify(out));
+    check(out.goal.includes('점 선승'), '목표가 킬이 아니라 점수로 표시된다', out.goal);
+    await page.evaluate(() => { window.__g.me.pos.set(4, 0, 1); });
+    await page.waitForFunction(() => document.getElementById('zoneState').textContent.includes('점령 중'), null, { timeout: 8000 });
+    const inside = await page.evaluate(() => ({ cls: document.getElementById('zonebox').className, mark: getComputedStyle(document.getElementById('zmark')).display, z: window.__g.game.zone }));
+    check(inside.cls.includes('inside') && inside.mark === 'none' && inside.z.ct >= 0, '거점 안에 들어가면 점령 게이지가 차고, 방향 표식은 숨는다', JSON.stringify(inside));
+    await page.waitForFunction(() => document.getElementById('zoneState').textContent.includes('아군 거점'), null, { timeout: 12000 });
+    check(true, '다 차면 아군 거점이 된다');
+    check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     await page.close();
   }
 
@@ -374,7 +397,7 @@ try {
     await lobby.goto(`http://localhost:${srv.port}/?mode=ffa`);
     await lobby.waitForSelector('#modes button');
     const cards = await lobby.evaluate(() => [...document.querySelectorAll('#modes button')].map(b => b.dataset.mode + (b.classList.contains('on') ? '*' : '')));
-    check(String(cards) === 'ffa*,tdm', '로비에 모드 카드 2개가 보이고 현재 모드가 선택돼 있다', String(cards));
+    check(String(cards) === 'zone,ffa*,tdm', '로비에 모드 카드 3개(점령전이 맨 앞)가 보이고 현재 모드가 선택돼 있다', String(cards));
 
     // ── 새로고침 없이 모드/맵 전환 ──
     console.log('\n[새로고침 없는 모드 전환]');

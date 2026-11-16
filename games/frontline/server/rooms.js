@@ -2,6 +2,7 @@
 //  - 빠른 시작: 고른 모드에서 빈자리가 있는 방을 찾거나 새로 만든다
 //  - 친선전: 사용자가 만드는 방. 코드(4자)로 찾고, 공개 방은 목록에 보인다. 빠른 시작과는 섞이지 않는다.
 import { MODES, DEFAULT_MODE } from '../shared/modes.js';
+import { MAP_IDS } from '../shared/maps/index.js';
 import { Room } from './room.js';
 import { sanitizeChat } from './chat.js';
 import { MATCH_MS } from './config.js';
@@ -56,7 +57,8 @@ export function resolveRoom(m, playerName) {
     const name = (sanitizeChat(c.name) || '').slice(0, 20) || `${playerName}의 방`;
     const minutes = MINUTES.includes(c.minutes) ? c.minutes : 5;
     const matchMs = process.env.MATCH_SECONDS ? MATCH_MS : minutes * 60000; // 테스트에서 시간 재정의 허용
-    return { room: newRoom(mode, { code: makeCode(), name, isPrivate: !!c.private, bots: !!c.bots, matchMs }) };
+    const map = typeof c.map === 'string' && MAP_IDS.includes(c.map) ? c.map : null; // 맵을 고를 수 있다 (없으면 모드 기본 맵)
+    return { room: newRoom(mode, { code: makeCode(), name, isPrivate: !!c.private, bots: !!c.bots, matchMs, map }) };
   }
 
   return { room: findRoom(mode) };

@@ -45,7 +45,7 @@ export const inp = {
 export const adsInput = () => inp.adsHeld || inp.keys.has('KeyT'); // 우클릭 또는 T키
 
 // ───── 경기 ─────
-export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20, invUntil: 0, teamScores: [0, 0], room: null }; // room: 친선전이면 { code, name, minutes } // invUntil: 내 스폰 무적이 끝나는 시각
+export const game = { joined: false, matchState: 'idle', respawnAt: 0, endAt: 0, matchEndsAt: 0, goalKills: 20, invUntil: 0, teamScores: [0, 0], room: null, zone: null }; // zone: 점령전 거점 상태 { o: 주인 팀, ct: 점령 중인 팀, p: 게이지 0~1, c: 교전 중, n: [팀별 인원] } // room: 친선전이면 { code, name, minutes } // invUntil: 내 스폰 무적이 끝나는 시각
 export const roster = new Map(); // id → { id, name, bot, k, d } (나 포함 방 전체)
 
 // 팀전에서 같은 팀인가 (개인전은 항상 false)
