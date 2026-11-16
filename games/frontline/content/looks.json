@@ -1,0 +1,50 @@
+[
+  {
+    "id": "sunlit",
+    "name": "햇빛 (밝은 근미래)",
+    "exposure": 0.66,
+    "sun": { "elev": 42, "azim": 138, "color": "#ffe1b4", "intensity": 3.4 },
+    "sky": { "turbidity": 3.2, "rayleigh": 1.4, "mie": 0.003, "mieG": 0.8 },
+    "fill": { "sky": "#9cc3ea", "ground": "#7d6a52", "intensity": 0.85 },
+    "fog": { "color": "#c3d3e2", "density": 0.003 },
+    "env": 0.7,
+    "hills": "#71877f",
+    "leaves": ["#5f8a3a", "#4f7a32", "#6f9a44"],
+    "materials": {
+      "ground": { "style": "ground", "base": "#a88f6a", "accent": "#94915e", "tile": 14, "rough": 1, "bump": 0.4 },
+      "concrete": { "style": "panel", "base": "#c9c2b2", "line": "#8e877a", "cells": 2, "grime": 0.3, "tile": 4, "rough": 0.85, "bump": 0.3 },
+      "concreteDark": { "style": "panel", "base": "#55606b", "line": "#3a424b", "cells": 2, "grime": 0.2, "trim": "#e8a33a", "tile": 4, "rough": 0.8, "bump": 0.3 },
+      "brick": { "style": "blocks", "base": "#b3664a", "line": "#7a4330", "rows": 4, "cols": 2, "tile": 2, "rough": 0.85, "bump": 0.4 },
+      "container": { "style": "corrugated", "base": "#ffffff", "tile": 2.44, "rough": 0.5, "metal": 0.45, "bump": 0.6 },
+      "crate": { "style": "crate", "base": "#3f6f73", "line": "#e8a33a", "tile": 0, "rough": 0.7, "metal": 0.2, "bump": 0.3 },
+      "wood": { "style": "planks", "base": "#9a7650", "tile": 2, "rough": 0.85, "bump": 0.3 },
+      "sandbag": { "style": "classic", "tile": 1, "rough": 1, "bump": 0.9 },
+      "metal": { "style": "plate", "base": "#6f7f8c", "line": "#4a5560", "tile": 2, "rough": 0.45, "metal": 0.6, "bump": 0.25 },
+      "barrel": { "style": "stripe", "base": "#ffffff", "accent": "#2b2f36", "tile": 0, "rough": 0.45, "metal": 0.5, "bump": 0.2 }
+    }
+  },
+  {
+    "id": "classic",
+    "name": "예전 (사실적인 군사물)",
+    "exposure": 0.62,
+    "sun": { "elev": 34, "azim": 138, "color": "#fff0d8", "intensity": 3.2 },
+    "sky": { "turbidity": 6, "rayleigh": 1.6, "mie": 0.006, "mieG": 0.82 },
+    "fill": { "sky": "#bfd4ea", "ground": "#5a5140", "intensity": 0.55 },
+    "fog": { "color": "#b4bcc2", "density": 0.0042 },
+    "env": 0.55,
+    "hills": "#4d5a45",
+    "leaves": ["#35472a", "#2e4025", "#40522f"],
+    "materials": {
+      "ground": { "style": "classic", "tile": 14, "rough": 1, "bump": 0.6 },
+      "concrete": { "style": "classic", "tile": 4, "rough": 0.92, "bump": 0.25 },
+      "concreteDark": { "style": "classic", "tile": 4, "rough": 0.95, "bump": 0.25 },
+      "brick": { "style": "classic", "tile": 1.6, "rough": 0.9, "bump": 0.5 },
+      "container": { "style": "classic", "tile": 2.44, "rough": 0.55, "metal": 0.55, "bump": 0.6 },
+      "crate": { "style": "classic", "tile": 0, "rough": 0.85, "bump": 0.3 },
+      "wood": { "style": "classic", "tile": 2, "rough": 0.88, "bump": 0.3 },
+      "sandbag": { "style": "classic", "tile": 1, "rough": 1, "bump": 0.9 },
+      "metal": { "style": "classic", "tile": 2, "rough": 0.5, "metal": 0.7, "bump": 0.2 },
+      "barrel": { "style": "classic", "tile": 0, "rough": 0.5, "metal": 0.6, "bump": 0.3 }
+    }
+  }
+]

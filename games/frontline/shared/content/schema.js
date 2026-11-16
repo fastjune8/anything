@@ -83,6 +83,7 @@ export const MAP_SCHEMA = obj('맵', {
     team: list('팀 스폰 [0팀, 1팀]', list('팀', point('지점'), { minLen: 1 }), opt({ minLen: 2, maxLen: 2 })),
   }),
   zones: list('거점', ZONE, opt()),
+  look: str('분위기 (content/looks.json 의 id, 비우면 첫 번째)', opt()),
   objects: list('물체', obj('물체', {}), { custom: 'object' }),
 });
 
@@ -147,6 +148,37 @@ export function checkModels(list) {
   const errors = check(list, F('list', '등록된 모델 목록', { of: MODEL_SCHEMA }));
   const ids = (Array.isArray(list) ? list : []).map(m => m && m.id);
   ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`모델 id 중복: ${id}`); });
+  return errors;
+}
+
+// ───────── 분위기 (content/looks.json): 빛·하늘·안개 + 재질(맵 물체 겉모습) 묶음. 맵마다 하나를 고른다 ─────────
+export const MAT_STYLES = ['classic', 'plain', 'panel', 'blocks', 'corrugated', 'crate', 'planks', 'plate', 'stripe', 'ground'];
+export const LOOK_MATERIALS = ['ground', ...MATERIALS];
+const MAT_LOOK = obj('재질', {
+  style: oneOf('무늬', MAT_STYLES, { hint: 'classic = 예전 사실적 무늬, panel = 칠한 패널, blocks = 큰 블록, corrugated = 골판 금속, crate = 상자, planks = 판자, plate = 금속판, stripe = 띠, ground = 땅' }),
+  base: color('바탕 색', opt()), line: color('선·이음새 색', opt()), accent: color('포인트 색', opt()), trim: color('아래 띠 색 (패널)', opt()),
+  cells: int('패널 칸 수 (한 장 안에)', opt({ min: 1, max: 8 })), rows: int('블록 줄 수', opt({ min: 1, max: 16 })), cols: int('블록 칸 수', opt({ min: 1, max: 8 })),
+  grime: num('때·얼룩 (0~1)', opt({ min: 0, max: 1, step: 0.05 })),
+  tile: num('무늬 한 장 크기 (m, 0 = 면마다 한 장)', { min: 0, max: 40, step: 0.1 }),
+  rough: num('거칠기 (0 = 매끈, 1 = 거침)', { min: 0, max: 1, step: 0.01 }), metal: num('금속성', opt({ min: 0, max: 1, step: 0.01 })),
+  bump: num('요철', { min: 0, max: 2, step: 0.05 }),
+});
+export const LOOK_SCHEMA = obj('분위기', {
+  id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'),
+  exposure: num('밝기 (노출)', { min: 0.2, max: 2, step: 0.01 }),
+  sun: obj('해', { elev: num('높이 (도)', { min: 2, max: 90, step: 1 }), azim: num('방위 (도)', { min: 0, max: 360, step: 1 }), color: color('색'), intensity: num('세기', { min: 0, max: 10, step: 0.1 }) }),
+  sky: obj('하늘', { turbidity: num('뿌연 정도', { min: 0, max: 20, step: 0.1 }), rayleigh: num('푸른 정도', { min: 0, max: 4, step: 0.05 }), mie: num('햇무리 크기', { min: 0, max: 0.1, step: 0.001 }), mieG: num('햇무리 집중', { min: 0, max: 0.999, step: 0.01 }) }),
+  fill: obj('그늘 빛 (하늘·땅 반사)', { sky: color('위쪽 (그늘 색)'), ground: color('아래쪽 (땅 반사)'), intensity: num('세기', { min: 0, max: 5, step: 0.05 }) }),
+  fog: obj('안개', { color: color('색'), density: num('짙기', { min: 0, max: 0.03, step: 0.0005 }) }),
+  env: num('주변 반사 세기', { min: 0, max: 3, step: 0.05 }),
+  hills: color('먼 산 색'), leaves: list('나뭇잎 색', color('색'), { minLen: 1, maxLen: 6 }),
+  materials: dict('재질', MAT_LOOK, { keys: LOOK_MATERIALS }),
+});
+export function checkLooks(list) {
+  const errors = check(list, F('list', '분위기 목록', { of: LOOK_SCHEMA, minLen: 1 }));
+  const arr = Array.isArray(list) ? list : [];
+  arr.map(l => l && l.id).forEach((id, i, ids) => { if (ids.indexOf(id) !== i) errors.push(`분위기 id 중복: ${id}`); });
+  for (const l of arr) if (l && l.materials) for (const k of LOOK_MATERIALS) if (!l.materials[k]) errors.push(`분위기 ${l.id}: 재질 ${k} 가 없음`);
   return errors;
 }
 

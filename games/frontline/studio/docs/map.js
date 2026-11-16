@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld } from '/js/world.js';
+import { LOOKS, getLook } from '/shared/looks.js';
 import { expandObject, buildLayout, OBJECT_TYPES } from '/shared/maps/build.js';
 import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap, MATERIALS } from '/shared/content/schema.js';
 import { MODES } from '/shared/modes.js';
@@ -13,7 +14,8 @@ import { formDialog } from '../dialog.js';
 const r2 = v => Math.round(v * 100) / 100;
 const TEAM_COLOR = { '-1': 0xe9ecef, 0: 0x5aa9ff, 1: 0xff4b3a };
 const TEAM_NAME = { '-1': '개인전 스폰', 0: '0팀 스폰', 1: '1팀 스폰' };
-const MAP_FIELDS = { fields: { name: { kind: 'str', label: '이름' }, half: { kind: 'num', label: '맵 절반 크기 (m)', min: 10, max: 250, step: 1, hint: '외곽 벽은 따로 옮겨야 한다' } } };
+const MAP_FIELDS = { fields: { name: { kind: 'str', label: '이름' }, half: { kind: 'num', label: '맵 절반 크기 (m)', min: 10, max: 250, step: 1, hint: '외곽 벽은 따로 옮겨야 한다' },
+  look: { kind: 'enum', label: '분위기 (빛·재질)', options: LOOKS.map(l => l.id), optional: true, hint: LOOKS.map(l => `${l.id} = ${l.name}`).join(' · ') + ' (비우면 첫 번째)' } } };
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
 function html(tag, cls, inner) { const e = document.createElement(tag); if (cls) e.className = cls; if (inner) e.innerHTML = inner; return e; }
@@ -65,8 +67,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
 
   // ───────── 3D ─────────
   const scene = new THREE.Scene();
-  const world = buildWorld(scene, renderer);
-  scene.fog.density = 0.0015; // 위에서 내려다보므로 안개를 옅게
+  const world = buildWorld(scene, renderer, getLook(map.look), { fogScale: 0.35 }); // 위에서 내려다보므로 안개를 옅게
+  const applyLook = () => { if (world.look !== getLook(map.look)) world.setLook(getLook(map.look)); };
   const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 3000);
   const controls = new OrbitControls(camera, canvas);
   controls.disconnect(); // 이 문서가 화면에 나올 때만 연결
@@ -184,7 +186,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   function restore(text) {
     map = JSON.parse(text); snap = text;
     if (sel && !selected()) sel = null;
-    rebuildNow(); drawHelpers(); renderPanel(); ctx.changed();
+    applyLook(); rebuildNow(); drawHelpers(); renderPanel(); ctx.changed();
   }
   const undo = () => { if (undoStack.length) { redoStack.push(snap); restore(undoStack.pop()); } };
   const redo = () => { if (redoStack.length) { undoStack.push(snap); restore(redoStack.pop()); } };
@@ -729,7 +731,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     const o = selected();
     if (!o) {
       title(`맵 설정 · ${map.id}`);
-      buildForm(inspector, MAP_FIELDS, map, { ...h, onInput: () => { rebuild(); drawHelpers(); } });
+      buildForm(inspector, MAP_FIELDS, map, { ...h, onInput: () => { if (!map.look) delete map.look; applyLook(); rebuild(); drawHelpers(); } });
       const n = map.objects.length, sp = map.spawns.ffa.length, tm = (map.spawns.team || []).map(l => l.length).join(' / ') || '없음';
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: `물체 ${n}개 · 개인전 스폰 ${sp}곳 · 팀 스폰 ${tm} · 거점 ${(map.zones || []).length}개` }));
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: '물체를 클릭하면 여기서 고칠 수 있습니다.' }));
@@ -812,7 +814,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   return {
     kind: 'map', key: `map:${map.id}`, id: map.id, title: map.name && map.name !== map.id ? `${map.name} (${map.id})` : map.id, icon: '▦', is3D: true,
     overlay, tools, toolbar, inspector,
-    activate() { controls.connect(); for (const [t, fn, o] of listeners) canvas.addEventListener(t, fn, o); renderer.toneMappingExposure = 0.62; canvas.style.cursor = tool ? 'crosshair' : 'default'; },
+    activate() { controls.connect(); for (const [t, fn, o] of listeners) canvas.addEventListener(t, fn, o); renderer.toneMappingExposure = world.look.exposure; canvas.style.cursor = tool ? 'crosshair' : 'default'; },
     deactivate() { controls.disconnect(); for (const [t, fn, o] of listeners) canvas.removeEventListener(t, fn, o); held.clear(); drag = null; if (fly) endFly(); },
     resize(w, h) { camera.aspect = w / h; camera.updateProjectionMatrix(); },
     frame(dt) { moveCamera(dt); if (controls.enabled) controls.update(); renderer.render(scene, camera); },
