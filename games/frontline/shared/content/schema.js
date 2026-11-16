@@ -85,6 +85,7 @@ export const WEAPON_SCHEMA = obj('무기', {
   falloff: list('거리 감쇠 [시작 m, 끝 m, 최소 배율] (없으면 null)', num('값'), opt({ nullable: true, minLen: 3, maxLen: 3 })),
   move: num('이동 속도 배율', { min: 0.5, max: 1.5, step: 0.01 }), draw: num('꺼내는 시간 (초)', { min: 0.05, max: 3, step: 0.05 }),
   snd: obj('총소리', { f: num('주파수'), dur: num('길이'), vol: num('크기'), thump: num('저음') }),
+  model: str('모델 (등록된 총 모델 id, 없으면 코드로 만든 총)', opt({ pattern: '^[a-z0-9_]+$' })),
 });
 
 // ───────── 파츠 ─────────
@@ -100,6 +101,24 @@ export const PARTS_SCHEMA = obj('파츠 목록', {
   slots: list('자리', obj('자리', { id: str('id'), name: str('이름') })),
   parts: dict('자리별 파츠', list('파츠', PART_SCHEMA)),
 });
+
+// ───────── 등록된 에셋 ─────────
+// 스튜디오에서 검증을 통과한 것만 "데이터로 등록" 해서 게임 데이터가 참조할 수 있게 한다.
+// 지금은 모델(content/models.json). 효과 에디터가 생기면 같은 모양으로 content/effects.json 을 더한다.
+export const MODEL_SCHEMA = obj('등록된 모델', {
+  id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'),
+  kind: oneOf('종류', ['gun', 'prop'], { hint: 'gun = 총, prop = 맵 물체' }),
+  file: str('파일 (content/ 기준)', { pattern: '^(guns|props)/[a-z0-9_]+\\.glb$' }),
+  tris: int('삼각형 수', { min: 1 }), bytes: int('파일 크기 (바이트)', { min: 1 }),
+  warnings: int('등록할 때 남아 있던 확인 사항 수', { min: 0 }),
+  registered: str('등록한 날 (YYYY-MM-DD)', { pattern: '^\\d{4}-\\d{2}-\\d{2}$' }),
+});
+export function checkModels(list) {
+  const errors = check(list, F('list', '등록된 모델 목록', { of: MODEL_SCHEMA }));
+  const ids = (Array.isArray(list) ? list : []).map(m => m && m.id);
+  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`모델 id 중복: ${id}`); });
+  return errors;
+}
 
 // ───────── 모드 ─────────
 export const RULES = ['zone', 'deathmatch']; // server/modes/ 에 있는 규칙
@@ -184,10 +203,12 @@ export function checkMap(m) {
   return errors;
 }
 
-export function checkWeapons(list) {
+// modelIds: 등록된 모델 id 목록 (주면 무기의 model 이 등록된 것인지도 본다)
+export function checkWeapons(list, modelIds = null) {
   const errors = check(list, F('list', '무기 목록', { of: WEAPON_SCHEMA, minLen: 2 }));
   const ids = list.map(w => w && w.id);
   ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`무기 id 중복: ${id}`); });
+  if (modelIds) for (const w of list) if (w && w.model && !modelIds.includes(w.model)) errors.push(`무기 ${w.id}: 등록되지 않은 모델 "${w.model}" (모델 에디터에서 데이터로 등록)`);
   return errors;
 }
 

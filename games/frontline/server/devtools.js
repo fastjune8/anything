@@ -4,13 +4,15 @@
 //   PUT /api/content/<weapons|parts|modes>   데이터 파일 저장 (검사 후). 개발 서버는 이 파일이 바뀌면 다시 시작한다 (npm run dev)
 //   PUT /api/drafts/<맵 id>   저장하지 않은 맵을 시험 플레이용으로 서버 메모리에만 올린다 → { id: 'draft_<맵 id>' }
 //   GET /api/drafts/<draft id>   그 맵 데이터 (게임 화면이 받아 간다)
+//   POST /api/register/model   검증을 통과해 저장한 모델을 "데이터로 등록" (content/models.json). 무기에 연결하면 weapons.json 의 model 도 바꾼다
+//   DELETE /api/register/model/<id>   등록 해제 (그 모델을 쓰던 무기는 코드로 만든 총으로 돌아간다)
 //   GET /api/version   GitHub(origin/main) 에 내 컴퓨터보다 새 커밋이 있는지 (스튜디오 업데이트 알림)
 // 저장하면 서버 메모리의 맵도 바로 바뀐다 (새로 만드는 방부터 적용, 이미 열린 방은 그대로).
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { APP_ENV, CONTENT_DIR, ROOT } from './config.js';
-import { checkMap, checkWeapons, checkParts, checkModes, RULES } from '../shared/content/schema.js';
+import { checkMap, checkWeapons, checkParts, checkModes, checkModels, RULES } from '../shared/content/schema.js';
 import { formatContent } from '../shared/content/format.js';
 import { setMapDef, MAP_IDS } from '../shared/maps/index.js';
 import { forgetNav } from './bots/nav.js';
@@ -35,6 +37,9 @@ function readBody(req, max = MAX_BODY) { // 반환: Buffer
 // 처리했으면 true
 export function handleDevApi(req, res, url) {
   if (!DEV_TOOLS || !url.startsWith('/api/')) return false;
+  if (url === '/api/register/model' && req.method === 'POST') { registerModel(req, res); return true; }
+  const ur = url.match(/^\/api\/register\/model\/([a-z0-9_]+)$/);
+  if (ur && req.method === 'DELETE') { unregisterModel(res, ur[1]); return true; }
   if (url === '/api/version' && req.method === 'GET') { versionInfo().then(v => send(res, 200, v)); return true; }
   const g = url.match(/^\/api\/guns\/([a-z0-9_]+)$/);
   if (g && req.method === 'PUT') { saveGun(req, res, g[1]); return true; }
@@ -81,7 +86,7 @@ function saveGun(req, res, id) {
 // 데이터 파일 저장: 검사를 통과하면 content/<name>.json 에 쓴다
 const readJson = name => JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, `${name}.json`), 'utf8'));
 const DATA_CHECKS = {
-  weapons: d => checkWeapons(d),
+  weapons: d => checkWeapons(d, readJson('models').map(m => m.id)),
   parts: d => checkParts(d, readJson('weapons').map(w => w.id)),
   modes: d => checkModes(d, MAP_IDS.filter(id => !id.startsWith('draft_'))).concat((Array.isArray(d) ? d : []).filter(m => m && !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙 ${m.rules}`)),
 };
@@ -126,4 +131,42 @@ async function versionInfo() {
   const latest = Number(behind) > 0 ? await git(['log', '-1', '--format=%s (%cr)', 'origin/main']) : null;
   const dirtyStudio = await git(['status', '--porcelain', '--', 'studio', 'server', 'shared', 'client']);
   return { ok: true, behind: Number(behind), latest, localChanges: !!dirtyStudio };
+}
+
+// ───────── 데이터로 등록 (모델) ─────────
+// 모델 에디터가 검사(✕ 없음)를 통과한 모델만 보낸다. 서버는 파일이 정말 있는지·glb 인지·목록이 올바른지 다시 본다.
+const writeJson = (name, data) => fs.writeFileSync(path.join(CONTENT_DIR, `${name}.json`), formatContent(data));
+function registerModel(req, res) {
+  readBody(req).then(buf => {
+    let b;
+    try { b = JSON.parse(buf.toString('utf8')); } catch { send(res, 400, { ok: false, errors: ['JSON 이 아님'] }); return; }
+    if (!b || b.kind !== 'gun') { send(res, 400, { ok: false, errors: ['지금은 총 모델만 등록할 수 있다 (물체 모델은 준비 중)'] }); return; }
+    const file = `guns/${b.id}.glb`, full = path.join(CONTENT_DIR, file);
+    if (!/^[a-z0-9_]+$/.test(String(b.id)) || !fs.existsSync(full)) { send(res, 400, { ok: false, errors: [`content/${file} 이 없다 — 먼저 "프로젝트에 저장"`] }); return; }
+    const glb = fs.readFileSync(full);
+    if (glb.toString('ascii', 0, 4) !== 'glTF') { send(res, 400, { ok: false, errors: ['glb 파일이 아님'] }); return; }
+    const entry = { id: b.id, name: String(b.name || b.id).slice(0, 40), kind: 'gun', file, tris: Math.max(1, Math.round(b.tris) || 1), bytes: glb.length, warnings: Math.max(0, b.warnings | 0), registered: new Date().toISOString().slice(0, 10) };
+    const models = readJson('models').filter(m => m.id !== b.id).concat(entry);
+    const errors = checkModels(models);
+    if (errors.length) { send(res, 400, { ok: false, errors }); return; }
+    let linked = null;
+    if (b.weapon) { // 무기에 연결: 그 무기의 model 을 이 모델로
+      const weapons = readJson('weapons'), w = weapons.find(x => x.id === b.weapon);
+      if (!w) { send(res, 400, { ok: false, errors: [`없는 무기: ${b.weapon}`] }); return; }
+      w.model = b.id; linked = w.id;
+      writeJson('models', models); writeJson('weapons', weapons);
+    } else writeJson('models', models);
+    console.log(`[스튜디오] 데이터로 등록: 모델 ${b.id}${linked ? ` → 무기 ${linked}` : ''}`);
+    send(res, 200, { ok: true, entry, linked });
+  }).catch(() => send(res, 413, { ok: false, errors: ['데이터가 너무 큼'] }));
+}
+function unregisterModel(res, id) {
+  const models = readJson('models');
+  if (!models.some(m => m.id === id)) { send(res, 404, { ok: false, errors: ['등록되지 않은 모델'] }); return; }
+  writeJson('models', models.filter(m => m.id !== id));
+  const weapons = readJson('weapons'); let changed = false;
+  for (const w of weapons) if (w.model === id) { delete w.model; changed = true; }
+  if (changed) writeJson('weapons', weapons);
+  console.log(`[스튜디오] 등록 해제: 모델 ${id}`);
+  send(res, 200, { ok: true });
 }

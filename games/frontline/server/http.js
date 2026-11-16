@@ -51,7 +51,7 @@ export function createHttpServer() {
     if (file !== mount.dir && !file.startsWith(mount.dir + path.sep)) { res.writeHead(403).end(); return; } // 폴더 밖 접근 차단
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404).end('Not found'); return; }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': mount.cache });
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Content-Length': data.length, 'Cache-Control': mount.cache });
       res.end(data);
     });
   });

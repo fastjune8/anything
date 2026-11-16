@@ -41,7 +41,9 @@ export async function createGunDoc(ctx, id, opts = {}) {
   for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
   const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span></span><span class="grow"></span>
     <span class="grp"><span class="gl">총 id</span><input type="text" data-r="gunId" placeholder="예: vk12" size="14" title="영문 소문자·숫자·_ (content/guns/<id>.glb)">
-    <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button></span>`);
+    <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button></span>
+    <span class="sep"></span><span class="grp"><span class="pill" data-r="regState"></span>
+    <button type="button" data-r="register" title="검증을 통과해 저장한 모델을 게임 데이터로 등록 (무기에 연결)">데이터로 등록</button></span>`);
   const inspector = html('div', '', '<h2>규칙 검사</h2><div class="checks" data-r="checks"></div><h2 class="sub2">부착 지점</h2><div class="socks" data-r="socks"></div>');
   const r = n => overlay.querySelector(`[data-r="${n}"]`) || tools.querySelector(`[data-r="${n}"]`) || toolbar.querySelector(`[data-r="${n}"]`) || inspector.querySelector(`[data-r="${n}"]`);
 
@@ -206,7 +208,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     const res = await fetch(`/api/guns/${gid}`, { method: 'PUT', headers: { 'Content-Type': 'model/gltf-binary' }, body: buffer });
     const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
     if (!out.ok) { ctx.flash('저장 실패'); ctx.log(`총 모델 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); return false; }
-    savedId = gid; doc.title = gid; doc.id = gid;
+    savedId = gid; doc.title = gid; doc.id = gid; updateRegister();
     r('fname').textContent = `content/guns/${gid}.glb`;
     ctx.log(`저장: content/guns/${gid}.glb${out.isNew ? ' (새 총)' : ''} — 커밋해서 올리세요`, 'ok'); ctx.flash('저장했습니다');
     await ctx.refreshAssets(); ctx.rekey(doc, `gun:${gid}`);
@@ -214,10 +216,65 @@ export async function createGunDoc(ctx, id, opts = {}) {
   }
   r('save').addEventListener('click', () => save());
 
-  applySkin(root, palette); renderSlots(); setView('orbit', true);
+  // ───────── 데이터로 등록 ─────────
+  // 프로젝트에 저장했고 검사에 ✕ 가 없으면 등록할 수 있다. 확인 사항(!)이 남아 있으면 확인했다고 체크해야 한다.
+  const regEntry = () => ctx.registry().find(m => m.id === savedId) || null;
+  function updateRegister() {
+    const e = regEntry();
+    r('regState').textContent = e ? `등록됨${e.linkedTo ? ` · ${e.linkedTo}` : ''}` : savedId ? '등록 전' : '저장 전';
+    r('regState').className = `pill ${e ? 'good' : ''}`;
+    r('register').disabled = hasFail() || !savedId;
+    r('register').textContent = e ? '등록 정보 바꾸기' : '데이터로 등록';
+    r('register').title = !savedId ? '먼저 "프로젝트에 저장"' : hasFail() ? '검사에서 고쳐야 할 것(✕)이 있어 등록할 수 없다' : '검증을 통과한 모델을 게임 데이터로 등록 (무기에 연결)';
+  }
+  function openRegister() {
+    const e = regEntry(), warns = checks.filter(c => c.level === 'warn');
+    const tris = scan.meshes.reduce((n, m) => n + (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3, 0);
+    const linked = ctx.weapons().find(w => w.model === savedId);
+    const m = html('div', 'modal', `<div class="card" style="width:min(460px,92vw)"><header><b>데이터로 등록 — ${savedId}</b></header>
+      <div style="padding:14px 18px;display:grid;gap:12px">
+        <p class="note" style="margin:0">등록하면 <code>content/models.json</code> 에 올라가고, 게임 데이터(무기)가 이 모델을 쓸 수 있게 됩니다.</p>
+        <label class="kv" style="grid-template-columns:90px 1fr">이름<input type="text" data-f="name"></label>
+        <label class="kv" style="grid-template-columns:90px 1fr">종류<select data-f="kind"><option value="gun">총</option><option value="prop" disabled>물체 (준비 중)</option></select></label>
+        <label class="kv" style="grid-template-columns:90px 1fr">쓸 무기<select data-f="weapon"><option value="">(지금은 연결 안 함)</option></select></label>
+        <div data-f="warn" ${warns.length ? '' : 'hidden'}><p class="note" style="color:var(--accent);margin:0 0 4px">확인 사항 ${warns.length}개가 남아 있습니다:</p>
+          <ul class="note" style="margin:0 0 6px;padding-left:18px">${warns.map(w => `<li></li>`).join('')}</ul>
+          <label class="tog"><input type="checkbox" data-f="ok"> 확인했고, 이대로 등록합니다</label></div>
+      </div>
+      <footer>${e ? '<button type="button" class="danger" data-f="unreg">등록 해제</button>' : ''}<span class="grow"></span><button type="button" data-f="cancel">취소</button><button type="button" class="primary" data-f="go">${e ? '바꾸기' : '등록'}</button></footer></div>`);
+    const f = n => m.querySelector(`[data-f="${n}"]`);
+    f('name').value = e ? e.name : savedId;
+    for (const w of ctx.weapons()) f('weapon').appendChild(new Option(`${w.name} (${w.cls})${w.model && w.model !== savedId ? ' · 다른 모델 사용 중' : ''}`, w.id));
+    f('weapon').value = linked ? linked.id : '';
+    m.querySelectorAll('[data-f="warn"] li').forEach((li, i) => { li.textContent = warns[i].text; });
+    const gate = () => { f('go').disabled = !!warns.length && !f('ok').checked; };
+    if (warns.length) f('ok').addEventListener('change', gate);
+    gate();
+    const close = () => m.remove();
+    f('cancel').addEventListener('click', close);
+    m.addEventListener('click', ev => { if (ev.target === m) close(); });
+    f('go').addEventListener('click', async () => {
+      const res = await fetch('/api/register/model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedId, name: f('name').value.trim() || savedId, kind: 'gun', weapon: f('weapon').value || null, tris: Math.round(tris), warnings: warns.length }) });
+      const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+      if (!out.ok) { ctx.log(`등록 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('등록 실패 — 콘솔을 보세요'); return; }
+      close();
+      ctx.log(`데이터로 등록: ${savedId}${out.linked ? ` → 무기 ${out.linked} 의 모델` : ''} (content/models.json)`, 'ok'); ctx.flash('데이터로 등록했습니다');
+      await ctx.refreshAssets(); updateRegister();
+    });
+    if (f('unreg')) f('unreg').addEventListener('click', async () => {
+      if (!confirm(`${savedId} 의 등록을 해제할까요? 이 모델을 쓰던 무기는 코드로 만든 총으로 돌아갑니다.`)) return;
+      const out = await (await fetch(`/api/register/model/${savedId}`, { method: 'DELETE' })).json().catch(() => ({ ok: false }));
+      if (!out.ok) { ctx.log('등록 해제 실패', 'error'); return; }
+      close(); ctx.log(`등록 해제: ${savedId}`, 'ok'); await ctx.refreshAssets(); updateRegister();
+    });
+    document.body.appendChild(m); f('name').focus();
+  }
+  r('register').addEventListener('click', openRegister);
+
+  applySkin(root, palette); renderSlots(); setView('orbit', true); updateRegister();
 
   return Object.assign(doc, {
-    activate() { controls.connect(); renderer.toneMappingExposure = 0.9; canvas.style.cursor = 'default'; },
+    activate() { controls.connect(); renderer.toneMappingExposure = 0.9; canvas.style.cursor = 'default'; updateRegister(); },
     deactivate() { controls.disconnect(); },
     resize(w, h) { camera.aspect = w / h; camera.updateProjectionMatrix(); },
     frame() {
@@ -227,6 +284,6 @@ export async function createGunDoc(ctx, id, opts = {}) {
     isDirty: () => !savedId && id !== 'sample', // 파일로 연 모델은 프로젝트에 저장하기 전까지 "저장 안 됨"
     save,
     dispose() { controls.dispose(); scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); },
-    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera },
+    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera, openRegister },
   });
 }

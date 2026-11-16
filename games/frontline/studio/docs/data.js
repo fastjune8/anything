@@ -179,6 +179,15 @@ export async function createDataDoc(ctx, id) {
     if (id === 'weapons') ctx.setWeapons(data);
     return true;
   }
+  // 파일이 다른 곳에서 바뀌었을 때 (예: 모델을 무기에 연결). 고친 게 있으면 덮어쓰지 않고 알린다
+  async function reload() {
+    const text = await fetch(`/content/${info.file}`, { cache: 'no-store' }).then(x => (x.ok ? x.text() : null)).catch(() => null);
+    if (!text || JSON.stringify(JSON.parse(text)) === saved) return;
+    if (isDirty()) { ctx.log(`${info.file} 이 다른 곳에서 바뀌었습니다. 지금 고친 것을 저장하면 그 변경을 덮어씁니다 — 저장 전에 확인하세요.`, 'warn'); return; }
+    data = JSON.parse(text); saved = snap = JSON.stringify(data); undoStack.length = redoStack.length = 0;
+    if (id === 'weapons') ctx.setWeapons(data);
+    render(); renderInspector(); ctx.log(`다시 읽음: content/${info.file}`);
+  }
   r('undo').addEventListener('click', undo);
   r('redo').addEventListener('click', redo);
   r('save').addEventListener('click', () => save());
@@ -188,7 +197,7 @@ export async function createDataDoc(ctx, id) {
   return {
     kind: 'data', id, title: info.title, icon: '≡', is3D: false, overlay, tools, toolbar, inspector,
     activate() {}, deactivate() {}, resize() {}, frame() {},
-    isDirty, save,
+    isDirty, save, reload,
     // 홈에서 고른 항목으로 바로 간다 ({ select: id, slot })
     focus({ select, slot: s }) {
       if (id === 'parts' && s) slot = s;

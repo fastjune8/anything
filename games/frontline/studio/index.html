@@ -28,10 +28,12 @@
   <!-- 홈: 모든 데이터를 한눈에 -->
   <section id="home">
     <nav id="homeNav"></nav>
+    <div class="split" data-var="--home-l" data-side="left"></div>
     <section id="homeList">
       <header id="homeHead"></header>
       <div id="homeCards"></div>
     </section>
+    <div class="split" data-var="--home-r" data-side="right"></div>
     <aside id="homeDetail"></aside>
   </section>
 
@@ -40,6 +42,7 @@
     <header id="edHead"><span id="edKind"></span><b id="edTitle"></b><span class="sep"></span><div id="edBar"></div></header>
     <div id="edBody">
       <aside id="toolbox"></aside>
+      <div class="split" data-var="--ed-l" data-side="left"></div>
       <section id="stage">
         <canvas id="view"></canvas>
         <div id="overlays"></div>
@@ -48,6 +51,7 @@
           <div id="playBar"><b>▶ 시험 플레이 중</b><span>⌘P 또는 ■ 로 멈춤 · 마우스를 풀려면 Esc</span><button id="playStop" type="button">■ 멈춤</button></div>
         </div>
       </section>
+      <div class="split" data-var="--ed-r" data-side="right"></div>
       <aside id="inspector"></aside>
     </div>
   </section>
@@ -56,6 +60,7 @@
 </main>
 
 <!-- 아래: 상태 막대 (마지막 기록) + 콘솔 -->
+<div class="hsplit" id="conSplit" data-var="--con-h" data-side="bottom" data-target="console" hidden></div>
 <section id="console" class="closed">
   <div id="conLog"></div>
 </section>

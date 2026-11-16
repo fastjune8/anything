@@ -61,8 +61,8 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 #main { flex: 1; position: relative; min-height: 0; }
 
 /* ───────── 홈 ───────── */
-#home { position: absolute; inset: 0; display: grid; grid-template-columns: 210px 1fr 340px; }
-#homeNav { background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px; overflow-y: auto; }
+#home { position: absolute; inset: 0; display: grid; grid-template-columns: var(--home-l, 210px) 5px 1fr 5px var(--home-r, 340px); }
+#homeNav { background: var(--panel); padding: 14px 10px; overflow-y: auto; }
 #homeNav h4 { margin: 14px 8px 6px; font-size: 11px; color: var(--faint); letter-spacing: .06em; font-weight: 600; }
 #homeNav h4:first-child { margin-top: 0; }
 .cat { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r); background: none; text-align: left; color: var(--dim); }
@@ -84,7 +84,8 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 .acard .thumb canvas { width: 100%; height: 100%; object-fit: contain; }
 .acard .body { padding: 9px 12px 11px; }
 .acard .t { display: flex; align-items: center; gap: 6px; font-weight: 600; }
-.acard .t .pill { margin-left: auto; }
+.acard .t .pill:first-of-type { margin-left: auto; }
+.acard .t { flex-wrap: wrap; }
 .acard .s { color: var(--dim); font-size: 12px; margin-top: 2px; }
 .acard.soon { cursor: default; opacity: .75; }
 .acard.compact .body { padding: 12px 14px; }
@@ -93,7 +94,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 .acard.new .thumb { font-size: 28px; color: var(--accent); background: none; border-bottom: 1px dashed var(--line2); }
 .acard .bars { display: grid; grid-template-columns: 44px 1fr; gap: 3px 8px; font-size: 11px; color: var(--faint); margin-top: 6px; align-items: center; }
 .acard .bars i { display: block; height: 5px; border-radius: 3px; background: var(--accent); opacity: .7; }
-#homeDetail { background: var(--panel); border-left: 1px solid var(--line); padding: 18px; overflow-y: auto; }
+#homeDetail { background: var(--panel); padding: 18px; overflow-y: auto; }
 #homeDetail h2 { margin: 0 0 2px; font-size: 17px; }
 #homeDetail .sub { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
 #homeDetail .big { width: 100%; height: 190px; border-radius: var(--r); background: #0b0e10; margin-bottom: 14px; display: grid; place-items: center; color: var(--faint); font-size: 44px; overflow: hidden; }
@@ -119,9 +120,9 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 .grp > .gl { font-size: 11px; color: var(--faint); margin: 0 2px 0 4px; }
 .status { color: var(--dim); font-size: 12px; white-space: nowrap; }
 .status.dirty { color: var(--accent); }
-#edBody { flex: 1; display: grid; grid-template-columns: 220px 1fr 330px; min-height: 0; }
-#toolbox { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px; }
-#inspector { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px; }
+#edBody { flex: 1; display: grid; grid-template-columns: var(--ed-l, 220px) 5px 1fr 5px var(--ed-r, 330px); min-height: 0; }
+#toolbox { background: var(--panel); overflow-y: auto; padding: 12px; }
+#inspector { background: var(--panel); overflow-y: auto; padding: 14px; }
 #stage { position: relative; min-width: 0; overflow: hidden; background: #0b0e10; }
 #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #overlays { position: absolute; inset: 0; pointer-events: none; }
@@ -219,7 +220,7 @@ table.cmp .bar { display: inline-block; height: 6px; background: var(--accent); 
 .pc { font-size: 12px; } .pc.p { color: var(--good); } .pc.c { color: var(--danger); }
 
 /* ───────── 아래: 콘솔 · 상태 막대 ───────── */
-#console { height: 150px; border-top: 1px solid var(--line); background: var(--panel); }
+#console { height: var(--con-h, 150px); background: var(--panel); }
 #console.closed { display: none; }
 #conLog { height: 100%; overflow-y: auto; padding: 6px 12px; font: 12px/1.55 ui-monospace, Menlo, monospace; }
 #conLog div { white-space: pre-wrap; }
@@ -256,3 +257,13 @@ table.cmp .bar { display: inline-block; height: 6px; background: var(--accent); 
 #tourTip p { margin: 0 0 12px; line-height: 1.6; }
 #tourTip footer { display: flex; align-items: center; gap: 6px; }
 #tourTip .n { color: var(--faint); font-size: 12px; margin-right: auto; }
+
+/* ───────── 창 크기 조절 경계선 ───────── */
+.split { background: var(--line); cursor: col-resize; position: relative; z-index: 2; transition: background .1s; }
+.split::after { content: ''; position: absolute; inset: 0 -4px; } /* 잡기 쉽게 실제보다 넓게 */
+.hsplit { height: 5px; background: var(--line); cursor: row-resize; position: relative; z-index: 2; transition: background .1s; }
+.hsplit::after { content: ''; position: absolute; inset: -4px 0; }
+.split:hover, .hsplit:hover, .split.on, .hsplit.on { background: var(--accent); }
+body.resizing { user-select: none; }
+body.resizing iframe, body.resizing canvas { pointer-events: none; }
+body.resizing-h { cursor: col-resize; } body.resizing-v { cursor: row-resize; }

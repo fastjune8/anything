@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
@@ -139,7 +139,8 @@ try {
   await page.waitForFunction(() => !window.__ed.isDirty(), null, { timeout: 8000 });
   const saved = JSON.parse(fs.readFileSync(C('maps', `${TEST_ID}.json`), 'utf8'));
   check(checkMap(saved).length === 0 && saved.objects.filter(o => o.type === 'crate').length === 2, '⌘S 로 저장하면 content/maps 에 검사를 통과하는 파일이 생긴다');
-  check(JSON.parse(fs.readFileSync(C('maps', 'index.json'), 'utf8')).includes(TEST_ID) && await page.evaluate(id => window.__studio.home.data.maps.some(m => m.id === id), TEST_ID), '새 맵이 맵 목록(index.json)과 홈에 들어간다');
+  const inHome = await page.waitForFunction(id => window.__studio.home.data.maps.some(m => m.id === id), TEST_ID, { timeout: 8000 }).then(() => true).catch(() => false); // 저장 뒤 홈이 목록을 다시 읽는 동안
+  check(JSON.parse(fs.readFileSync(C('maps', 'index.json'), 'utf8')).includes(TEST_ID) && inHome, '새 맵이 맵 목록(index.json)과 홈에 들어간다');
   const c = connect(srv.port, 'tester', { mode: 'zone', create: { name: 'x', private: true, bots: false, minutes: 3, map: TEST_ID } }); await c.open;
   const wel = await c.waitFor('welcome');
   check(wel && wel.map === TEST_ID, '서버를 다시 켜지 않아도 저장한 맵으로 방을 만들 수 있다');
@@ -193,6 +194,34 @@ try {
   await page.waitForFunction(id => window.__studio.home.data.models.some(m => m.id === id) && window.__studio.active.key === `gun:${id}`, GUN_ID, { timeout: 10000 });
   const glb = C('guns', `${GUN_ID}.glb`);
   check(fs.existsSync(glb) && fs.readFileSync(glb).toString('ascii', 0, 4) === 'glTF' && JSON.parse(fs.readFileSync(C('guns', 'index.json'), 'utf8')).includes(GUN_ID), '프로젝트에 저장하면 content/guns/<id>.glb 와 목록이 생기고, 탭 이름이 그 id 가 된다');
+
+  console.log('\n[데이터로 등록]');
+  check(!(await page.locator(`${ACT.bar} [data-r="register"]`).isDisabled()), '저장했고 검사를 통과한 모델은 "데이터로 등록" 할 수 있다');
+  await page.click(`${ACT.bar} [data-r="register"]`);
+  await page.fill('.modal [data-f="name"]', '시험 소총');
+  await page.selectOption('.modal [data-f="weapon"]', 'mp5');
+  await page.click('.modal [data-f="go"]');
+  await page.waitForFunction(id => window.__studio.home.data.registry.some(m => m.id === id), GUN_ID, { timeout: 10000 });
+  const reg = JSON.parse(fs.readFileSync(C('models.json'), 'utf8')).find(m => m.id === GUN_ID), wmp5 = JSON.parse(fs.readFileSync(C('weapons.json'), 'utf8')).find(w => w.id === 'mp5');
+  check(reg && reg.name === '시험 소총' && reg.file === `guns/${GUN_ID}.glb` && reg.tris > 100 && wmp5.model === GUN_ID, '등록하면 content/models.json 에 올라가고, 고른 무기(MP5)의 모델이 된다', JSON.stringify({ reg, model: wmp5.model }));
+  check((await page.textContent(`${ACT.bar} [data-r="regState"]`)).includes('등록됨'), '모델 에디터에 "등록됨" 이 표시된다');
+  await page.click('.tab.home'); await page.click('[data-cat="models"]');
+  const card = await page.textContent(`[data-asset="gun:${GUN_ID}"]`);
+  check(card.includes('등록됨') && card.includes('시험 소총'), '홈의 모델 카드에 "등록됨" 과 등록한 이름이 보인다', card);
+  await page.click('[data-cat="weapons"]'); await page.click('[data-asset="weapon:mp5"]');
+  check((await page.textContent('#homeDetail')).includes('시험 소총 (등록된 모델)'), '무기 자세히에 연결된 모델이 보인다');
+
+  console.log('\n[창 크기 조절]');
+  await page.dblclick(`[data-asset="weapon:m4"]`);
+  await page.waitForFunction(() => window.__studio.active && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
+  const tb0 = (await page.locator('#toolbox').boundingBox()).width;
+  const sp = await page.locator('#edBody > .split').first().boundingBox();
+  await page.mouse.move(sp.x + 2, sp.y + 200); await page.mouse.down(); await page.mouse.move(sp.x + 82, sp.y + 200, { steps: 5 }); await page.mouse.up();
+  const tb1 = (await page.locator('#toolbox').boundingBox()).width;
+  check(tb1 > tb0 + 60, '경계선을 끌면 도구 상자가 넓어진다', `${tb0} → ${tb1}`);
+  check(await page.evaluate(() => JSON.parse(localStorage.getItem('fs_layout_v1'))['--ed-l'] > 250), '바꾼 크기를 기억한다');
+  await page.locator('#edBody > .split').first().dblclick();
+  check(Math.abs((await page.locator('#toolbox').boundingBox()).width - tb0) < 2, '경계선을 더블클릭하면 원래 크기로');
 
   console.log('\n[게임 데이터]');
   await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:ak"]');

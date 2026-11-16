@@ -2,11 +2,12 @@
 // 각도 단위는 도(degree), 거리 m, 시간 s
 import data from '../content/weapons.json' with { type: 'json' };
 import { checkWeapons } from './content/schema.js';
+import models from '../content/models.json' with { type: 'json' };
 
 // 무기 데이터는 content/weapons.json (칸 설명은 shared/content/schema.js 의 WEAPON_SCHEMA)
 export const WEAPONS = data;
 {
-  const errors = checkWeapons(WEAPONS);
+  const errors = checkWeapons(WEAPONS, models.map(m => m.id)); // 무기의 model 은 데이터로 등록된 모델이어야 한다
   if (errors.length) throw new Error('무기 데이터 오류 (content/weapons.json):\n  ' + errors.join('\n  '));
 }
 

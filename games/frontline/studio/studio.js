@@ -11,6 +11,7 @@ import { createDataDoc } from './docs/data.js';
 import { createHome, EDITORS } from './home.js';
 import { createHelp } from './help.js';
 import { createTour } from './tour.js';
+import { initSplitters } from './split.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -32,7 +33,8 @@ function log(text, level = 'info') {
   $('conCount').textContent = `(${++conN})`;
   $('lastLog').textContent = text; $('lastLog').className = level;
 }
-$('conToggle').addEventListener('click', () => { $('console').classList.toggle('closed'); resize(); });
+$('conToggle').addEventListener('click', () => { const shut = $('console').classList.toggle('closed'); $('conSplit').hidden = shut; resize(); });
+initSplitters(); // 패널 경계선을 끌어 크기 조절
 $('conClear').addEventListener('click', () => { $('conLog').replaceChildren(); conN = 0; $('conCount').textContent = ''; $('lastLog').textContent = ''; });
 
 let flashT = 0;
@@ -41,17 +43,20 @@ function flash(text) { const f = $('flash'); f.textContent = text; f.hidden = fa
 // ───────── 문서 (편집기 탭) ─────────
 const docs = new Map(); // key → 편집기 문서
 let active = null;      // null = 홈
-let weaponsRef = WEAPONS;
+let weaponsDoc = null; // 열려 있는 무기 데이터 문서가 고치는 중인 값 (없으면 홈이 읽은 최신 파일)
 const ctx = {
   canvas, renderer, log, flash,
   changed: () => { renderTabs(); home.render(); },
-  refreshAssets: () => home.load(),
+  refreshAssets: async () => { await home.load(); await ctx.dataChanged('weapons'); },
   openAsset: (key, opts) => openAsset(key, opts),
   play: url => startPlay(url),
   docs: () => docs,
   assets: () => ({ maps: home.data.maps.map(m => m.id), guns: home.data.models.map(m => m.id) }),
   // 무기 데이터: 무기 문서를 열면 그 문서가 고치는 중인 값을 같이 본다 (파츠 장단점 계산 등)
-  weapons: () => weaponsRef, weaponIds: () => weaponsRef.map(w => w.id), setWeapons: d => { weaponsRef = d; },
+  weapons: () => weaponsDoc || (home.data.weapons.length ? home.data.weapons : WEAPONS), weaponIds: () => ctx.weapons().map(w => w.id), setWeapons: d => { weaponsDoc = d; },
+  registry: () => home.data.registry, // 데이터로 등록된 모델
+  // 다른 곳(예: 모델 등록)에서 데이터 파일이 바뀌었을 때: 열린 데이터 문서가 고친 게 없으면 다시 읽는다
+  async dataChanged(id) { const d = docs.get(`data:${id}`); if (d && d.reload) await d.reload(); },
   // 저장하면서 이름(키)이 바뀐 문서 (예: 파일로 연 모델 → gun:<id>)
   rekey(doc, key) {
     if (doc.key === key) return;

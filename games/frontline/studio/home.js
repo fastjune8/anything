@@ -46,17 +46,18 @@ export function drawMapThumb(def, w = 400, h = 300) {
 
 export function createHome(ctx) {
   let cat = 'maps', sel = null, query = '', modelKind = 'gun';
-  const data = { maps: [], models: [], weapons: [], parts: null, modes: [] };
+  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
 
   async function load() {
     const get = u => fetch(u, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    const [mapIds, gunIds, weapons, parts, modes] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json')]);
+    const [mapIds, gunIds, weapons, parts, modes, registry] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json')]);
     data.maps = (await Promise.all((mapIds || []).map(id => get(`/content/maps/${id}.json`)))).filter(Boolean);
     data.models = await Promise.all((gunIds || []).map(async id => {
       const head = await fetch(`/content/guns/${id}.glb`, { method: 'HEAD', cache: 'no-store' }).catch(() => null);
       return { id, kind: 'gun', bytes: head ? Number(head.headers.get('content-length')) || 0 : 0 };
     }));
     data.weapons = weapons || []; data.parts = parts; data.modes = modes || [];
+    data.registry = (registry || []).map(m => ({ ...m, linkedTo: data.weapons.filter(w => w.model === m.id).map(w => w.name).join(', ') }));
     render();
   }
 
@@ -70,7 +71,7 @@ export function createHome(ctx) {
       case 'maps': return data.maps.map(m => ({
         key: `map:${m.id}`, title: m.name, sub: `${m.id} · ${m.half * 2}×${m.half * 2}m · 물체 ${m.objects.length}개`, thumb: () => drawMapThumb(m, 400, 240), def: m,
       }));
-      case 'models': return modelKind === 'gun' ? data.models.map(m => ({ key: `gun:${m.id}`, title: m.id, sub: `총 · ${(m.bytes / 1024).toFixed(0)}KB`, icon: '⌐', def: m })) : [];
+      case 'models': return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `총 · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
       case 'weapons': {
         const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets)), maxRpm = Math.max(...data.weapons.map(w => w.rpm));
         return data.weapons.map(w => ({ key: `weapon:${w.id}`, title: w.name, sub: `${w.cls} · ${w.id}`, icon: '✦', def: w,
@@ -78,6 +79,7 @@ export function createHome(ctx) {
       }
       case 'parts': return data.parts ? data.parts.slots.flatMap(s => (data.parts.parts[s.id] || []).map(p => ({ key: `part:${s.id}:${p.id}`, title: p.name, sub: `${s.name} · ${p.id}`, icon: '⚙', def: p, slot: s }))) : [];
       case 'modes': return data.modes.map(m => ({ key: `mode:${m.id}`, title: m.name, sub: `${m.teams ? `${m.max / 2} 대 ${m.max / 2}` : `최대 ${m.max}명`} · 맵 ${m.map}`, icon: '⚑', def: m }));
+      // 효과 에디터가 생기면 모델처럼 "검증 → 데이터로 등록" 으로 content/effects.json 에 올라간다
       case 'effects': return [['총구 화염', '쏠 때 총구의 불꽃'], ['피격', '맞았을 때 튀는 것'], ['스킬 효과', '스킬 발동·명중 연출']].map(([t, s]) => ({ key: `effect:${t}`, title: t, sub: s, icon: '✺', soon: true }));
     }
     return [];
@@ -132,8 +134,8 @@ export function createHome(ctx) {
       const body = el('div', 'body'), t = el('div', 't');
       if (!it.thumb) t.append(el('span', 'ic', it.icon));
       t.append(el('span', '', it.title));
-      const st = it.soon ? ['준비 중', 'soon'] : statePill(it.key);
-      if (st) t.append(el('span', `pill ${st[1]}`, st[0]));
+      // 상태 표시: 준비 중 / 등록됨·작업 중(모델) / 열림·저장 안 됨(편집기에 열려 있으면)
+      for (const st of it.soon ? [['준비 중', 'soon']] : [it.state, statePill(it.key)]) if (st) t.append(el('span', `pill ${st[1]}`, st[0]));
       body.append(t, el('div', 's', it.sub));
       if (it.bars) { const b = el('div', 'bars'); for (const [k, v] of it.bars) { const i = el('i'); i.style.width = `${Math.max(4, Math.min(1, v) * 100)}%`; b.append(el('span', '', k), el('span')); b.lastChild.appendChild(i); } body.appendChild(b); }
       card.append(...(it.thumb ? [th, body] : [body]));
@@ -184,13 +186,20 @@ export function createHome(ctx) {
       box.appendChild(dl);
       rel('이 맵을 기본 맵으로 쓰는 모드', data.modes.filter(x => x.map === m.id).map(x => [x.name, go('modes', `mode:${x.id}`)]));
     } else if (cat === 'models') {
-      row('파일', `content/guns/${it.def.id}.glb`); row('크기', `${(it.def.bytes / 1024).toFixed(0)} KB`); row('게임 연결', '아직 (다음 단계)');
+      const reg = it.reg;
+      row('파일', `content/guns/${it.def.id}.glb`); row('크기', `${(it.def.bytes / 1024).toFixed(0)} KB`);
+      row('상태', reg ? `데이터로 등록됨 (${reg.registered})` : '작업 중 — 모델 에디터에서 "데이터로 등록"');
+      if (reg) { row('삼각형', `${reg.tris.toLocaleString()}개`); if (reg.warnings) row('확인 사항', `${reg.warnings}개 남기고 등록`); }
       box.appendChild(dl);
+      rel('이 모델을 쓰는 무기', data.weapons.filter(w => reg && w.model === reg.id).map(w => [w.name, go('weapons', `weapon:${w.id}`)]));
     } else if (cat === 'weapons') {
       const w = it.def, dps = calcDamage(w, 'body', 10) * w.pellets * w.rpm / 60;
       row('분류', w.cls); row('피해', `${w.dmg}${w.pellets > 1 ? ' × ' + w.pellets : ''} (머리 ×${w.head})`); row('분당 발사', `${w.rpm}`); row('DPS (10m)', dps.toFixed(0));
-      row('탄창', `${w.mag} / 예비 ${w.reserve}`); row('재장전', `${w.reload}초`); row('이동 속도', `${Math.round(w.move * 100)}%`); row('모델', '코드로 만든 총 (모델 연결 전)');
+      const reg = w.model && data.registry.find(x => x.id === w.model);
+      row('탄창', `${w.mag} / 예비 ${w.reserve}`); row('재장전', `${w.reload}초`); row('이동 속도', `${Math.round(w.move * 100)}%`);
+      row('모델', reg ? `${reg.name} (등록된 모델)` : '코드로 만든 총');
       box.appendChild(dl);
+      if (reg) rel('모델', [[reg.name, go('models', `gun:${reg.id}`)]]);
       const usable = data.parts ? data.parts.slots.flatMap(s => (data.parts.parts[s.id] || []).filter(p => (!p.only || p.only.includes(w.id)) && !(p.not || []).includes(w.id)).map(p => [p.name, go('parts', `part:${s.id}:${p.id}`)])) : [];
       rel(`달 수 있는 파츠 (${usable.length})`, usable);
     } else if (cat === 'parts') {
