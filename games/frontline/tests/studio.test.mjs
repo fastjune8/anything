@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
@@ -240,6 +240,54 @@ try {
   const cr = await last();
   check(cr.type === 'crate' && Math.abs(cr.y - (3.5 + 1.2)) < 0.05, '물체 위에 쌓기: 상자를 박스 윗면에 올려놓는다', JSON.stringify(cr));
   await page.evaluate(() => { window.__ed.brush.stack = false; });
+
+  console.log('\n[맵: 놓은 물체의 재질 · 색 바꾸기]');
+  const setColor = (sel, v) => page.locator(sel).first().evaluate((i, val) => { i.value = val; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+  const lastI = await page.evaluate(() => window.__ed.map.objects.length - 1); // 방금 쌓은 상자
+  await page.evaluate(i => window.__ed.selectList([i]), lastI);
+  await page.selectOption(`${ACT.insp} label.row:has(span.lbl:text-is("재질")) select`, 'metal');
+  check((await last()).mat === 'metal', '상자처럼 재질 칸이 없던 물체도 오른쪽 "재질" 에서 바꿀 수 있다', JSON.stringify(await last()));
+  const n3 = await page.evaluate(() => window.__ed.map.objects.length);
+  await page.evaluate(n => window.__ed.selectList([n - 1, n - 2, n - 3]), n3);
+  await page.selectOption(`${ACT.insp} [data-r="multiMat"]`, 'brick');
+  await setColor(`${ACT.insp} [data-r="multiTint"]`, '#3a8bff');
+  const three = await page.evaluate(() => window.__ed.map.objects.slice(-3).map(o => [o.type, o.mat, o.tint]));
+  check(three.every(([, m, t]) => m === 'brick' && t === '#3a8bff'), '여러 개를 고르면 "겉모습 한꺼번에" 로 재질·색을 모두 바꾼다', JSON.stringify(three));
+  await page.click(`${ACT.insp} [data-r="multiLook"] button:has-text("색 지우기")`);
+  check(await page.evaluate(() => window.__ed.map.objects.slice(-3).every(o => o.tint === undefined)), '"색 지우기" 로 원래 색으로');
+  await page.keyboard.press('Escape');
+
+  console.log('\n[분위기 에디터]');
+  await page.click('.tab.home'); await page.click('[data-cat="looks"]');
+  check(await page.locator('#homeCards .acard[data-asset="look:sunlit"] canvas').count() === 1, '홈에 분위기 카드가 미리보기 그림과 함께 보인다');
+  await page.dblclick('#homeCards .acard[data-asset="look:sunlit"]');
+  await page.waitForFunction(() => window.__lk && window.__studio.active.kind === 'look', null, { timeout: 15000 });
+  check((await page.textContent('#edKind')).includes('분위기 에디터'), '두 번 누르면 분위기 에디터가 열린다');
+  await page.click(`${ACT.tools} .tile[data-mat="concrete"]`);
+  check(await page.evaluate(() => window.__lk.mat) === 'concrete', '왼쪽 재질을 누르면 그 재질을 고친다');
+  await setColor(`${ACT.insp} label.row:has(span.lbl:text-is("바탕 색")) input[type=color]`, '#ff8800');
+  await page.waitForFunction(() => window.__lk.applied.materials.concrete.base === '#ff8800', null, { timeout: 3000 }).catch(() => {});
+  check(await page.evaluate(() => window.__lk.applied.materials.concrete.base) === '#ff8800', '재질 색을 바꾸면 견본 장면에 바로 그려진다');
+  await page.keyboard.press('Escape');
+  await page.click(`${ACT.tools} [data-r="newLook"]`);
+  await page.fill('.modal [data-f="id"]', 'zz_dusk'); await page.fill('.modal [data-f="name"]', '시험 해질녘');
+  await page.click('.modal [data-f="go"]');
+  await page.waitForFunction(() => window.__lk.data.some(l => l.id === 'zz_dusk'), null, { timeout: 3000 });
+  const lk = await page.evaluate(() => { const d = window.__lk.data; return { cur: d[window.__lk.cur].id, base: d[window.__lk.cur].materials.concrete.base }; });
+  check(lk.cur === 'zz_dusk' && lk.base === '#ff8800', '"+ 새 분위기" 는 지금 분위기를 복사해서 만든다', JSON.stringify(lk));
+  await page.fill(`${ACT.insp} label.row:has(span.lbl:text-is("높이 (도)")) input`, '8');
+  await page.waitForFunction(() => window.__lk.applied.sun.elev === 8, null, { timeout: 3000 }).catch(() => {});
+  check(await page.evaluate(() => window.__lk.applied.sun.elev) === 8, '해 높이를 고치면 바로 보인다');
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(() => !window.__lk.isDirty(), null, { timeout: 8000 }).catch(() => {});
+  const looksFile = JSON.parse(fs.readFileSync(C('looks.json'), 'utf8'));
+  check(looksFile.some(l => l.id === 'zz_dusk' && l.sun.elev === 8) && looksFile[0].materials.concrete.base === '#ff8800', '저장하면 content/looks.json 에 들어간다');
+  await page.evaluate(k => window.__studio.activate(k), `map:${TEST_ID}`);
+  await page.keyboard.press('Escape');
+  const lookOpts = await page.$$eval(`${ACT.insp} label.row:has(span.lbl:text-is("분위기 (빛·재질)")) option`, os => os.map(o => o.value));
+  check(lookOpts.includes("zz_dusk"), '저장하면 열린 맵 에디터의 분위기 목록에도 바로 생긴다', JSON.stringify(lookOpts));
+  await page.selectOption(`${ACT.insp} label.row:has(span.lbl:text-is("분위기 (빛·재질)")) select`, 'zz_dusk');
+  check(await page.evaluate(() => window.__ed.map.look) === 'zz_dusk', '맵 설정에서 분위기를 고르면 맵 데이터에 들어간다');
 
   console.log('\n[총 모델]');
   await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#sampleBtn');

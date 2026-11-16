@@ -4,7 +4,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld } from '/js/world.js';
-import { LOOKS, getLook } from '/shared/looks.js';
 import { expandObject, buildLayout, OBJECT_TYPES } from '/shared/maps/build.js';
 import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap, MATERIALS } from '/shared/content/schema.js';
 import { MODES } from '/shared/modes.js';
@@ -14,8 +13,8 @@ import { formDialog } from '../dialog.js';
 const r2 = v => Math.round(v * 100) / 100;
 const TEAM_COLOR = { '-1': 0xe9ecef, 0: 0x5aa9ff, 1: 0xff4b3a };
 const TEAM_NAME = { '-1': '개인전 스폰', 0: '0팀 스폰', 1: '1팀 스폰' };
-const MAP_FIELDS = { fields: { name: { kind: 'str', label: '이름' }, half: { kind: 'num', label: '맵 절반 크기 (m)', min: 10, max: 250, step: 1, hint: '외곽 벽은 따로 옮겨야 한다' },
-  look: { kind: 'enum', label: '분위기 (빛·재질)', options: LOOKS.map(l => l.id), optional: true, hint: LOOKS.map(l => `${l.id} = ${l.name}`).join(' · ') + ' (비우면 첫 번째)' } } };
+const mapFields = looks => ({ fields: { name: { kind: 'str', label: '이름' }, half: { kind: 'num', label: '맵 절반 크기 (m)', min: 10, max: 250, step: 1, hint: '외곽 벽은 따로 옮겨야 한다' },
+  look: { kind: 'enum', label: '분위기 (빛·재질)', options: looks.map(l => l.id), optional: true, hint: looks.map(l => `${l.id} = ${l.name}`).join(' · ') + ' (비우면 첫 번째) — 분위기 에디터에서 고친다' } } });
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
 function html(tag, cls, inner) { const e = document.createElement(tag); if (cls) e.className = cls; if (inner) e.innerHTML = inner; return e; }
@@ -67,6 +66,9 @@ export async function createMapDoc(ctx, id, opts = {}) {
 
   // ───────── 3D ─────────
   const scene = new THREE.Scene();
+  // 분위기 목록: 파일에서 새로 읽는다 (분위기 에디터에서 저장하면 setLooks 로 바로 바뀐다)
+  let looks = await fetch('/content/looks.json', { cache: 'no-store' }).then(x => x.json());
+  const getLook = id => looks.find(l => l.id === id) || looks[0];
   const world = buildWorld(scene, renderer, getLook(map.look), { fogScale: 0.35 }); // 위에서 내려다보므로 안개를 옅게
   const applyLook = () => { if (world.look !== getLook(map.look)) world.setLook(getLook(map.look)); };
   const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 3000);
@@ -731,7 +733,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     const o = selected();
     if (!o) {
       title(`맵 설정 · ${map.id}`);
-      buildForm(inspector, MAP_FIELDS, map, { ...h, onInput: () => { if (!map.look) delete map.look; applyLook(); rebuild(); drawHelpers(); } });
+      buildForm(inspector, mapFields(looks), map, { ...h, onInput: () => { if (!map.look) delete map.look; applyLook(); rebuild(); drawHelpers(); } });
       const n = map.objects.length, sp = map.spawns.ffa.length, tm = (map.spawns.team || []).map(l => l.length).join(' / ') || '없음';
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: `물체 ${n}개 · 개인전 스폰 ${sp}곳 · 팀 스폰 ${tm} · 거점 ${(map.zones || []).length}개` }));
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: '물체를 클릭하면 여기서 고칠 수 있습니다.' }));
@@ -742,6 +744,26 @@ export async function createMapDoc(ctx, id, opts = {}) {
       const count = {}; for (const x of o) count[x.type] = (count[x.type] || 0) + 1;
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: Object.entries(count).map(([t, n]) => `${OBJECT_SCHEMAS[t].label} ${n}`).join(' · ') }));
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: '고른 것 중 하나를 끌면 함께 움직입니다. 방향키 · R(묶음째 회전) · ⌘D · ⌘C/⌘V · Del 도 함께. Shift+클릭으로 더하기/빼기.' }));
+      // 겉모습 한꺼번에: 고른 물체 모두의 재질·색 (나무는 빼고)
+      const looks = o.filter(x => x.type !== 'tree');
+      if (looks.length) {
+        const fs = document.createElement('fieldset'); fs.dataset.r = 'multiLook';
+        fs.appendChild(Object.assign(document.createElement('legend'), { textContent: `겉모습 한꺼번에 (${looks.length}개)` }));
+        const same = k => (looks.every(x => x[k] === looks[0][k]) ? looks[0][k] : undefined);
+        const matSel = document.createElement('select'); matSel.dataset.r = 'multiMat';
+        matSel.appendChild(new Option(same('mat') === undefined && looks.some(x => x.mat) ? '(여러 가지)' : '(기본 재질)', ''));
+        for (const m of MATERIALS) matSel.appendChild(new Option(m, m));
+        matSel.value = same('mat') || '';
+        matSel.addEventListener('change', () => { for (const x of looks) { if (matSel.value) x.mat = matSel.value; else if (!['box', 'wall', 'building', 'ramp', 'stairs', 'platform'].includes(x.type)) delete x.mat; } rebuildNow(); commit(); renderPanel(); });
+        const col = document.createElement('input'); col.type = 'color'; col.dataset.r = 'multiTint'; col.value = same('tint') || '#ffffff';
+        col.addEventListener('input', () => { for (const x of looks) x.tint = col.value; rebuild(); });
+        col.addEventListener('change', () => { commit(); renderPanel(); });
+        const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'mini'; clr.textContent = '색 지우기';
+        clr.addEventListener('click', () => { for (const x of looks) delete x.tint; rebuildNow(); commit(); renderPanel(); });
+        const line = (label, ...els) => { const l = document.createElement('label'); l.className = 'row'; const s = document.createElement('span'); s.className = 'lbl'; s.textContent = label; const w = document.createElement('span'); w.className = 'in'; w.append(...els); l.append(s, w); fs.appendChild(l); };
+        line('재질', matSel); line('색', col, clr);
+        inspector.appendChild(fs);
+      }
       const allSym = o.every(x => x.sym);
       btns([['회전 (R)', rotateSelected], ['복제 (⌘D)', duplicateSelected], ['❖ 프리팹으로 저장', saveAsPrefab, 'primary'],
         [allSym ? '대칭 끄기' : '대칭 켜기', () => { for (const x of o) { if (allSym) delete x.sym; else x.sym = true; } rebuildNow(); commit(); renderPanel(); }], ['삭제 (Del)', removeSelected, 'danger']]);
@@ -819,6 +841,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
     resize(w, h) { camera.aspect = w / h; camera.updateProjectionMatrix(); },
     frame(dt) { moveCamera(dt); if (controls.enabled) controls.update(); renderer.render(scene, camera); },
     isDirty, save, play, onKeyDown, onKeyUp: e => held.delete(e.code), onBlur: () => held.clear(),
+    // 분위기 에디터에서 저장했을 때: 새 목록으로 다시 그린다
+    setLooks(list) { looks = list; world.setLook(getLook(map.look)); if (!sel) renderPanel(); },
     dispose() { controls.dispose(); scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); },
     api: {
       get map() { return map; }, get sel() { return sel; }, get errors() { return lastErrors; }, isDirty, save, play, undo, redo, setTool, place,

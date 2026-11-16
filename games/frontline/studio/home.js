@@ -12,11 +12,13 @@ export const EDITORS = {
   map: { name: '맵 에디터', icon: '▦' },
   model: { name: '모델 에디터', icon: '⌐' },
   data: { name: '데이터 에디터', icon: '≡' },
+  look: { name: '분위기 에디터', icon: '☀' },
   effect: { name: '효과 에디터', icon: '✺', soon: true },
 };
 // 데이터 종류
 export const CATS = [
   { group: '콘텐츠', id: 'maps', label: '맵', icon: '▦', editor: 'map', desc: '전장 배치 — 구조물·엄폐물·스폰 지점·거점' },
+  { group: '콘텐츠', id: 'looks', label: '분위기', icon: '☀', editor: 'look', desc: '빛·하늘·안개와 맵 물체 재질(색·무늬) 묶음. 맵마다 하나를 고른다' },
   { group: '콘텐츠', id: 'models', label: '모델', icon: '⌐', editor: 'model', desc: 'Blender 로 만든 총·물체 모델 (.glb). 규칙 검사·1인칭·파츠·스킨 미리 보기' },
   { group: '게임 데이터', id: 'weapons', label: '무기', icon: '✦', editor: 'data', desc: '총의 성능 수치 — 피해·연사·탄창·반동 …' },
   { group: '게임 데이터', id: 'parts', label: '파츠', icon: '⚙', editor: 'data', desc: '총에 다는 부품 — 자리별 파츠와 장단점' },
@@ -44,13 +46,29 @@ export function drawMapThumb(def, w = 400, h = 300) {
   return c;
 }
 
+// 분위기 미리보기: 하늘·땅 + 해 + 재질 색 견본
+export function drawLookThumb(l, w = 400, h = 300) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'), horizon = h * 0.55;
+  const sky = g.createLinearGradient(0, 0, 0, horizon); sky.addColorStop(0, l.fill.sky); sky.addColorStop(1, l.fog.color);
+  g.fillStyle = sky; g.fillRect(0, 0, w, horizon);
+  g.fillStyle = (l.materials.ground && l.materials.ground.base) || '#7a6a50'; g.fillRect(0, horizon, w, h - horizon);
+  g.fillStyle = l.hills; g.beginPath(); g.moveTo(0, horizon); for (let x = 0; x <= w; x += w / 8) g.lineTo(x, horizon - 10 - ((x * 7) % 23)); g.lineTo(w, horizon); g.fill();
+  const sx = w * (0.15 + (l.sun.azim % 360) / 360 * 0.7), sy = horizon * (1 - l.sun.elev / 90) * 0.9 + 12;
+  g.fillStyle = l.sun.color; g.beginPath(); g.arc(sx, sy, 14, 0, Math.PI * 2); g.fill();
+  const mats = Object.entries(l.materials).filter(([k]) => k !== 'ground'), cw = w / (mats.length + 1);
+  mats.forEach(([, m], i) => { const x = cw * (i + 0.5), bh = h * 0.26; g.fillStyle = m.base || '#8a8a8a'; g.fillRect(x, h * 0.62, cw * 0.8, bh); if (m.line || m.trim) { g.fillStyle = m.trim || m.line; g.fillRect(x, h * 0.62 + bh * 0.82, cw * 0.8, bh * 0.1); } });
+  return c;
+}
+
 export function createHome(ctx) {
   let cat = 'maps', sel = null, query = '', modelKind = 'gun';
-  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
+  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
 
   async function load() {
     const get = u => fetch(u, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    const [mapIds, gunIds, weapons, parts, modes, registry] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json')]);
+    const [mapIds, gunIds, weapons, parts, modes, registry, looks] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json')]);
+    data.looks = looks || [];
     data.maps = (await Promise.all((mapIds || []).map(id => get(`/content/maps/${id}.json`)))).filter(Boolean);
     data.models = await Promise.all((gunIds || []).map(async id => {
       const head = await fetch(`/content/guns/${id}.glb`, { method: 'HEAD', cache: 'no-store' }).catch(() => null);
@@ -62,7 +80,8 @@ export function createHome(ctx) {
   }
 
   // ───────── 종류별 카드 ─────────
-  const count = id => ({ maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: 0 }[id]);
+  const usersOf = lookId => data.maps.filter(m => (m.look || (data.looks[0] && data.looks[0].id)) === lookId); // 이 분위기를 쓰는 맵
+  const count = id => ({ looks: data.looks.length, maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: 0 }[id]);
   const docOf = key => ctx.docs().get(key);
   const statePill = key => { const d = docOf(key); return d ? (d.isDirty() ? ['저장 안 됨', 'warn'] : ['열림', 'good']) : null; };
 
@@ -70,6 +89,9 @@ export function createHome(ctx) {
     switch (cat) {
       case 'maps': return data.maps.map(m => ({
         key: `map:${m.id}`, title: m.name, sub: `${m.id} · ${m.half * 2}×${m.half * 2}m · 물체 ${m.objects.length}개`, thumb: () => drawMapThumb(m, 400, 240), def: m,
+      }));
+      case 'looks': return data.looks.map((l, i) => ({
+        key: `look:${l.id}`, title: l.name, sub: `${l.id}${i === 0 ? ' · 기본' : ''} · 쓰는 맵 ${usersOf(l.id).length}개`, thumb: () => drawLookThumb(l, 400, 240), def: l,
       }));
       case 'models': return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `총 · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
       case 'weapons': {
@@ -112,6 +134,7 @@ export function createHome(ctx) {
       search.addEventListener('input', () => { query = search.value; renderCards(); });
       acts.appendChild(search);
     }
+    if (cat === 'looks') acts.appendChild(btn('+ 새 분위기', () => ctx.openAsset('look:edit', { create: true }), 'primary', 'newLookBtn'));
     if (cat === 'maps') acts.appendChild(btn('+ 새 맵', () => ctx.openAsset(`map:new${Date.now()}`, { create: true }), 'primary', 'newMapBtn'));
     if (cat === 'models') {
       const seg = el('div', 'seg');
@@ -156,6 +179,7 @@ export function createHome(ctx) {
   function open(it) {
     const [kind, id, id2] = it.key.split(':');
     if (kind === 'map' || kind === 'gun') ctx.openAsset(it.key);
+    else if (kind === 'look') ctx.openAsset('look:edit', { select: id });
     else if (kind === 'weapon') ctx.openAsset('data:weapons', { select: id });
     else if (kind === 'part') ctx.openAsset('data:parts', { slot: id, select: id2 });
     else if (kind === 'mode') ctx.openAsset('data:modes', { select: id });
@@ -166,7 +190,7 @@ export function createHome(ctx) {
     const box = $('homeDetail'); box.replaceChildren();
     const it = items().find(x => x.key === sel);
     if (!it) { box.appendChild(el('p', 'emptyd', '카드를 누르면 여기에 자세한 정보가 나옵니다.\n두 번 누르면 편집기로 엽니다.')); return; }
-    if (it.thumb) { const big = el('div', 'big'); big.appendChild(drawMapThumb(it.def, 600, 380)); box.appendChild(big); } // 그림이 있는 것(맵)만 큰 미리보기
+    if (it.thumb) { const big = el('div', 'big'); big.appendChild(cat === 'looks' ? drawLookThumb(it.def, 600, 380) : drawMapThumb(it.def, 600, 380)); box.appendChild(big); } // 그림이 있는 것(맵)만 큰 미리보기
     box.append(el('h2', '', `${it.thumb ? '' : it.icon + ' '}${it.title}`), el('div', 'sub', it.sub));
     const ed = EDITORS[CATS.find(x => x.id === cat).editor];
     const acts = el('div', 'acts');
@@ -182,7 +206,13 @@ export function createHome(ctx) {
       box.appendChild(r);
     };
     const go = (c, key) => () => { cat = c; sel = key; render(); };
-    if (cat === 'maps') {
+    if (cat === 'looks') {
+      const l = it.def;
+      row('파일', 'content/looks.json'); row('해', `높이 ${l.sun.elev}° · 세기 ${l.sun.intensity}`); row('안개', `짙기 ${l.fog.density}`); row('밝기', `${l.exposure}`);
+      row('재질', Object.entries(l.materials).map(([k, m]) => `${k}: ${m.style}`).join(' · '));
+      box.appendChild(dl);
+      rel('이 분위기를 쓰는 맵', usersOf(l.id).map(m => [m.name, go('maps', `map:${m.id}`)]));
+    } else if (cat === 'maps') {
       const m = it.def;
       row('파일', `content/maps/${m.id}.json`); row('크기', `${m.half * 2} × ${m.half * 2} m`); row('물체', `${m.objects.length}개`);
       row('스폰', `개인전 ${m.spawns.ffa.length}곳${m.spawns.team ? ` · 팀 ${m.spawns.team.map(t => t.length).join(' / ')}` : ' · 팀 없음'}`); row('거점', `${(m.zones || []).length}개`);

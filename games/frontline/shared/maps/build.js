@@ -64,6 +64,9 @@ export const OBJECT_TYPES = {
 const DIRS = { n: ['z', 1], s: ['z', -1], e: ['x', 1], w: ['x', -1] };
 // 바닥 높이 y 를 나중에 더하는 종류 (자기 모양 함수가 y 를 안 쓰는 것들)
 const LIFT = new Set(['wall', 'building', 'sandbags', 'barrier', 'barrel', 'tower']);
+// 재질(mat) · 색(tint) 을 모양 함수가 직접 쓰는 종류. 나머지는 expandObject 가 모든 박스에 입힌다
+const OWN_MAT = new Set(['box', 'wall', 'building', 'ramp', 'stairs', 'platform']);
+const OWN_TINT = new Set(['box', 'container', 'barrel']);
 
 function boxExtra(o) {
   const e = {};
@@ -97,6 +100,9 @@ export function expandObject(o) {
   const boxes = [], trees = [];
   t.build((x, y, z, w, h, d, mat, extra) => boxes.push({ x, y, z, w, h, d, mat, ...(extra || {}) }), o, (x, z, s) => trees.push({ x, z, s }));
   if (o.y && LIFT.has(o.type)) for (const b of boxes) b.y += o.y; // 공중·2층에 놓기
+  // 재질·색 바꾸기 (스튜디오에서 고른 것): 자기 모양 함수가 안 쓰는 종류는 모든 박스에 덮어쓴다
+  if (o.mat && !OWN_MAT.has(o.type)) for (const b of boxes) b.mat = o.mat;
+  if (o.tint !== undefined && !OWN_TINT.has(o.type)) for (const b of boxes) b.tint = tintNum(o.tint);
   const rot = o.rot || 0;
   if (rot) {
     const [cx, cz] = t.anchor(o);

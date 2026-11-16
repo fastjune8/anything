@@ -366,7 +366,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
   // ── 먼 산 ──
   const r = rng(99);
   const hillMat = new THREE.MeshStandardMaterial({ color: 0x4d5a45, roughness: 1, flatShading: true });
-  let leafMats = [];
+  let leafMats = [], leafKey = '';
   for (let i = 0; i < 26; i++) {
     const a = (i / 26) * Math.PI * 2 + r() * 0.2, dist = 330 + r() * 120, h = 22 + r() * 40;
     const hill = new THREE.Mesh(new THREE.ConeGeometry(100 + r() * 90, h, 9, 2), hillMat);
@@ -384,16 +384,16 @@ export function buildWorld(scene, renderer, look, opts = {}) {
   let lastLayout = null, current = null;
 
   // 분위기 바꾸기: 빛·하늘·안개·재질을 다시 만들고, 올려 둔 맵을 다시 그린다
-  function setLook(lk) {
+  // only: 다시 만들 재질 이름 목록 (없으면 전부, [] = 빛·하늘만). 분위기 에디터가 고친 것만 빨리 다시 그릴 때
+  function setLook(lk, only) {
     current = lk;
     MAT_DEF = lk.materials;
-    for (const t of Object.values(textures)) t.dispose();
-    for (const m of matCache.values()) m.dispose();
-    matCache.clear(); textures = {};
-    for (const [k, m] of Object.entries(lk.materials)) {
-      const t = canvasTex(k === 'ground' ? 1024 : 512, drawMat(k, m), aniso);
-      t.colorSpace = THREE.SRGBColorSpace;
-      textures[k] = t;
+    const names = only || Object.keys(lk.materials);
+    if (!only) { for (const t of Object.values(textures)) t.dispose(); textures = {}; }
+    for (const [key, m] of [...matCache]) if (!only || names.includes(key.split(':')[0])) { m.dispose(); matCache.delete(key); }
+    for (const k of names) {
+      if (textures[k]) textures[k].dispose();
+      textures[k] = canvasTex(k === 'ground' ? 1024 : 512, drawMat(k, lk.materials[k]), aniso);
     }
     sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - lk.sun.elev), THREE.MathUtils.degToRad(lk.sun.azim));
     u.turbidity.value = lk.sky.turbidity; u.rayleigh.value = lk.sky.rayleigh; u.mieCoefficient.value = lk.sky.mie; u.mieDirectionalG.value = lk.sky.mieG;
@@ -411,12 +411,16 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     scene.environmentIntensity = lk.env;
     renderer.toneMappingExposure = lk.exposure;
     hillMat.color.set(lk.hills);
-    for (const m of leafMats) m.dispose();
-    leafMats = lk.leaves.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
+    const leavesChanged = JSON.stringify(lk.leaves) !== leafKey;
+    if (leavesChanged) { // 나뭇잎 색이 바뀌었을 때만 (나무가 쓰던 재질을 버리므로 맵을 다시 그린다)
+      for (const m of leafMats) m.dispose();
+      leafMats = lk.leaves.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
+      leafKey = JSON.stringify(lk.leaves);
+    }
     const gt = textures.ground, gTile = MAT_DEF.ground.tile || 14;
     gt.repeat.set(600 / gTile, 600 / gTile);
     ground.material = getMat('ground');
-    if (lastLayout) setMap(lastLayout);
+    if (lastLayout && (!only || names.some(k => k !== 'ground') || leavesChanged)) setMap(lastLayout);
   }
 
   function setMap(layout) {

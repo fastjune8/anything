@@ -1,7 +1,7 @@
 // 개발용 기능: 스튜디오(/studio/)와 스튜디오가 저장할 때 쓰는 API. 라이브(prod)에서는 꺼져 있다.
 //   PUT /api/maps/<id>   맵 데이터 저장 → 검사 → content/maps/<id>.json 에 쓰고, 새 맵이면 목록(index.json)에 추가
 //   PUT /api/guns/<id>   총 모델(.glb) 저장 → content/guns/<id>.glb, 목록 content/guns/index.json
-//   PUT /api/content/<weapons|parts|modes|prefabs>   데이터 파일 저장 (검사 후). 개발 서버는 이 파일이 바뀌면 다시 시작한다 (npm run dev)
+//   PUT /api/content/<weapons|parts|modes|prefabs|looks>   데이터 파일 저장 (검사 후). 개발 서버는 이 파일이 바뀌면 다시 시작한다 (npm run dev)
 //   PUT /api/drafts/<맵 id>   저장하지 않은 맵을 시험 플레이용으로 서버 메모리에만 올린다 → { id: 'draft_<맵 id>' }
 //   GET /api/drafts/<draft id>   그 맵 데이터 (게임 화면이 받아 간다)
 //   POST /api/register/model   검증을 통과해 저장한 모델을 "데이터로 등록" (content/models.json). 무기에 연결하면 weapons.json 의 model 도 바꾼다
@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { APP_ENV, CONTENT_DIR, ROOT } from './config.js';
-import { checkMap, checkWeapons, checkParts, checkModes, checkModels, checkPrefabs, RULES } from '../shared/content/schema.js';
+import { checkMap, checkWeapons, checkParts, checkModes, checkModels, checkPrefabs, checkLooks, RULES } from '../shared/content/schema.js';
 import { formatContent } from '../shared/content/format.js';
 import { setMapDef, MAP_IDS } from '../shared/maps/index.js';
 import { forgetNav } from './bots/nav.js';
@@ -43,7 +43,7 @@ export function handleDevApi(req, res, url) {
   if (url === '/api/version' && req.method === 'GET') { versionInfo().then(v => send(res, 200, v)); return true; }
   const g = url.match(/^\/api\/guns\/([a-z0-9_]+)$/);
   if (g && req.method === 'PUT') { saveGun(req, res, g[1]); return true; }
-  const c = url.match(/^\/api\/content\/(weapons|parts|modes|prefabs)$/);
+  const c = url.match(/^\/api\/content\/(weapons|parts|modes|prefabs|looks)$/);
   if (c && req.method === 'PUT') { saveData(req, res, c[1]); return true; }
   const d = url.match(/^\/api\/drafts\/([a-z0-9_]+)$/);
   if (d && req.method === 'PUT') { putDraft(req, res, d[1]); return true; }
@@ -88,6 +88,7 @@ const readJson = name => JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, `${na
 const DATA_CHECKS = {
   weapons: d => checkWeapons(d, readJson('models').map(m => m.id)),
   prefabs: d => checkPrefabs(d),
+  looks: d => checkLooks(d),
   parts: d => checkParts(d, readJson('weapons').map(w => w.id)),
   modes: d => checkModes(d, MAP_IDS.filter(id => !id.startsWith('draft_'))).concat((Array.isArray(d) ? d : []).filter(m => m && !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙 ${m.rules}`)),
 };

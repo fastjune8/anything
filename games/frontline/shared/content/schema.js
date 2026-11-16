@@ -243,9 +243,16 @@ export function check(value, spec, path = '', errors = []) {
 }
 
 // 맵 물체 하나: type 에 따라 칸이 달라진다
+// 겉모습 칸: 모든 물체(나무 빼고)의 재질·색을 바꿀 수 있다. 자기 칸이 이미 있으면 그것을 쓴다
+const LOOK_FIELDS = {
+  mat: oneOf('재질', MATERIALS, opt({ hint: '비우면 이 물체의 기본 재질' })),
+  tint: color('색 (재질 위에 덧칠)', opt({ hint: '흰색에 가까울수록 재질 그대로, 진할수록 그 색으로' })),
+};
 export function objectSpec(type) {
   const s = OBJECT_SCHEMAS[type];
-  return s ? obj(s.label, { type: oneOf('종류', Object.keys(OBJECT_SCHEMAS)), ...s.fields, ...COMMON_FIELDS }) : null;
+  if (!s) return null;
+  const look = type === 'tree' ? {} : Object.fromEntries(Object.entries(LOOK_FIELDS).filter(([k]) => !s.fields[k]));
+  return obj(s.label, { type: oneOf('종류', Object.keys(OBJECT_SCHEMAS)), ...s.fields, ...look, ...COMMON_FIELDS });
 }
 function checkObject(o, path, errors) {
   const spec = o && typeof o === 'object' ? objectSpec(o.type) : null;

@@ -8,6 +8,7 @@ import { WEAPONS } from '/shared/weapons.js';
 import { createMapDoc, Cancelled } from './docs/map.js';
 import { createGunDoc } from './docs/gun.js';
 import { createDataDoc } from './docs/data.js';
+import { createLookDoc } from './docs/look.js';
 import { createHome, EDITORS } from './home.js';
 import { createHelp } from './help.js';
 import { createTour } from './tour.js';
@@ -41,6 +42,7 @@ let flashT = 0;
 function flash(text) { const f = $('flash'); f.textContent = text; f.hidden = false; clearTimeout(flashT); flashT = setTimeout(() => { f.hidden = true; }, 2800); }
 
 // ───────── 문서 (편집기 탭) ─────────
+// 열 때 key 가 고정인 문서 (파일 하나를 통째로 고치는 편집기): 분위기 → look:edit
 const docs = new Map(); // key → 편집기 문서
 let active = null;      // null = 홈
 let weaponsDoc = null; // 열려 있는 무기 데이터 문서가 고치는 중인 값 (없으면 홈이 읽은 최신 파일)
@@ -55,6 +57,7 @@ const ctx = {
   // 무기 데이터: 무기 문서를 열면 그 문서가 고치는 중인 값을 같이 본다 (파츠 장단점 계산 등)
   weapons: () => weaponsDoc || (home.data.weapons.length ? home.data.weapons : WEAPONS), weaponIds: () => ctx.weapons().map(w => w.id), setWeapons: d => { weaponsDoc = d; },
   registry: () => home.data.registry, // 데이터로 등록된 모델
+  mapLooks: () => home.data.maps.map(m => [m.name, m.look || home.data.looks[0]?.id]), // 맵마다 쓰는 분위기
   // 다른 곳(예: 모델 등록)에서 데이터 파일이 바뀌었을 때: 열린 데이터 문서가 고친 게 없으면 다시 읽는다
   async dataChanged(id) { const d = docs.get(`data:${id}`); if (d && d.reload) await d.reload(); },
   // 저장하면서 이름(키)이 바뀐 문서 (예: 파일로 연 모델 → gun:<id>)
@@ -66,7 +69,7 @@ const ctx = {
   },
 };
 // 문서 종류 → [만드는 함수, 편집기]
-const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'] };
+const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'] };
 
 async function openAsset(key, opts = {}) {
   let doc = docs.get(key);
@@ -102,6 +105,7 @@ function activate(doc) {
     if (doc.kind === 'map') window.__ed = doc.api; // 자동 테스트용
     if (doc.kind === 'gun') window.__gv = doc.api;
     if (doc.kind === 'data') window.__dd = doc.api;
+    if (doc.kind === 'look') window.__lk = doc.api;
   } else home.render();
   renderTabs(); saveSession();
 }
