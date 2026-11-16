@@ -1,0 +1,11 @@
+{
+  "name": "anything",
+  "private": true,
+  "description": "저장소 맨 위에서도 게임 명령을 실행할 수 있게 games/frontline 으로 넘겨 준다",
+  "scripts": {
+    "dev": "npm --prefix games/frontline run dev",
+    "start": "npm --prefix games/frontline start",
+    "test": "npm --prefix games/frontline test",
+    "test:all": "npm --prefix games/frontline run test:all"
+  }
+}
