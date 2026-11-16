@@ -23,6 +23,8 @@ const X = num('x (m)', { step: 0.1 }), Z = num('z (m)', { step: 0.1 });
 const AXIS = oneOf('방향', ['x', 'z'], { hint: 'x = 동서로 길게, z = 남북으로 길게' });
 const OPENING = obj('구멍', { at: num('위치 (벽을 따라 절대 좌표)', { step: 0.1 }), w: num('너비', { min: 0.5, max: 10, step: 0.1 }), type: oneOf('종류', ['door', 'window']) });
 const OPENINGS = list('문·창문', OPENING, opt());
+const Y = num('바닥 높이 (m, 공중·2층에 놓기)', opt({ min: -2, max: 60, step: 0.1 }));
+const DIR = oneOf('오르는 방향', ['n', 's', 'e', 'w'], { hint: 'n = 북 z+, s = 남 z−, e = 동 x+, w = 서 x−' });
 const sideOpenings = label => list(label, OPENING, opt());
 
 // 모든 물체에 공통인 칸
@@ -41,20 +43,33 @@ export const OBJECT_SCHEMAS = {
   } },
   wall: { label: '벽', fields: {
     axis: AXIS, at: num('고정 좌표 (axis 가 x 면 z 값)', { step: 0.1 }), from: num('시작', { step: 0.1 }), to: num('끝', { step: 0.1 }),
-    h: num('높이', { min: 0.3, max: 20, step: 0.1 }), t: num('두께', opt({ min: 0.1, max: 3, step: 0.05 })), mat: oneOf('재질', MATERIALS), ops: OPENINGS,
+    h: num('높이', { min: 0.3, max: 20, step: 0.1 }), t: num('두께', opt({ min: 0.1, max: 3, step: 0.05 })), mat: oneOf('재질', MATERIALS), ops: OPENINGS, y: Y,
   } },
   building: { label: '건물', fields: {
     x: X, z: Z, w: num('너비 (x)', { min: 2, max: 100, step: 0.1 }), d: num('깊이 (z)', { min: 2, max: 100, step: 0.1 }), h: num('높이', { min: 1, max: 20, step: 0.1 }),
-    mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()),
+    mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()), y: Y,
     ops: obj('문·창문 (위치 = 벽을 따라가는 절대 좌표)', { n: sideOpenings('북쪽 벽 (z+)'), s: sideOpenings('남쪽 벽 (z−)'), e: sideOpenings('동쪽 벽 (x+)'), w: sideOpenings('서쪽 벽 (x−)') }, opt()),
   } },
   container: { label: '컨테이너', fields: { x: X, z: Z, axis: AXIS, tint: color('색', opt()), y: num('바닥 높이 (2단 = 2.59)', opt({ min: 0, step: 0.01 })) } },
   crate: { label: '상자', fields: { x: X, z: Z, s: num('크기', opt({ min: 0.3, max: 4, step: 0.1 })), y: num('바닥 높이', opt({ min: 0, step: 0.1 })) } },
-  sandbags: { label: '모래주머니', fields: { x: X, z: Z, axis: AXIS, len: num('길이', opt({ min: 0.5, max: 20, step: 0.1 })), h: num('높이', opt({ min: 0.3, max: 2, step: 0.05 })) } },
-  barrier: { label: '콘크리트 방벽', fields: { x: X, z: Z, axis: AXIS } },
-  barrel: { label: '드럼통', fields: { x: X, z: Z, tint: color('색', opt()) } },
-  tower: { label: '감시탑', fields: { x: X, z: Z } },
+  sandbags: { label: '모래주머니', fields: { x: X, z: Z, axis: AXIS, len: num('길이', opt({ min: 0.5, max: 20, step: 0.1 })), h: num('높이', opt({ min: 0.3, max: 2, step: 0.05 })), y: Y } },
+  barrier: { label: '콘크리트 방벽', fields: { x: X, z: Z, axis: AXIS, y: Y } },
+  barrel: { label: '드럼통', fields: { x: X, z: Z, tint: color('색', opt()), y: Y } },
+  tower: { label: '감시탑', fields: { x: X, z: Z, y: Y } },
   tree: { label: '나무', fields: { x: X, z: Z, s: num('크기', opt({ min: 0.3, max: 3, step: 0.05 })) } },
+  // 높이 요소
+  ramp: { label: '경사로', fields: {
+    x: X, z: Z, y: Y, dir: DIR, len: num('길이 (오르는 방향)', { min: 1, max: 60, step: 0.5 }), w: num('폭', { min: 0.5, max: 30, step: 0.5 }),
+    h: num('오르는 높이', { min: 0.2, max: 20, step: 0.1 }), mat: oneOf('재질', MATERIALS),
+  } },
+  stairs: { label: '계단', fields: {
+    x: X, z: Z, y: Y, dir: DIR, len: num('길이 (오르는 방향)', { min: 0.5, max: 40, step: 0.5 }), w: num('폭', { min: 0.5, max: 20, step: 0.5 }),
+    h: num('오르는 높이 (한 단 0.3m 이하로 나눈다)', { min: 0.2, max: 20, step: 0.1 }), mat: oneOf('재질', MATERIALS),
+  } },
+  platform: { label: '발판', fields: {
+    x: X, z: Z, y: num('윗면 높이 (m)', { min: 0.2, max: 60, step: 0.1 }), w: num('너비 (x)', { min: 0.5, max: 100, step: 0.5 }), d: num('깊이 (z)', { min: 0.5, max: 100, step: 0.5 }),
+    t: num('두께', opt({ min: 0.1, max: 2, step: 0.05 })), mat: oneOf('재질', MATERIALS), pillars: bool('기둥', opt()), base: num('기둥 바닥 높이', opt({ min: 0, max: 60, step: 0.1 })),
+  } },
 };
 
 export const ZONE = obj('거점', { id: str('id'), name: str('이름', opt()), x: X, z: Z, r: num('반지름', { min: 1, max: 30, step: 0.5 }) });

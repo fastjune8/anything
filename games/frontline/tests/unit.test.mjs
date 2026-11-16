@@ -225,6 +225,56 @@ console.log('\n[이동 물리: shared/movement.js]');
   check(free.leanOff > 0.38 && l.leanOff < 0.1, '기울이기: 빈 곳은 끝까지, 옆이 벽이면 벽을 뚫지 않을 만큼만', `${free.leanOff.toFixed(2)} / ${l.leanOff.toFixed(2)}`);
 }
 
+console.log('\n[높이 요소: 경사로 · 계단 · 발판]');
+{
+  const { advanceMovement, newMoveState, NO_INPUT } = await import('../shared/movement.js');
+  const { buildLayout, expandObject } = await import('../shared/maps/build.js');
+  const { rayWorld } = await import('../shared/collision.js');
+  const cs = objs => buildLayout({ objects: objs }).colliders;
+  const walk = (s, input, c, sec) => { for (let t = 0; t < sec - 1e-9; t += 1 / 60) advanceMovement(s, input, c, 1 / 60); return s; };
+  const fwd = { ...NO_INPUT, fwd: 1, speedMul: 1 };
+
+  // 경사로: 북(z+)으로 6m 동안 3m 오른다. yaw = π → 앞 = +z
+  const ramp = cs([{ type: 'ramp', x: 0, z: 5, y: 0, dir: 'n', len: 6, w: 3, h: 3, mat: 'concrete' }, { type: 'platform', x: 0, z: 11, y: 3, w: 3, d: 6, mat: 'concrete' }]);
+  const up = newMoveState(); up.yaw = Math.PI;
+  walk(up, fwd, ramp, 1.2);
+  check(up.pos.z > 3 && up.pos.z < 8 && up.pos.y > 0.4 && up.pos.y < 3 && up.onGround, '경사로를 걸어 오르면 높이가 따라 올라간다 (땅에 붙은 채)', `z ${up.pos.z.toFixed(2)} y ${up.pos.y.toFixed(2)}`);
+  const slope = (up.pos.y) / (up.pos.z - 2);
+  check(Math.abs(slope - 0.5) < 0.12, '오른 높이가 경사(3m/6m)와 맞는다', slope.toFixed(2));
+  walk(up, fwd, ramp, 1.5);
+  check(Math.abs(up.pos.y - 3) < 0.01 && up.pos.z > 8, '끝까지 오르면 3m 발판 위에 선다', `z ${up.pos.z.toFixed(2)} y ${up.pos.y.toFixed(2)}`);
+  const down = up; down.yaw = 0; // 뒤로 돌아 내려간다
+  walk(down, fwd, ramp, 4);
+  check(down.pos.y < 0.05 && down.onGround, '경사로를 걸어 내려오면 바닥까지 붙어서 내려온다', `y ${down.pos.y.toFixed(2)}`);
+
+  // 계단: 같은 크기 → 0.3m 단 10개, 걸어 오른다
+  const st = cs([{ type: 'stairs', x: 0, z: 5, y: 0, dir: 'n', len: 6, w: 2, h: 3, mat: 'concrete' }]);
+  check(expandObject({ type: 'stairs', x: 0, z: 0, dir: 'n', len: 6, w: 2, h: 3 }).boxes.length === 10, '계단은 한 단 0.3m 이하로 나뉜다 (3m → 10단)');
+  const s2 = newMoveState(); s2.yaw = Math.PI;
+  walk(s2, fwd, st, 1.8);
+  check(s2.pos.y > 2.6, '계단을 걸어 오른다', `y ${s2.pos.y.toFixed(2)}`);
+
+  // 발판 아래는 지나갈 수 있고, 위에 선 사람은 떨어지지 않는다
+  const pl = cs([{ type: 'platform', x: 0, z: 5, y: 3, w: 6, d: 6, pillars: true }]);
+  const under = newMoveState(); under.yaw = Math.PI;
+  walk(under, fwd, pl, 1);
+  check(under.pos.z > 4 && under.pos.y === 0, '높은 발판 밑으로 지나갈 수 있다 (기둥 사이)', `z ${under.pos.z.toFixed(2)}`);
+  const on = newMoveState({ x: 0, y: 3, z: 5 }); walk(on, NO_INPUT, pl, 0.5);
+  check(Math.abs(on.pos.y - 3) < 0.01, '발판 위에 서 있으면 떨어지지 않는다');
+
+  // 총알: 경사로 낮은 쪽 위의 공기는 지나가고, 경사면에 맞는다
+  const lowAir = rayWorld({ x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: 1 }, ramp, 30); // 높이 1m 로 북쪽으로
+  check(Math.abs(lowAir.t - (5 + 2 + 2)) < 0.05, '높이 1m 로 쏘면 경사면(높이 1m 지점)에 맞는다 (상자 모양으로 막히지 않는다)', lowAir.t.toFixed(2));
+  const over = rayWorld({ x: 0, y: 3.5, z: -5 }, { x: 0, y: 0, z: 1 }, cs([{ type: 'ramp', x: 0, z: 5, dir: 'n', len: 6, w: 3, h: 3 }]), 30);
+  check(over.t === 30, '경사로보다 높이 쏘면 맞지 않는다');
+  // 회전·대칭: 경사 방향도 같이 돈다
+  const r90 = expandObject({ type: 'ramp', x: 0, z: 0, dir: 'n', len: 6, w: 3, h: 3, rot: 90 }).boxes[0].ramp;
+  const mir = expandObject({ type: 'ramp', x: 2, z: 2, dir: 'e', len: 6, w: 3, h: 3, sym: true }).boxes[1].ramp;
+  check(r90.axis === 'x' && r90.up === -1 && mir.axis === 'x' && mir.up === -1, '경사로를 돌리거나 대칭으로 놓으면 오르는 방향도 바뀐다', JSON.stringify({ r90, mir }));
+  const lifted = expandObject({ type: 'wall', axis: 'x', at: 0, from: 0, to: 4, h: 2, y: 3 }).boxes[0];
+  check(lifted.y === 3, '벽·건물 등에 바닥 높이(y)를 주면 그 높이에 놓인다 (2층 벽)');
+}
+
 console.log('\n[콘텐츠 데이터: 스키마 검사, 맵 펼치기, 저장 형식]');
 {
   const fs = await import('node:fs');

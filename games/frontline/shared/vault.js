@@ -17,6 +17,7 @@ function scan(cs, x, z, r, y0, y1) {
   let top = -Infinity, bottom = Infinity;
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i];
+    if (c.ramp) continue; // 경사로는 걸어 오른다 (넘어가기 대상 아님)
     if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ && y1 > c.minY && y0 < c.maxY) {
       if (c.maxY > top) top = c.maxY;
       if (c.minY < bottom) bottom = c.minY;
@@ -27,7 +28,7 @@ function scan(cs, x, z, r, y0, y1) {
 // 발밑을 받쳐 주는 가장 높은 면 (yMax 이하). 없으면 지면 0
 function support(cs, x, z, r, yMax) {
   let s = 0;
-  for (const c of cs) if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ && c.maxY <= yMax + 0.001 && c.maxY > s) s = c.maxY;
+  for (const c of cs) if (!c.ramp && x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ && c.maxY <= yMax + 0.001 && c.maxY > s) s = c.maxY;
   return s;
 }
 const fits = (cs, x, z, r, y, h) => scan(cs, x, z, r, y + 0.01, y + h).top === -Infinity;

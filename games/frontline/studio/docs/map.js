@@ -89,7 +89,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
   const undoStack = [], redoStack = [];
   let lastErrors = [];
   // 팔레트(그리기 설정): 새로 그리는 물체에 쓴다
-  const brush = { mat: 'concrete', wallH: 2.8, wallT: 0.35, boxH: 1.2, tint: '', roof: true, sym: false, scatter: 'crate', spacing: 2.5 };
+  const brush = { mat: 'concrete', wallH: 2.8, wallT: 0.35, boxH: 1.2, tint: '', roof: true, sym: false, scatter: 'crate', spacing: 2.5,
+    level: 0, rise: 3, pillars: true, stack: false }; // level = 작업 높이(그리는 바닥), rise = 경사로·계단·발판이 오를 높이, stack = 물체 위에 쌓기
   // 프리팹: 물체 묶음 (content/prefabs.json, 팀과 git 으로 공유)
   let prefabs = await fetch('/content/prefabs.json', { cache: 'no-store' }).then(x => (x.ok ? x.json() : [])).catch(() => []);
   let gesture = null;     // 끌어서 그리는 중: { kind: 'draw'|'marquee', what, start, end } · 흩뿌리기: { kind: 'scatter', last, made }
@@ -245,12 +246,26 @@ export async function createMapDoc(ctx, id, opts = {}) {
       case 'barrier': return { ...base, x, z, axis: 'x' };
       case 'barrel': return { ...base, x, z, tint: '#7a2a1e' };
       case 'tree': return { ...base, x, z, s: 1 };
+      case 'ramp': return { ...base, x, z, dir: 'n', len: 6, w: 3, h: 3, mat: 'concrete' };
+      case 'stairs': return { ...base, x, z, dir: 'n', len: 6, w: 2, h: 3, mat: 'concrete' };
+      case 'platform': return { ...base, x, z, y: 3, w: 6, d: 6, mat: 'concrete', pillars: true };
       default: return { ...base, x, z };
     }
   }
 
-  function place(x, z) {
-    if (tool.kind === 'obj') { map.objects.push(newObject(tool.type, x, z)); sel = { kind: 'obj', i: map.objects.length - 1 }; }
+  // 높이 y 를 가진 물체 종류 (나무는 늘 땅에). 발판은 y = 윗면이라 따로
+  const HAS_Y = new Set(Object.keys(OBJECT_SCHEMAS).filter(t => OBJECT_SCHEMAS[t].fields.y && t !== 'platform'));
+  // 물체를 dy 만큼 올리거나 내린다 (바닥 아래로는 안 간다)
+  function liftObj(o, dy) {
+    if (!dy) return o;
+    if (o.type === 'platform') { o.y = r2(Math.max(0.2, (o.y ?? 3) + dy)); o.base = r2(Math.max(0, (o.base || 0) + dy)); if (!o.base) delete o.base; return o; }
+    if (!HAS_Y.has(o.type)) return o;
+    const y = r2(Math.max(0, (o.y || 0) + dy));
+    if (y || o.type === 'box') o.y = y; else delete o.y;
+    return o;
+  }
+  function place(x, z, y = 0) {
+    if (tool.kind === 'obj') { map.objects.push(liftObj(newObject(tool.type, x, z), y)); sel = { kind: 'obj', i: map.objects.length - 1 }; }
     else if (tool.kind === 'spawn') { const list = spawnList(tool.team); list.push([x, z]); sel = { kind: 'spawn', team: tool.team, i: list.length - 1 }; }
     else if (tool.kind === 'zone') {
       if (!map.zones) map.zones = [];
@@ -301,7 +316,28 @@ export async function createMapDoc(ctx, id, opts = {}) {
     ray.setFromCamera(ndc, camera);
   }
   const snapV = v => (snapStep ? Math.round(v / snapStep) * snapStep : r2(v));
-  function groundPoint(e) { aim(e); return ray.ray.intersectPlane(ground, hit) ? [snapV(hit.x), snapV(hit.z)] : null; }
+  // 마우스 아래 바닥 점 [x, z, y]: y = 작업 높이. stack 이면 마우스 아래 물체 윗면 (쌓기)
+  function groundPoint(e, stack = false) {
+    aim(e);
+    if (stack) {
+      const m = ray.intersectObjects(pickGroup.children, false).find(h => h.face && h.face.normal.y > 0.7);
+      if (m) return [snapV(m.point.x), snapV(m.point.z), r2(m.point.y)];
+    }
+    return ray.ray.intersectPlane(ground, hit) ? [snapV(hit.x), snapV(hit.z), brush.level] : null;
+  }
+  // 작업 높이: 그리는 바닥을 위아래로 (2층·지붕 위에 그리기). 그 높이에 반투명 격자를 보여 준다
+  const levelGrid = new THREE.Group(); scene.add(levelGrid);
+  function setLevel(v) {
+    brush.level = r2(Math.max(0, Math.min(60, v)));
+    ground.constant = -brush.level;
+    levelGrid.clear();
+    if (brush.level > 0) {
+      const size = map.half * 2, g = new THREE.GridHelper(size, Math.round(size / 1), 0x3a8bff, 0x3a8bff);
+      g.material.opacity = 0.18; g.material.transparent = true; g.material.depthWrite = false; g.position.y = brush.level + 0.01; levelGrid.add(g);
+    }
+    const inp = pal.querySelector('[data-b="level"]'); if (inp && Number(inp.value) !== brush.level) inp.value = brush.level;
+    showCoords();
+  }
   function pick(e) {
     aim(e);
     const m = ray.intersectObjects(markGroup.children, false)[0] || ray.intersectObjects(pickGroup.children, false)[0];
@@ -327,6 +363,10 @@ export async function createMapDoc(ctx, id, opts = {}) {
   const symOpt = () => (brush.sym ? { sym: true } : {});
   // 끈 두 점 → 만들 물체 (그리기 설정 반영). 너무 작으면 null
   function drawnObject(what, a, b) {
+    const o = drawnShape(what, a, b);
+    return o && what !== 'platform' ? liftObj(o, a[2] || 0) : o;
+  }
+  function drawnShape(what, a, b) {
     if (what === 'wall') { // 벽: 더 많이 끈 방향(동서/남북)으로 곧게
       const dx = b[0] - a[0], dz = b[1] - a[1];
       if (Math.hypot(dx, dz) < 0.5) return null;
@@ -337,6 +377,16 @@ export async function createMapDoc(ctx, id, opts = {}) {
     const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[1], b[1]), z1 = Math.max(a[1], b[1]);
     const w = r2(x1 - x0), d = r2(z1 - z0), cx = r2((x0 + x1) / 2), cz = r2((z0 + z1) / 2);
     if (what === 'box') return w < 0.2 || d < 0.2 ? null : { type: 'box', x: cx, y: 0, z: cz, w, h: brush.boxH, d, mat: brush.mat, ...(brush.tint ? { tint: brush.tint } : {}), ...symOpt() };
+    if (what === 'ramp' || what === 'stairs') { // 끈 방향(더 긴 쪽)으로 오른다: 시작점이 낮은 쪽
+      if (Math.max(w, d) < 1 || Math.min(w, d) < 0.5) return null;
+      const alongX = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]);
+      const dir = alongX ? (b[0] >= a[0] ? 'e' : 'w') : (b[1] >= a[1] ? 'n' : 's');
+      return { type: what, x: cx, z: cz, dir, len: alongX ? w : d, w: alongX ? d : w, h: brush.rise, mat: brush.mat, ...symOpt() };
+    }
+    if (what === 'platform') { // 작업 높이 + 오를 높이에 바닥판, 기둥은 작업 높이까지
+      const lv = a[2] || 0;
+      return w < 0.5 || d < 0.5 ? null : { type: 'platform', x: cx, z: cz, y: r2(lv + brush.rise), w, d, mat: brush.mat, ...(brush.pillars ? { pillars: true } : {}), ...(lv ? { base: lv } : {}), ...symOpt() };
+    }
     if (what === 'building') return w < 3 || d < 3 ? null : { type: 'building', x: cx, z: cz, w, d, h: Math.max(2.5, brush.wallH), mat: brush.mat, roof: brush.roof, ops: { n: [], s: [{ at: cx, w: 1.6, type: 'door' }], e: [], w: [] }, ...symOpt() };
     return null;
   }
@@ -356,7 +406,10 @@ export async function createMapDoc(ctx, id, opts = {}) {
       const m = new THREE.Mesh(unitBox, previewMat); m.scale.set(b.w, b.h, b.d); m.position.set(b.x, b.y + b.h / 2, b.z); previewGroup.add(m);
     }
     const len = o.type === 'wall' ? r2(o.to - o.from) : null;
-    r('hint').textContent = o.type === 'wall' ? `벽 ${len}m · 높이 ${o.h}m` : `${OBJECT_SCHEMAS[o.type].label} ${o.w} × ${o.d}m`;
+    const at = o.y ? ` · 바닥 ${o.y}m` : '';
+    r('hint').textContent = o.type === 'wall' ? `벽 ${len}m · 높이 ${o.h}m${at}`
+      : o.type === 'ramp' || o.type === 'stairs' ? `${OBJECT_SCHEMAS[o.type].label} 길이 ${o.len}m × 폭 ${o.w}m · ${o.h}m 오름 (${{ n: '북', s: '남', e: '동', w: '서' }[o.dir]}쪽으로)${at}`
+        : o.type === 'platform' ? `발판 ${o.w} × ${o.d}m · 윗면 ${o.y}m` : `${OBJECT_SCHEMAS[o.type].label} ${o.w} × ${o.d}m${at}`;
   }
   // 흩뿌리기: 끄는 길을 따라 일정 간격으로 (크기·방향은 조금씩 다르게)
   const SCATTER = { crate: '상자', barrel: '드럼통', tree: '나무', sandbags: '모래주머니', barrier: '콘크리트 방벽' };
@@ -365,7 +418,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     const rnd = (a, b) => r2(a + Math.random() * (b - a)), axis = Math.random() < 0.5 ? 'x' : 'z', [x, z] = p;
     const o = { crate: { type: 'crate', x, z, s: rnd(0.9, 1.4) }, barrel: { type: 'barrel', x, z, tint: TINTS[(Math.random() * TINTS.length) | 0] },
       tree: { type: 'tree', x, z, s: rnd(0.8, 1.3) }, sandbags: { type: 'sandbags', x, z, len: rnd(3, 5), axis }, barrier: { type: 'barrier', x, z, axis } }[brush.scatter];
-    map.objects.push({ ...o, ...symOpt() }); gesture.made.push(map.objects.length - 1); rebuild();
+    map.objects.push(liftObj({ ...o, ...symOpt() }, p[2] || 0)); gesture.made.push(map.objects.length - 1); rebuild();
   }
   function finishGesture() {
     const g = gesture; gesture = null; previewGroup.clear(); setTool(tool); // 안내 문구 되돌리기
@@ -406,9 +459,9 @@ export async function createMapDoc(ctx, id, opts = {}) {
     if (!out.ok) { ctx.log(`프리팹 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('프리팹 저장 실패'); return false; }
     prefabs = next; renderPrefabs(); return true;
   }
-  function stampPrefab(id, x, z) {
+  function stampPrefab(id, x, z, y = 0) {
     const pf = prefabs.find(p => p.id === id);
-    if (pf) addObjects(pf.objects.map(o => { const c = clone(o); moveObj(c, clone(o), x, z); return { ...c, ...symOpt() }; }));
+    if (pf) addObjects(pf.objects.map(o => { const c = clone(o); moveObj(c, clone(o), x, z); return liftObj({ ...c, ...symOpt() }, y); }));
   }
 
   let drag = null;
@@ -418,7 +471,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
       if (e.button === 2) { startFly(); return; }
       if (e.button !== 0) return;
       if (e.altKey) { orbiting = true; controls.enabled = false; return; }
-      const p = groundPoint(e);
+      const p = groundPoint(e, !!tool && brush.stack && tool.kind !== 'marquee');
       if (tool) {
         if (!p) return;
         if (tool.kind === 'draw') { // 끌어서 그리기. 벽은 앞 벽 끝 근처에서 시작하면 거기에 붙는다
@@ -427,8 +480,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
         }
         if (tool.kind === 'marquee') { gesture = { kind: 'marquee', start: p, end: p, add: e.shiftKey }; showPreview(); return; }
         if (tool.kind === 'scatter') { gesture = { kind: 'scatter', last: p, made: [] }; scatterAt(p); return; }
-        if (tool.kind === 'prefab') { stampPrefab(tool.id, p[0], p[1]); if (!e.shiftKey) setTool(null); return; }
-        place(p[0], p[1]); if (!e.shiftKey) setTool(null); return; // Shift 를 누르고 있으면 계속 놓기
+        if (tool.kind === 'prefab') { stampPrefab(tool.id, p[0], p[1], p[2]); if (!e.shiftKey) setTool(null); return; }
+        place(p[0], p[1], tool.kind === 'obj' ? p[2] : 0); if (!e.shiftKey) setTool(null); return; // Shift 를 누르고 있으면 계속 놓기
       }
       const u = pick(e);
       if (e.shiftKey && u && u.kind === 'obj') { const cur = selIndices(); selectList(cur.includes(u.i) ? cur.filter(i => i !== u.i) : [...cur, u.i]); return; } // Shift+클릭 = 더하기/빼기
@@ -440,7 +493,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     ['pointermove', e => {
       if (fly) { look.y -= e.movementX * 0.0028; look.x = Math.max(-1.5, Math.min(1.5, look.x - e.movementY * 0.0028)); camera.quaternion.setFromEuler(look); return; }
       if (orbiting) { orbitBy(-e.movementX * 0.006, -e.movementY * 0.006); return; }
-      const p = groundPoint(e);
+      const p = groundPoint(e, !!gesture && gesture.kind === 'scatter' && brush.stack);
       cursor = p; showCoords();
       if (gesture) {
         if (!p) return;
@@ -489,6 +542,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
     switch (e.code) {
       case 'Delete': case 'Backspace': e.preventDefault(); removeSelected(); break;
       case 'KeyR': rotateSelected(); break;
+      case 'BracketLeft': case 'BracketRight': e.preventDefault(); setLevel(brush.level + (e.code === 'BracketRight' ? 1 : -1) * (e.shiftKey ? 3 : 0.5)); break;
+      case 'PageUp': case 'PageDown': e.preventDefault(); liftSelected((e.code === 'PageUp' ? 1 : -1) * (e.shiftKey ? 3 : 0.5)); break;
       case 'KeyF': focusSelected(); break;
       case 'KeyT': topView(); break;
       case 'Home': overview(); break;
@@ -531,6 +586,13 @@ export async function createMapDoc(ctx, id, opts = {}) {
     moveTo(JSON.parse(JSON.stringify(o)), r2((fx * u + rx * s) * step), r2((fz * u + rz * s) * step));
     rebuildNow(); commit(); renderPanel();
   }
+  // 고른 물체를 위아래로 (PageUp/PageDown)
+  function liftSelected(dy) {
+    const idx = selIndices();
+    if (!idx.length) return;
+    for (const i of idx) liftObj(map.objects[i], dy);
+    rebuildNow(); commit(); renderPanel();
+  }
   function copySelected() {
     const idx = selIndices();
     if (!idx.length) return;
@@ -545,8 +607,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
   }
   function setSnap(v) { snapStep = v; if (v) lastSnap = v; r('snap').value = String(v); showCoords(); }
   function showCoords(extra) {
-    const c = cursor ? `x ${cursor[0].toFixed(1)} · z ${cursor[1].toFixed(1)}` : '';
-    r('coords').textContent = [c, `격자 ${snapStep ? snapStep + 'm' : '끔'} (G)`, extra || (fly ? `비행 속도 ${flySpeed.toFixed(0)} m/s (휠)` : '')].filter(Boolean).join('  ·  ');
+    const c = cursor ? `x ${cursor[0].toFixed(1)} · z ${cursor[1].toFixed(1)}${cursor[2] ? ` · y ${cursor[2].toFixed(1)}` : ''}` : '';
+    r('coords').textContent = [c, `작업 높이 ${brush.level}m ([ ])`, `격자 ${snapStep ? snapStep + 'm' : '끔'} (G)`, extra || (fly ? `비행 속도 ${flySpeed.toFixed(0)} m/s (휠)` : '')].filter(Boolean).join('  ·  ');
   }
   function topView() { camera.position.set(controls.target.x, map.half * 2.2, controls.target.z + 0.01); camera.lookAt(controls.target); }
   function overview() { controls.target.set(0, 0, 0); camera.position.set(0, map.half * 1.3, map.half * 1.15); camera.lookAt(controls.target); }
@@ -569,6 +631,9 @@ export async function createMapDoc(ctx, id, opts = {}) {
     'draw:wall': '바닥을 끌어 벽 그리기 (곧게 동서/남북) · 앞 벽 끝에서 시작하면 이어진다 · Esc = 그만',
     'draw:box': '바닥을 끌어 사각형 박스 그리기 (높이·재질은 그리기 설정) · Esc = 그만',
     'draw:building': '바닥을 끌어 건물 그리기 (3m 이상, 남쪽 벽에 문) · Esc = 그만',
+    'draw:ramp': '끌어서 경사로 그리기 — 끄는 쪽으로 오른다 (시작점이 낮은 쪽) · 높이 = 그리기 설정의 "오를 높이" · Esc = 그만',
+    'draw:stairs': '끌어서 계단 그리기 — 끄는 쪽으로 오른다 · 한 단 0.3m 이하로 자동으로 나눈다 · Esc = 그만',
+    'draw:platform': '끌어서 발판(2층 바닥·다리) 그리기 — 작업 높이 + 오를 높이에 놓인다 · Esc = 그만',
     scatter: '바닥을 끌면 지나간 길에 일정 간격으로 흩뿌린다 · Esc = 그만',
     marquee: '끌어서 영역 안의 물체를 고르기 · Shift = 더하기 · 고른 뒤 끌기/방향키/R/⌘D/Del',
     prefab: '바닥을 클릭해 프리팹 찍기 · Shift+클릭 = 계속 찍기',
@@ -581,8 +646,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
     if (!t || t.kind !== 'draw') lastWallEnd = null;
   }
   // 도구 상자: 묶음별 타일 (묶음 제목을 누르면 접힌다)
-  const ICON = { building: '⌂', wall: '▬', box: '■', container: '▤', crate: '▣', sandbags: '≋', barrier: '▭', barrel: '◍', tower: '♜', tree: '♣' };
-  const GROUPS = [['구조물', ['building', 'wall', 'box']], ['엄폐물', ['container', 'crate', 'sandbags', 'barrier', 'barrel']], ['자연 · 기타', ['tree', 'tower']]];
+  const ICON = { ramp: '◢', stairs: '▟', platform: '▔', building: '⌂', wall: '▬', box: '■', container: '▤', crate: '▣', sandbags: '≋', barrier: '▭', barrel: '◍', tower: '♜', tree: '♣' };
+  const GROUPS = [['구조물', ['building', 'wall', 'box']], ['엄폐물', ['container', 'crate', 'sandbags', 'barrier', 'barrel']], ['높이', ['ramp', 'stairs', 'platform']], ['자연 · 기타', ['tree', 'tower']]];
   // 도구 상자: 그리기 → 그리기 설정(팔레트) → 하나씩 놓기 → 프리팹 → 스폰 → 모드
   const pal = r('palette');
   function tileGroup(title, items, open = true) {
@@ -601,6 +666,8 @@ export async function createMapDoc(ctx, id, opts = {}) {
   tileGroup('그리기', [
     ['벽', '✎', { kind: 'draw', what: 'wall' }, '#ffb43a', '벽 그리기 — 바닥을 끌기'], ['박스', '▭', { kind: 'draw', what: 'box' }, '#ffb43a', '사각형 박스 그리기 — 바닥을 끌기'],
     ['건물', '⌂', { kind: 'draw', what: 'building' }, '#ffb43a', '건물 그리기 — 바닥을 끌기'], ['흩뿌리기', '✿', { kind: 'scatter' }, '#ffb43a', '흩뿌리기 — 끄는 길을 따라'],
+    ['경사로', '◢', { kind: 'draw', what: 'ramp' }, '#7cc4ff', '경사로 그리기 — 오를 쪽으로 끌기'], ['계단', '▟', { kind: 'draw', what: 'stairs' }, '#7cc4ff', '계단 그리기 — 오를 쪽으로 끌기'],
+    ['발판', '▔', { kind: 'draw', what: 'platform' }, '#7cc4ff', '발판 그리기 — 2층 바닥·다리 (작업 높이 + 오를 높이)'],
     ['영역 선택', '⬚', { kind: 'marquee' }, '#ffd23a', '영역 선택 — 끌어서 여러 개 고르기'],
   ]);
   // 그리기 설정 (팔레트)
@@ -620,8 +687,11 @@ export async function createMapDoc(ctx, id, opts = {}) {
     const sc = html('select'); for (const [k, v] of Object.entries(SCATTER)) sc.appendChild(new Option(v, k)); sc.value = brush.scatter; sc.dataset.b = 'scatter';
     sc.addEventListener('change', () => { brush.scatter = sc.value; });
     row('흩뿌릴 것', sc); row('간격 (m)', num('spacing', 0.5, 20, 0.5));
+    const lv = num('level', 0, 60, 0.5); lv.title = '그리는 바닥의 높이 — [ ] 로 0.5m, Shift+[ ] 로 3m (한 층)'; lv.addEventListener('input', () => { const v = Number(lv.value); if (Number.isFinite(v)) setLevel(v); });
+    row('작업 높이', lv); row('오를 높이', num('rise', 0.2, 20, 0.1)).title = '경사로·계단이 오르는 높이, 발판을 작업 높이보다 얼마나 위에 놓을지';
     const tog = (label, key, tip) => { const l = html('label', 'tog'), c = html('input'); c.type = 'checkbox'; c.checked = brush[key]; c.dataset.b = key; c.addEventListener('change', () => { brush[key] = c.checked; }); l.title = tip; l.append(c, document.createTextNode(label)); box.appendChild(l); };
     tog('건물 지붕', 'roof', '건물 그리기에 지붕을 덮는다'); tog('반대편에도 (대칭)', 'sym', '그리는 것마다 맵 중심 반대편에도 하나 더');
+    tog('발판 기둥', 'pillars', '발판 네 귀퉁이에 기둥 (작업 높이까지)'); tog('물체 위에 쌓기', 'stack', '놓기·흩뿌리기·프리팹: 마우스 아래 물체 윗면에 올려놓는다 (지붕 위 상자 등)');
     pal.append(h, box);
   })();
   for (const [title, types] of GROUPS) tileGroup(title, types.filter(t => OBJECT_SCHEMAS[t]).map(t => [OBJECT_SCHEMAS[t].label, ICON[t] || '■', { kind: 'obj', type: t }]), false);
@@ -753,7 +823,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
       select: s => { sel = s; drawSelection(); renderPanel(); },
       moveTo: (dx, dz) => { moveTo(JSON.parse(JSON.stringify(selected())), dx, dz); rebuildNow(); commit(); renderPanel(); },
       removeSelected, rotateSelected, duplicateSelected, rebuildNow, camera, controls, get snap() { return snapStep; }, get clipboard() { return clipboard; },
-      brush, get prefabs() { return prefabs; }, selectList, saveAsPrefab, get tool() { return tool; },
+      brush, get prefabs() { return prefabs; }, selectList, saveAsPrefab, get tool() { return tool; }, setLevel, liftSelected,
     },
   };
 }

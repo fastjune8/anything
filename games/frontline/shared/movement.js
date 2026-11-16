@@ -2,7 +2,7 @@
 // 지금은 브라우저(client/js/player.js)가 쓰고, 나중에 서버가 같은 함수로 이동을 계산한다 (서버 권한 이동, M1).
 //   stepMovement(상태, 입력, 충돌 박스, dt) → 상태를 바꾸고, 소리·연출용 사건(events)을 돌려준다.
 import { LEAN_DIST } from './constants.js';
-import { rayWorld } from './collision.js';
+import { rayWorld, rampTop } from './collision.js';
 import { findVault } from './vault.js';
 
 export const BODY = { STAND_H: 1.75, CROUCH_H: 1.2, RADIUS: 0.35, STEP: 0.45, GRAVITY: 19, JUMP_V: 6.4 };
@@ -22,22 +22,25 @@ export function newMoveState(pos = { x: 0, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 
 export const NO_INPUT = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: false, sprint: false, leanL: false, leanR: false, speedMul: 1 });
 
 // (x, z, 높이 h) 몸통이 겹치는 물체 중 가장 높은 윗면. 겹침이 없으면 -Infinity
+// 경사로는 발밑 윗면 높이로 본다 → 걸어 들어가면 그만큼 "턱" 으로 올라선다 (조금씩이라 미끄럽게 오른다)
 export function overlapTop(cs, x, y, z, h) {
   let top = -Infinity;
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i];
-    if (x + RADIUS > c.minX && x - RADIUS < c.maxX && z + RADIUS > c.minZ && z - RADIUS < c.maxZ && y + h > c.minY && y < c.maxY - 0.001) {
-      if (c.maxY > top) top = c.maxY;
-    }
+    if (!(x + RADIUS > c.minX && x - RADIUS < c.maxX && z + RADIUS > c.minZ && z - RADIUS < c.maxZ && y + h > c.minY)) continue;
+    const t = c.ramp ? rampTop(c, x, z, RADIUS) : c.maxY;
+    if (y < t - 0.001 && t > top) top = t;
   }
   return top;
 }
-// 발 아래 받쳐 주는 가장 높은 바닥 높이
+// 발 아래 받쳐 주는 가장 높은 바닥 높이 (경사로는 발밑 윗면)
 export function supportBelow(cs, x, y, z) {
   let s = 0;
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i];
-    if (x + RADIUS > c.minX && x - RADIUS < c.maxX && z + RADIUS > c.minZ && z - RADIUS < c.maxZ && c.maxY <= y + 0.001 && c.maxY > s) s = c.maxY;
+    if (!(x + RADIUS > c.minX && x - RADIUS < c.maxX && z + RADIUS > c.minZ && z - RADIUS < c.maxZ)) continue;
+    const t = c.ramp ? rampTop(c, x, z, RADIUS) : c.maxY;
+    if (t <= y + 0.001 && t > s) s = t;
   }
   return s;
 }

@@ -209,6 +209,38 @@ try {
   await page.keyboard.press('ControlOrMeta+z');
   check(await count() === n0, '찍은 것도 ⌘Z 로 한 번에 되돌린다');
 
+  console.log('\n[맵: 높이 — 경사로 · 계단 · 발판 · 작업 높이 · 쌓기]');
+  const last = () => page.evaluate(() => window.__ed.map.objects.at(-1));
+  await page.fill(`${ACT.tools} [data-b="rise"]`, '3');
+  await page.click(`${ACT.tools} .tile[data-tool="draw:ramp"]`);
+  await dragTo(at(0.42, 0.62), at(0.46, 0.42));
+  const rp = await last();
+  check(rp.type === 'ramp' && 'ns'.includes(rp.dir) && rp.len > rp.w && rp.h === 3, '경사로 도구로 끌면 끈 쪽으로 오르는 경사로가 생긴다 (높이 = 오를 높이)', JSON.stringify(rp));
+  await page.click(`${ACT.tools} .tile[data-tool="draw:stairs"]`);
+  await dragTo(at(0.5, 0.5), at(0.62, 0.52));
+  const stp = await last();
+  check(stp.type === 'stairs' && 'ew'.includes(stp.dir), '계단 도구: 옆으로 끌면 동/서로 오르는 계단', JSON.stringify(stp));
+  await page.click(`${ACT.tools} .tile[data-tool="draw:platform"]`);
+  await dragTo(at(0.66, 0.4), at(0.74, 0.5));
+  const pl = await last();
+  check(pl.type === 'platform' && pl.y === 3 && pl.pillars, '발판 도구: 작업 높이(0) + 오를 높이(3m) 에 기둥 있는 발판', JSON.stringify(pl));
+  for (let k = 0; k < 6; k++) await page.keyboard.press('BracketRight');
+  check(await page.evaluate(() => window.__ed.brush.level) === 3, '] 를 누르면 작업 높이가 0.5m 씩 올라간다');
+  await page.click(`${ACT.tools} .tile[data-tool="draw:box"]`);
+  await dragTo(at(0.67, 0.42), at(0.73, 0.48));
+  const up = await last();
+  check(up.type === 'box' && up.y === 3, '작업 높이 3m 에서 그린 박스는 3m 위(발판 위)에 놓인다', JSON.stringify(up));
+  await page.keyboard.press('PageUp');
+  check((await last()).y === 3.5, 'PageUp 으로 고른 물체가 0.5m 올라간다');
+  await page.keyboard.press('Shift+BracketLeft');
+  check(await page.evaluate(() => window.__ed.brush.level) === 0, 'Shift+[ 로 한 층(3m) 내려간다');
+  await page.evaluate(() => { window.__ed.brush.stack = true; });
+  await page.click(`${ACT.tools} .tile[data-tool="obj:crate"]`);
+  await page.mouse.click(...at(0.7, 0.45));
+  const cr = await last();
+  check(cr.type === 'crate' && Math.abs(cr.y - (3.5 + 1.2)) < 0.05, '물체 위에 쌓기: 상자를 박스 윗면에 올려놓는다', JSON.stringify(cr));
+  await page.evaluate(() => { window.__ed.brush.stack = false; });
+
   console.log('\n[총 모델]');
   await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#sampleBtn');
   await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.kind === 'gun', null, { timeout: 30000 });

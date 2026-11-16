@@ -27,7 +27,43 @@ export const OBJECT_TYPES = {
   barrel: { build: (B, o) => barrel(B, o.x, o.z, tintNum(o.tint ?? '#35506b')), anchor: o => [o.x, o.z] },
   tower: { build: (B, o) => tower(B, o.x, o.z), anchor: o => [o.x, o.z] }, // 감시탑 (계단은 서쪽, rot 으로 돌린다)
   tree: { build: (B, o, T) => T(o.x, o.z, o.s ?? 1), anchor: o => [o.x, o.z] },
+
+  // ───── 높이 요소 ─────
+  // 경사로: 바닥 높이 y 에서 dir 쪽으로 h 만큼 올라가는 쐐기. len = 오르는 방향 길이, w = 폭. 걸어서 오르내린다
+  ramp: {
+    build: (B, o) => {
+      const [axis, up] = DIRS[o.dir || 'n'], along = o.len ?? 6, across = o.w ?? 3;
+      B(o.x, o.y || 0, o.z, axis === 'x' ? along : across, o.h ?? 3, axis === 'x' ? across : along, o.mat || 'concrete', { shape: 'ramp', ramp: { axis, up } });
+    },
+    anchor: o => [o.x, o.z],
+  },
+  // 계단: 경사로와 같은 크기 정보로, 한 단 0.3m 이하가 되도록 나눈 단 (밑은 꽉 차 있다)
+  stairs: {
+    build: (B, o) => {
+      const [axis, up] = DIRS[o.dir || 'n'], along = o.len ?? 6, across = o.w ?? 2, h = o.h ?? 3, y = o.y || 0;
+      const n = Math.max(1, Math.ceil(h / 0.3)), run = along / n, rise = h / n;
+      for (let i = 0; i < n; i++) {
+        const u = -along / 2 + run * (i + 0.5); // 낮은 쪽부터
+        const cx = o.x + (axis === 'x' ? u * up : 0), cz = o.z + (axis === 'z' ? u * up : 0);
+        B(cx, y, cz, axis === 'x' ? run : across, rise * (i + 1), axis === 'x' ? across : run, o.mat || 'concrete');
+      }
+    },
+    anchor: o => [o.x, o.z],
+  },
+  // 발판: 높이 y 를 윗면으로 하는 바닥판 (2층 바닥·다리). pillars = 네 귀퉁이 기둥 (base 높이까지)
+  platform: {
+    build: (B, o) => {
+      const t = o.t ?? 0.3, w = o.w ?? 6, d = o.d ?? 6, y = o.y ?? 3, base = o.base || 0, mat = o.mat || 'concrete';
+      B(o.x, y - t, o.z, w, t, d, mat);
+      if (o.pillars && y - t - base > 0.2) for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(o.x + sx * (w / 2 - 0.25), base, o.z + sz * (d / 2 - 0.25), 0.35, y - t - base, 0.35, mat);
+    },
+    anchor: o => [o.x, o.z],
+  },
 };
+// 방향 → [경사가 오르는 축, 오르는 쪽]  (n = 북 z+, s = 남 z−, e = 동 x+, w = 서 x−)
+const DIRS = { n: ['z', 1], s: ['z', -1], e: ['x', 1], w: ['x', -1] };
+// 바닥 높이 y 를 나중에 더하는 종류 (자기 모양 함수가 y 를 안 쓰는 것들)
+const LIFT = new Set(['wall', 'building', 'sandbags', 'barrier', 'barrel', 'tower']);
 
 function boxExtra(o) {
   const e = {};
@@ -46,6 +82,12 @@ function turn(x, z, cx, cz, rot) {
     default: return [x, z];
   }
 }
+// 경사로 방향도 같이 돌린다 (turn 과 같은 방향: 90° 면 x+ → z+, z+ → x−)
+function turnRamp(r, rot) {
+  let v = r.axis === 'x' ? [r.up, 0] : [0, r.up];
+  for (let k = 0; k < ((((rot % 360) + 360) % 360) / 90); k++) v = [-v[1], v[0]];
+  return v[0] ? { axis: 'x', up: v[0] } : { axis: 'z', up: v[1] };
+}
 const sideways = rot => ((((rot % 360) + 360) % 360) / 90) % 2 === 1;
 
 // 물체 하나 → 박스·나무 목록. rot: 제자리 회전(90 단위), sym: 맵 중심 기준 반대편(180° 회전)에도 하나 더
@@ -54,17 +96,19 @@ export function expandObject(o) {
   if (!t) return { boxes: [], trees: [] };
   const boxes = [], trees = [];
   t.build((x, y, z, w, h, d, mat, extra) => boxes.push({ x, y, z, w, h, d, mat, ...(extra || {}) }), o, (x, z, s) => trees.push({ x, z, s }));
+  if (o.y && LIFT.has(o.type)) for (const b of boxes) b.y += o.y; // 공중·2층에 놓기
   const rot = o.rot || 0;
   if (rot) {
     const [cx, cz] = t.anchor(o);
     for (const b of boxes) {
       [b.x, b.z] = turn(b.x, b.z, cx, cz, rot);
       if (sideways(rot)) [b.w, b.d] = [b.d, b.w];
+      if (b.ramp) b.ramp = turnRamp(b.ramp, rot);
     }
     for (const tr of trees) [tr.x, tr.z] = turn(tr.x, tr.z, cx, cz, rot);
   }
   if (o.sym) {
-    boxes.push(...boxes.map(b => ({ ...b, x: -b.x, z: -b.z })));
+    boxes.push(...boxes.map(b => ({ ...b, x: -b.x, z: -b.z, ...(b.ramp ? { ramp: { ...b.ramp, up: -b.ramp.up } } : {}) }))); // 반대편: 경사도 반대로
     trees.push(...trees.map(tr => ({ ...tr, x: -tr.x, z: -tr.z })));
   }
   return { boxes, trees };

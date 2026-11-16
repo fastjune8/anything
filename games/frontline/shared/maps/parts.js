@@ -74,6 +74,7 @@ export function finishLayout(boxes, trees) {
     minX: b.x - b.w / 2, maxX: b.x + b.w / 2,
     minY: b.y, maxY: b.y + b.h,
     minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2,
+    ...(b.ramp ? { ramp: b.ramp } : {}), // 경사로: 윗면이 기울어진 쐐기 (shared/collision.js)
   }));
   return { boxes, trees, colliders };
 }
