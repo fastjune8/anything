@@ -7,10 +7,18 @@ import { WebSocket } from 'ws';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// GitHub Actions 에서는 실패를 화면 위 오류 표시(annotation)로도 남긴다 (실행 기록을 열지 않아도 보이게)
+const CI = !!process.env.GITHUB_ACTIONS;
+const annotate = text => { if (CI) console.log(`::error::${String(text).replace(/\r?\n/g, '%0A').slice(0, 3000)}`); };
+if (CI) {
+  const orig = console.error.bind(console);
+  console.error = (...a) => { orig(...a); annotate(a.map(x => (x && x.stack) || String(x)).join(' ')); };
+}
+
 let failures = 0;
 export function check(cond, label, detail = '') {
   console.log(`${cond ? '  ✓' : '  ✗'} ${label}${!cond && detail ? `  → ${detail}` : ''}`);
-  if (!cond) failures++;
+  if (!cond) { failures++; annotate(`${label}${detail ? ' → ' + detail : ''}`); }
 }
 export const failed = () => failures;
 

@@ -21,8 +21,8 @@ jobs:
       run:
         working-directory: games/frontline
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -32,7 +32,11 @@ jobs:
         run: npm run lint
       - name: 서버·규칙 테스트
         run: npm test
+      - name: Chrome 설치
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
       - name: 브라우저 테스트 (게임 + 맵 에디터)
         run: npm run test:browser
         env:
-          CHROME_PATH: /usr/bin/google-chrome
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          REQUIRE_CHROME: '1'

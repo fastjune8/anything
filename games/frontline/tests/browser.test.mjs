@@ -9,7 +9,7 @@ import { startServer, connect, check, failed, sleep } from './helpers.mjs';
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 if (!fs.existsSync(CHROME)) {
   console.log(`Chrome 을 찾을 수 없어 브라우저 테스트를 건너뜁니다 (${CHROME}). CHROME_PATH 로 지정하세요.`);
-  process.exit(0);
+  process.exit(process.env.REQUIRE_CHROME ? 1 : 0); // 자동 테스트(CI)에서는 건너뛰지 않고 실패
 }
 
 const browser = await chromium.launch({
