@@ -1,5 +1,7 @@
 // 총과 병사 모델. 총은 상자/원통을 조합해 만들고, 파츠(조준경·총열·손잡이·탄창·개머리판)는 setGunParts 로 갈아 끼운다.
 import * as THREE from 'three';
+import { modelFor, modelIdFor } from './gunmodels.js';
+import { gunSpec } from './gunmodel.js';
 
 const M = {
   steel: new THREE.MeshStandardMaterial({ color: 0x1d1f22, metalness: 0.85, roughness: 0.42 }),
@@ -207,10 +209,25 @@ export function wrapGun(group, spec, parts) {
   return gun;
 }
 
+// 등록된 모델(.glb)로 총 만들기. 부착 지점이 모자라면 null (→ 코드로 만든 총)
+function buildFromModel(src, modelId, withArms, parts) {
+  const group = new THREE.Group(), root = src.clone(true);
+  group.add(root); group.updateMatrixWorld(true);
+  const spec = gunSpec(group);
+  if (!spec) return null;
+  if (withArms) attachArms(group, spec);
+  const gun = wrapGun(group, spec, parts);
+  gun.model = modelId; // 어떤 모델로 만들었는지 (확인·테스트용)
+  return gun;
+}
+
 // withArms: 1인칭 뷰모델용 팔 포함 여부
+// 무기 데이터에 등록된 모델이 연결돼 있으면 그 모델로, 아니면 코드로 만든 총
 export function buildGun(id, withArms, parts) {
+  const src = modelFor(id);
+  if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts); if (g) return g; }
   const group = new THREE.Group();
-  const spec = BUILD[id](group);
+  const spec = (BUILD[id] || BUILD.m4)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
   if (withArms) attachArms(group, spec);
   return wrapGun(group, spec, parts);
 }

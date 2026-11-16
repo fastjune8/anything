@@ -87,7 +87,7 @@ async function openAsset(key, opts = {}) {
     }
   }
   activate(doc);
-  if (doc.focus && (opts.select || opts.slot)) doc.focus(opts);
+  if (doc.focus && (opts.select || opts.slot || opts.create)) doc.focus(opts);
   return doc;
 }
 function activate(doc) {

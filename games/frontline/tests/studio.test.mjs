@@ -211,6 +211,19 @@ try {
   await page.click('[data-cat="weapons"]'); await page.click('[data-asset="weapon:mp5"]');
   check((await page.textContent('#homeDetail')).includes('시험 소총 (등록된 모델)'), '무기 자세히에 연결된 모델이 보인다');
 
+  console.log('\n[등록한 모델이 게임에 자동으로 적용]');
+  const gctx = await browser.newContext({ viewport: { width: 1000, height: 600 } });
+  await gctx.addInitScript(() => localStorage.setItem('fd_loadout', JSON.stringify({ slots: ['mp5', 'm9'], parts: {} })));
+  const gp = await gctx.newPage();
+  const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
+  await gp.goto(`http://localhost:${srv.port}/?auto=Tester&nolock&mode=ffa`);
+  await gp.waitForFunction(() => window.__g && window.__g.joined, null, { timeout: 60000 });
+  const gm = await gp.evaluate(() => ({ cur: window.__g.cur, models: window.__g.vmGuns.map(g => g.model || null), sightY: window.__g.vmGuns[2].sightY }));
+  check(gm.models[2] === 'zz_gun_test' && Math.abs(gm.sightY - 0.064) < 1e-3, '게임을 열면 MP5 가 등록된 모델로 그려진다 (정조준 높이도 모델의 부착 지점대로)', JSON.stringify(gm));
+  check(gm.models.filter(Boolean).length >= 1 && gm.models[6] === null, '모델이 없는 무기는 코드로 만든 총 그대로', JSON.stringify(gm.models));
+  check(gerr.length === 0, '게임 화면 오류가 없다', gerr.join(' | '));
+  await gctx.close();
+
   console.log('\n[창 크기 조절]');
   await page.dblclick(`[data-asset="weapon:m4"]`);
   await page.waitForFunction(() => window.__studio.active && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
@@ -243,6 +256,27 @@ try {
   await page.fill(`${ACT.insp} .row:has(.lbl:text-is("피해")) input`, '0');
   check(await page.evaluate(a => window.__dd.errors.length > 0 && document.querySelector(`${a.bar} [data-r="save"]`).disabled, ACT), '범위를 벗어나면 (피해 0) 오류가 보이고 저장이 잠긴다');
   await page.evaluate(() => { window.__dd.data[0].dmg = 22; window.__dd.render(); });
+
+  console.log('\n[새 무기 만들기 (양식)]');
+  await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.click('#newDataBtn');
+  await page.waitForSelector('.modal [data-f="id"]', { timeout: 10000 });
+  const go = () => page.locator('.modal [data-f="go"]').isDisabled();
+  check(await go(), '빈 양식으로는 만들 수 없다');
+  await page.fill('.modal [data-f="id"]', 'm4'); await page.fill('.modal [data-f="name"]', '시험총'); await page.fill('.modal [data-f="cls"]', '돌격소총');
+  check(await go() && (await page.textContent('.modal:not(#help)')).includes('이미 있습니다'), '이미 있는 id 는 안 된다');
+  await page.fill('.modal [data-f="id"]', 'zz_new_gun');
+  check(await go(), '새 무기는 모델을 고르기 전에는 만들 수 없다');
+  await page.selectOption('.modal [data-f="model"]', GUN_ID);
+  check(!(await go()), '모든 칸을 채우면 만들 수 있다');
+  await page.click('.modal [data-f="go"]');
+  const nw = await page.evaluate(() => { const w = window.__dd.data.at(-1); return { id: w.id, name: w.name, model: w.model, dmg: w.dmg, sel: window.__dd.data[window.__dd.cur].id, errors: window.__dd.errors }; });
+  check(nw.id === 'zz_new_gun' && nw.model === GUN_ID && nw.dmg > 0 && nw.sel === 'zz_new_gun' && !nw.errors.length, '기준 무기의 수치로 새 무기가 생기고 선택된다', JSON.stringify(nw));
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(() => !window.__dd.isDirty(), null, { timeout: 8000 });
+  check(JSON.parse(fs.readFileSync(C('weapons.json'), 'utf8')).some(w => w.id === 'zz_new_gun' && w.model === GUN_ID), '저장하면 content/weapons.json 에 들어간다');
+  await page.evaluate(() => { window.__dd.data.at(-1).model = undefined; delete window.__dd.data.at(-1).model; window.__dd.render(); });
+  check(await page.evaluate(() => window.__dd.errors.some(e => e.includes('모델이 있어야'))), '새 무기에서 모델을 빼면 검사 오류 (저장 잠김)');
+  await page.evaluate(() => window.__dd.undo && window.__dd.render());
 
   await page.click(`${ACT.tools} .tile:has-text("모드")`);
   await page.waitForFunction(() => window.__studio.active.key === 'data:modes', null, { timeout: 10000 });

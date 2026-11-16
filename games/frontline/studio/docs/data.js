@@ -5,6 +5,8 @@ import { WEAPON_SCHEMA, PART_SCHEMA, MODE_SCHEMA, RULES, checkWeapons, checkPart
 import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
 import { buildForm } from '../form.js';
+import { formDialog } from '../dialog.js';
+import { BUILTIN_GUNS } from '/shared/content/schema.js';
 
 export const DATA_DOCS = [
   { id: 'weapons', title: '무기', file: 'weapons.json' },
@@ -91,21 +93,44 @@ export async function createDataDoc(ctx, id) {
       b.addEventListener('click', () => { cur = i; render(); renderInspector(); });
       box.appendChild(b);
     });
-    if (id !== 'weapons') { // 무기는 모델이 있어야 해서 여기서 새로 만들지 않는다
-      const add = el('button', '', '+ 추가'); add.type = 'button'; add.dataset.act = 'add';
-      add.addEventListener('click', addItem); box.appendChild(add);
-    }
+    const add = el('button', 'primary', `+ 새 ${NOUN[id]}`); add.type = 'button'; add.dataset.act = 'add';
+    add.addEventListener('click', () => createItem()); box.appendChild(add);
     return box;
   }
-  function addItem() {
-    const base = JSON.parse(JSON.stringify(item() || {}));
-    const taken = new Set(list().map(x => x.id));
-    let n = 2; while (taken.has(`${base.id || 'new'}_${n}`)) n++;
-    base.id = `${base.id || 'new'}_${n}`; base.name = `${base.name || '새 항목'} ${n}`;
-    list().push(base); cur = list().length - 1;
-    commit(); renderInspector();
+
+  // ───────── 새로 만들기: 양식을 다 채워야 만들어진다 ─────────
+  // 기준 항목의 수치를 그대로 복사해서 시작하고, 만든 뒤 오른쪽 속성에서 고친다 (저장 때 형식 검사)
+  const NOUN = { weapons: '무기', parts: '파츠', modes: '모드' };
+  async function createItem() {
+    const taken = new Set(id === 'parts' ? Object.values(data.parts).flat().map(p => p.id) : list().map(x => x.id));
+    const fields = [
+      { key: 'id', label: 'id', required: true, pattern: '^[a-z][a-z0-9_]*$', hint: '영문 소문자로 시작, 소문자·숫자·_ (예: vk12)', placeholder: '예: vk12' },
+      { key: 'name', label: '이름', required: true, placeholder: id === 'weapons' ? '예: VK-12' : '' },
+      { key: 'base', label: '기준', type: 'select', required: true, options: list().map(x => [x.id, `${x.name} 의 수치에서 시작`]), value: item() ? item().id : undefined },
+    ];
+    if (id === 'weapons') {
+      const reg = ctx.registry();
+      fields.splice(2, 0, { key: 'cls', label: '분류', required: true, placeholder: '예: 돌격소총' });
+      fields.push({ key: 'model', label: '모델', type: 'select', required: true, options: [['', reg.length ? '(고르세요)' : '(등록된 모델이 없습니다)'], ...reg.map(m => [m.id, `${m.name} (${m.id})`])],
+        hint: '새 무기는 데이터로 등록된 모델이 있어야 합니다 (모델 에디터 → 데이터로 등록)' });
+    }
+    if (id === 'modes') fields.push({ key: 'map', label: '기본 맵', type: 'select', required: true, options: ctx.assets().maps.map(m => [m, m]), value: item() ? item().map : undefined });
+    const v = await formDialog({
+      title: `새 ${NOUN[id]}${id === 'parts' ? ` — ${data.slots.find(s => s.id === slot).name} 자리` : ''}`,
+      lead: '* 칸을 모두 채워야 만들 수 있습니다. 만든 뒤 오른쪽 속성에서 수치를 고치고 저장(⌘S)하세요.',
+      fields, validate: x => (taken.has(x.id) ? `id "${x.id}" 는 이미 있습니다` : null),
+    });
+    if (!v) return null;
+    const made = { ...JSON.parse(JSON.stringify(list().find(x => x.id === v.base))), id: v.id, name: v.name };
+    if (id === 'weapons') { made.cls = v.cls; made.model = v.model; }
+    if (id === 'modes') made.map = v.map;
+    list().push(made); cur = list().length - 1;
+    commit(); renderInspector(); renderRegistry();
+    ctx.log(`새 ${NOUN[id]}: ${v.name} (${v.id}) — 저장(⌘S)하면 ${info.file} 에 들어갑니다`, 'ok');
+    return made;
   }
   function removeItem() {
+    if (id === 'weapons' && BUILTIN_GUNS.includes(item().id)) { ctx.flash('기본 총 7종은 지울 수 없습니다'); return; }
     if (list().length <= 1) { ctx.flash('마지막 항목은 지울 수 없습니다'); return; }
     if (!confirm(`"${item().name || item().id}" 를 지울까요?`)) return;
     list().splice(cur, 1); cur = Math.max(0, cur - 1);
@@ -142,7 +167,7 @@ export async function createDataDoc(ctx, id) {
           cells: [w.name, w.cls, modelName(w), `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''}`, w.rpm, (() => { const d = el('span'); d.append(fmt(dps[i]), bar(dps[i], maxDps)); return d; })(),
             `${fmt(ttk(w, 10))}ms`, `${fmt(ttk(w, 30))}ms`, `${fmt(ttk(w, 60))}ms`, `${fmt(ttk(w, 10, 'head'))}ms`, w.mag, `${w.reload}s`, `${Math.round(w.move * 100)}%`],
         })), i => { cur = i; render(); renderInspector(); }));
-      page.append(el('p', 'dnote', '모델 = 이 무기가 쓸 등록된 모델 (오른쪽 "모델" 에서 고른다). 게임 화면에 실제로 그리는 연결은 다음 단계 — 지금 게임은 코드로 만든 총을 그린다. 무기 추가도 그 뒤에 지원한다.'));
+      page.append(el('p', 'dnote', '모델 = 이 무기가 쓸 등록된 모델 (오른쪽 "모델" 에서 고른다). 저장하면 게임이 그 모델로 총을 그린다 (1인칭·다른 플레이어·무기고). 비우면 코드로 만든 총. 새 무기는 모델이 꼭 있어야 한다.'));
     } else if (id === 'parts') {
       const seg = el('div', 'seg'); seg.style.maxWidth = '520px'; seg.style.marginBottom = '10px';
       for (const s of data.slots) {
@@ -185,10 +210,10 @@ export async function createDataDoc(ctx, id) {
     if (id === 'weapons') {
       const reg = ctx.registry().map(m => m.id);
       if (x.model && !reg.includes(x.model)) reg.push(x.model);
-      spec = { ...spec, fields: { ...spec.fields, model: { kind: 'enum', label: '모델 (데이터로 등록된 모델 · 비우면 코드로 만든 총)', options: reg, optional: true } } };
+      spec = { ...spec, fields: { ...spec.fields, model: { kind: 'enum', label: BUILTIN_GUNS.includes(x.id) ? '모델 (데이터로 등록된 모델 · 비우면 코드로 만든 총)' : '모델 (새 무기는 꼭 있어야 함)', options: reg, optional: BUILTIN_GUNS.includes(x.id) } } };
     }
     buildForm(inspector, spec, x, { onInput: () => { render(); renderRegistry(); }, onCommit: () => { commit(); renderInspector(); renderRegistry(); } });
-    if (id !== 'weapons') {
+    if (id !== 'weapons' || !BUILTIN_GUNS.includes(x.id)) { // 기본 총 7종은 지우지 않는다
       const btns = el('div', 'btns'), del = el('button', 'danger', '삭제'); del.type = 'button';
       del.addEventListener('click', removeItem); btns.appendChild(del); inspector.appendChild(btns);
     }
@@ -226,7 +251,8 @@ export async function createDataDoc(ctx, id) {
     deactivate() {}, resize() {}, frame() {},
     isDirty, save, reload,
     // 홈에서 고른 항목으로 바로 간다 ({ select: id, slot })
-    focus({ select, slot: s }) {
+    focus({ select, slot: s, create }) {
+      if (create) { createItem(); return; }
       if (id === 'parts' && s) slot = s;
       const i = list().findIndex(x => x.id === select);
       if (i >= 0) cur = i;
@@ -238,6 +264,6 @@ export async function createDataDoc(ctx, id) {
       else if (mod && e.code === 'KeyY') { e.preventDefault(); redo(); }
     },
     dispose() {},
-    api: { get data() { return data; }, get cur() { return cur; }, select: i => { cur = i; render(); renderInspector(); }, setSlot: s => { slot = s; cur = 0; render(); renderInspector(); }, get errors() { return errors; }, isDirty, save, undo, redo, render },
+    api: { createItem, get data() { return data; }, get cur() { return cur; }, select: i => { cur = i; render(); renderInspector(); }, setSlot: s => { slot = s; cur = 0; render(); renderInspector(); }, get errors() { return errors; }, isDirty, save, undo, redo, render },
   };
 }

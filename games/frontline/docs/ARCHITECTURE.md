@@ -52,6 +52,7 @@ games/frontline/
 │       ├── scene.js        렌더러·카메라       world.js  맵/하늘 그리기
 │       ├── player.js       키 입력 → 이동 물리(shared/movement.js) → 소리·연출   weapon.js 사격·재장전·교체
 │       ├── gunmodel.js     Blender 총 모델(.glb) 읽기·규칙 검사·스킨
+│       ├── gunmodels.js    등록된 모델(content/models.json) 중 무기에 연결된 것을 미리 불러온다 → guns.js 가 그 모델로 총을 만든다
 │       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성, 파츠 모델 달기(setGunParts)
 │       ├── loadout.js      출전 무기·파츠 저장(브라우저)과 성능 갱신     armory.js  무기고 화면(벽에 걸린 총 + 패널)
 │       ├── remotes.js      다른 플레이어 모델·명중 판정·머리 위 이름표/체력바

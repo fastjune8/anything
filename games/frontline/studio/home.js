@@ -116,9 +116,12 @@ export function createHome(ctx) {
     if (cat === 'models') {
       const seg = el('div', 'seg');
       for (const [k, label] of [['gun', '총'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
-      acts.append(seg, btn('.glb 열기', () => $('fileIn').click(), '', 'openGlbBtn'), btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'));
+      acts.append(seg, btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'), btn('+ 새 모델 (.glb)', () => $('fileIn').click(), 'primary', 'openGlbBtn'));
     }
-    if (['weapons', 'parts', 'modes'].includes(cat)) acts.appendChild(btn('데이터 에디터로 열기', () => ctx.openAsset(`data:${cat}`), 'primary'));
+    if (['weapons', 'parts', 'modes'].includes(cat)) {
+      acts.appendChild(btn('데이터 에디터로 열기', () => ctx.openAsset(`data:${cat}`)));
+      acts.appendChild(btn(`+ 새 ${c.label}`, () => ctx.openAsset(`data:${cat}`, { create: true }), 'primary', 'newDataBtn'));
+    }
     head.appendChild(acts);
     renderCards(); renderDetail();
   }

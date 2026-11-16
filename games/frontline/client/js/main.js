@@ -4,7 +4,7 @@ import { LEAN_DIST } from '/shared/constants.js';
 import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap } from './scene.js';
 import { updateTracers, updateParts } from './fx.js';
 import { updateRemotes, remotes, remoteHit } from './remotes.js';
-import { updateViewmodel } from './viewmodel.js';
+import { updateViewmodel, guns as vmGuns } from './viewmodel.js';
 import { updateMovement } from './player.js';
 import { updateWeapon, startReload, switchTo } from './weapon.js';
 import { updateHud } from './hud.js';
@@ -73,7 +73,7 @@ fetch('/status').then(r => r.json()).then(st => {
 }).catch(() => {});
 
 // 디버그 / 자동 테스트 훅 (tests/browser.test.mjs 가 사용)
-window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory,
+window.__g = { me, remotes, roster, inv, net, remoteHit, vmGuns, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory,
   input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }
 // 스튜디오 안에서 시험 플레이 중: Ctrl/⌘+P 로 멈추고 스튜디오로 돌아간다 (Unity 의 Play 버튼과 같은 단축키)

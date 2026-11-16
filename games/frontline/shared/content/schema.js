@@ -72,6 +72,8 @@ export const MAP_SCHEMA = obj('맵', {
 });
 
 // ───────── 무기 ─────────
+// 코드로 모양을 만들어 둔 기본 총 (client/js/guns.js 의 BUILD). 이 밖의 새 무기는 등록된 모델이 있어야 한다
+export const BUILTIN_GUNS = ['m4', 'ak', 'mp5', 'm870', 'awm', 'm249', 'm9'];
 export const WEAPON_SCHEMA = obj('무기', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'), cls: str('분류'),
   auto: bool('연사'), rpm: num('분당 발사 수', { min: 10, max: 2000 }),
@@ -209,6 +211,7 @@ export function checkWeapons(list, modelIds = null) {
   const ids = list.map(w => w && w.id);
   ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`무기 id 중복: ${id}`); });
   if (modelIds) for (const w of list) if (w && w.model && !modelIds.includes(w.model)) errors.push(`무기 ${w.id}: 등록되지 않은 모델 "${w.model}" (모델 에디터에서 데이터로 등록)`);
+  for (const w of list) if (w && w.id && !BUILTIN_GUNS.includes(w.id) && !w.model) errors.push(`무기 ${w.id}: 새 무기는 모델이 있어야 한다 (데이터로 등록된 모델을 고르세요)`);
   return errors;
 }
 
