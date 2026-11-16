@@ -219,9 +219,11 @@ try {
   await page.mouse.move(sp.x + 2, sp.y + 200); await page.mouse.down(); await page.mouse.move(sp.x + 82, sp.y + 200, { steps: 5 }); await page.mouse.up();
   const tb1 = (await page.locator('#toolbox').boundingBox()).width;
   check(tb1 > tb0 + 60, '경계선을 끌면 도구 상자가 넓어진다', `${tb0} → ${tb1}`);
-  check(await page.evaluate(() => JSON.parse(localStorage.getItem('fs_layout_v1'))['--ed-l'] > 250), '바꾼 크기를 기억한다');
   await page.locator('#edBody > .split').first().dblclick();
-  check(Math.abs((await page.locator('#toolbox').boundingBox()).width - tb0) < 2, '경계선을 더블클릭하면 원래 크기로');
+  check(Math.abs((await page.locator('#toolbox').boundingBox()).width - tb0) < 2, '경계선을 더블클릭하면 기본 크기로');
+  await page.locator('#edBody > .split').first().click(); await page.locator('#edBody > .split').last().dblclick(); await page.locator('#homeNav').count();
+  const lay = await page.evaluate(() => { const t = document.getElementById('toolbox').getBoundingClientRect(), s = document.getElementById('stage').getBoundingClientRect(), i = document.getElementById('inspector').getBoundingClientRect(); return { side: t.right <= s.left + 1 && s.right <= i.left + 1, stageW: s.width }; });
+  check(lay.side && lay.stageW > 400, '경계선을 클릭·더블클릭만 해도 레이아웃이 깨지지 않는다 (도구 상자 | 화면 | 속성 이 나란히)', JSON.stringify(lay));
 
   console.log('\n[게임 데이터]');
   await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:ak"]');
@@ -244,6 +246,12 @@ try {
   await page.keyboard.press('ControlOrMeta+s');
   await page.waitForFunction(() => !window.__dd.isDirty(), null, { timeout: 8000 });
   check(JSON.parse(fs.readFileSync(C('modes.json'), 'utf8'))[0].zone.capture === 9, '모드 수치(점령 시간)를 고치고 ⌘S 하면 content/modes.json 에 저장된다');
+  // 예전 버전이 남긴 잘못된 크기 값(null → 'nullpx')이 있어도 기본 크기로 열린다
+  await page.evaluate(() => localStorage.setItem('fs_layout_v1', JSON.stringify({ '--ed-l': null, '--ed-r': null })));
+  await page.goto(`http://localhost:${srv.port}/studio/?open=map:frontline&active=map:frontline`);
+  await page.waitForFunction(() => window.__ed && window.__ed.map && window.__ed.map.id === 'frontline', null, { timeout: 30000 });
+  const fresh = await page.evaluate(() => { const t = document.getElementById('toolbox').getBoundingClientRect(), s = document.getElementById('stage').getBoundingClientRect(); return { tb: Math.round(t.width), side: t.right <= s.left + 1, stageW: s.width }; });
+  check(fresh.side && fresh.tb === 220 && fresh.stageW > 400, '다시 열면 항상 기본 크기 (예전 잘못된 값이 남아 있어도)', JSON.stringify(fresh));
   check(errors.length === 0, '스튜디오 브라우저 오류가 없다', errors.join(' | '));
   await page.close();
 
