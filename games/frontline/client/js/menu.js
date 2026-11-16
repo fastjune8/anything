@@ -1,12 +1,12 @@
 // 로비: 이름 입력, 빠른 시작(모드 선택), 친선전(방 목록/코드 입장/방 만들기), 설정(감도/음량)
 // 모드를 고르거나 방에 들어가도 페이지는 다시 열리지 않는다. 맵만 그 자리에서 바뀐다.
 import { MODES } from '/shared/modes.js';
-import { getMap } from '/shared/maps/index.js';
+import { getMap, setMapDef } from '/shared/maps/index.js';
 import { connect, leaveToLobby } from './net.js';
 import { loadMap } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, inp } from './state.js';
-import { $, MODE_CFG, setMode, params } from './util.js';
+import { $, MODE_CFG, setMode, params, EMBED } from './util.js';
 
 export const nameEl = $('name');
 nameEl.value = localStorage.getItem('fd_name') || '';
@@ -21,8 +21,15 @@ function beforeJoin() {
   return name;
 }
 // 빠른 시작. 주소에 map 이 있으면 (에디터의 시험 플레이) 그 맵으로 혼자 쓰는 비공개 방을 만든다
-export function join() {
-  const map = params.get('map');
+// 스튜디오의 시험 플레이는 draft(저장하지 않은 맵) 를 서버에서 받아 와서 쓴다
+export async function join() {
+  const draft = params.get('draft');
+  if (draft) {
+    const def = await fetch(`/api/drafts/${draft}`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (!def) { $('msg').textContent = '시험 맵을 불러오지 못했습니다. 스튜디오에서 다시 플레이하세요.'; return; }
+    setMapDef(def);
+  }
+  const map = draft || params.get('map');
   if (map) connect(beforeJoin(), { mode: MODE_CFG.id, create: { name: `맵 시험 · ${map}`, private: true, bots: params.get('bots') !== '0', minutes: 10, map } });
   else connect(beforeJoin(), { mode: MODE_CFG.id });
 }
@@ -117,7 +124,10 @@ refreshCounts();
 setInterval(() => { if (menuOpen()) { refreshCounts(); if (tab === 'custom') refreshRooms(); } }, 3000);
 
 // ───── 일시정지 → 로비로 나가기 ─────
-$('leave').addEventListener('click', () => { leaveToLobby(); showTab(tab); selectMode(MODE_CFG.id); });
+$('leave').addEventListener('click', () => {
+  if (EMBED) { parent.postMessage({ t: 'studio-stop' }, location.origin); return; } // 스튜디오 시험 플레이: 나가기 = 스튜디오로
+  leaveToLobby(); showTab(tab); selectMode(MODE_CFG.id);
+});
 
 // ───── 설정은 브라우저에 저장해 다음 접속에도 유지한다 ─────
 const sensEl = $('sens'), volEl = $('vol');

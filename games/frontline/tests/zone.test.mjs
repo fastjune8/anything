@@ -81,7 +81,7 @@ try {
   const c = connect(srv2.port, 'watcher', { mode: 'zone' }); await c.open;
   await c.waitFor('welcome');
   c.send({ t: 's', p: [0, 30, 0], y: 0, x: 0, c: 0, w: 0 }); // 하늘 위 (거점 높이 밖, 봇 시야에도 잘 안 걸린다)
-  const got = await c.waitFor('zone', m => m.n[0] + m.n[1] >= 2, 30000);
+  const got = await c.waitFor('zone', m => m.n[0] + m.n[1] >= 2, 45000) // 스폰에서 거점까지 걸어오는 데 보통 15~25초 (기기가 바쁘면 더);
   check(!!got, '봇들이 거점에 들어간다', JSON.stringify([...c.msgs].reverse().find(m => m.t === 'zone')));
   const owned = await c.waitFor('zcap', () => true, 50000); // 보통 20초 안팎 (서로 싸우느라 늦어질 수 있다)
   check(!!owned, '봇끼리도 거점을 점령한다');

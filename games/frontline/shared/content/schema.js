@@ -100,6 +100,21 @@ export const PARTS_SCHEMA = obj('파츠 목록', {
   parts: dict('자리별 파츠', list('파츠', PART_SCHEMA)),
 });
 
+// ───────── 모드 ─────────
+export const RULES = ['zone', 'deathmatch']; // server/modes/ 에 있는 규칙
+export const MODE_SCHEMA = obj('모드', {
+  id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름 (로비 카드)'), desc: str('설명 (로비 카드)'),
+  map: str('기본 맵 id'), rules: oneOf('점수·승리 규칙', RULES, { hint: 'zone = 점령전, deathmatch = 킬이 점수' }),
+  max: int('방 최대 인원 (사람 + 봇)', { min: 2, max: 16 }), fill: int('봇으로 채울 인원', { min: 0, max: 16 }),
+  teams: oneOf('팀 수', [0, 2], { hint: '0 = 개인전' }), goal: int('승리 점수 (킬 또는 거점 점수)', { min: 1, max: 1000 }),
+  zone: obj('점령전 설정', {
+    capture: num('혼자 점령하는 시간 (초)', { min: 1, max: 60, step: 0.5, hint: '2명 1.5배, 3명 이상 2배 빠르다' }),
+    decay: num('비었을 때 게이지가 줄어드는 빠르기 (점령 속도 대비)', { min: 0, max: 5, step: 0.1 }),
+    pointEvery: num('거점을 가진 팀이 1점을 얻는 간격 (초)', { min: 0.1, max: 10, step: 0.1 }),
+    height: num('거점 바닥에서 이 높이까지 안으로 친다 (m)', { min: 1, max: 20, step: 0.5 }),
+  }, opt()),
+});
+
 // ───────── 검사 ─────────
 const isNum = v => typeof v === 'number' && Number.isFinite(v);
 
@@ -182,6 +197,20 @@ export function checkParts(data, weaponIds) {
   for (const [slot, parts] of Object.entries(data.parts)) {
     if (!slots.has(slot)) errors.push(`parts.${slot}: slots 에 없는 자리`);
     for (const p of parts) for (const id of [...(p.only || []), ...(p.not || [])]) if (!weaponIds.includes(id)) errors.push(`파츠 ${p.id}: 없는 무기 id "${id}"`);
+  }
+  return errors;
+}
+
+export function checkModes(list, mapIds = null) {
+  const errors = check(list, F('list', '모드 목록', { of: MODE_SCHEMA, minLen: 1 }));
+  if (errors.length) return errors;
+  const ids = list.map(m => m.id);
+  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`모드 id 중복: ${id}`); });
+  for (const m of list) {
+    if (m.rules === 'zone' && !m.zone) errors.push(`모드 ${m.id}: 점령전 규칙에는 점령전 설정(zone)이 필요`);
+    if (m.rules === 'zone' && !m.teams) errors.push(`모드 ${m.id}: 점령전은 팀이 2개여야 한다`);
+    if (m.fill > m.max) errors.push(`모드 ${m.id}: 봇으로 채울 인원(${m.fill})이 최대 인원(${m.max})보다 많다`);
+    if (mapIds && !mapIds.includes(m.map)) errors.push(`모드 ${m.id}: 없는 맵 "${m.map}"`);
   }
   return errors;
 }

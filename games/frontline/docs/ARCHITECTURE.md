@@ -14,7 +14,7 @@ games/frontline/
 │   ├── room.js             방 하나: 입장/퇴장, 봇 채우기, 스폰, 피해·킬, 경기 진행, 채팅
 │   ├── chat.js             채팅 규칙 (글자 정리, 도배 방지)       ← 순수 함수
 │   ├── combat.js           명중 신고 검증·피해 합산               ← 순수 함수
-│   ├── devtools.js         맵 에디터 저장 API (개발 서버에서만)
+│   ├── devtools.js         스튜디오용 API: 맵·총 모델·데이터 저장, 시험 플레이용 임시 맵 (개발 서버에서만)
 │   ├── modes/              모드 규칙: 점수·승리·봇 목표 (index.js 에 규칙 객체가 갖출 것 설명)
 │   │   ├── deathmatch.js   개인·팀 데스매치 (킬 = 점수)
 │   │   └── zone.js         점령전 (stepZone = 거점 게이지 규칙, 순수 함수)
@@ -24,11 +24,12 @@ games/frontline/
 │       └── names.js        봇 이름
 ├── shared/                 서버와 브라우저가 같이 쓰는 규칙 (THREE·DOM 에 의존하지 않는다)
 │   ├── constants.js        체력·시간 등 공통 상수
-│   ├── modes.js            게임 모드 (점령전 zone / 개인전 ffa / 팀전 tdm): 맵·규칙·인원·팀 수·목표 점수
+│   ├── modes.js            게임 모드 목록 (수치는 content/modes.json)
+│   ├── movement.js         캐릭터 이동 물리 (걷기·점프·충돌·넘어가기·기울이기) — 순수 함수, 나중에 서버도 같이 씀 (M1)
 │   ├── weapons.js          무기 데이터(content/weapons.json)와 피해 계산
 │   ├── parts.js            총기 파츠(content/parts.json)와 출전 무기 2개 규칙: 성능 계산, 입력값 정리
 │   ├── content/
-│   │   ├── schema.js       콘텐츠 데이터 모양 정의 + 검사 (에디터 입력 칸도 여기서 만든다)
+│   │   ├── schema.js       콘텐츠 데이터 모양 정의 + 검사 (스튜디오 입력 칸도 여기서 만든다)
 │   │   └── format.js       콘텐츠 JSON 저장 형식 (한 항목 = 한 줄)
 │   ├── collision.js        광선-박스 충돌
 │   ├── vault.js            낮은 구조물 넘어가기/오르기 경로 계산 (findVault)
@@ -36,17 +37,21 @@ games/frontline/
 │       ├── index.js        맵 목록(content/maps), getMap(id)
 │       ├── build.js        맵 데이터의 물체 목록 → 박스·나무·충돌 박스 (회전·대칭 포함)
 │       └── parts.js        물체 모양 (벽, 건물, 컨테이너, 상자 …)
-├── content/                게임 데이터 (코드가 아님, 에디터가 쓴다): maps/*.json, weapons.json, parts.json
-├── editor/                 맵 에디터 (개발 서버의 /editor/, 라이브에는 없다)
-│   ├── editor.js           3D 보기·선택·이동·배치·되돌리기·저장·시험 플레이
-│   └── form.js             스키마 → 입력 칸 자동 생성
+├── content/                게임 데이터 (코드가 아님, 스튜디오가 쓴다): maps/, guns/, weapons.json, parts.json, modes.json
+├── studio/                 FRONTIER Studio (개발 서버의 /studio/, 라이브에는 없다) — 사용법 docs/STUDIO.md
+│   ├── studio.js           틀: 콘텐츠 목록·탭·공용 3D 화면·키보드·콘솔·시험 플레이(iframe)
+│   ├── docs/map.js         맵 문서    docs/gun.js  총 모델 문서    docs/data.js  무기·파츠·모드 문서
+│   ├── form.js             스키마 → 입력 칸 자동 생성
+│   └── samplegun.js        규칙대로 만든 예시 총
+├── tools/blender/          Blender 총 모델 템플릿 스크립트
 ├── client/                 브라우저
 │   ├── index.html, css/style.css
 │   └── js/
 │       ├── main.js         시작 + 프레임 루프
 │       ├── state.js        공유 상태 (me, wp, inp, game, roster, net)
 │       ├── scene.js        렌더러·카메라       world.js  맵/하늘 그리기
-│       ├── player.js       이동·충돌·넘어가기·기울이기   weapon.js 사격·재장전·교체
+│       ├── player.js       키 입력 → 이동 물리(shared/movement.js) → 소리·연출   weapon.js 사격·재장전·교체
+│       ├── gunmodel.js     Blender 총 모델(.glb) 읽기·규칙 검사·스킨
 │       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성, 파츠 모델 달기(setGunParts)
 │       ├── loadout.js      출전 무기·파츠 저장(브라우저)과 성능 갱신     armory.js  무기고 화면(벽에 걸린 총 + 패널)
 │       ├── remotes.js      다른 플레이어 모델·명중 판정·머리 위 이름표/체력바
@@ -58,7 +63,7 @@ games/frontline/
 │       ├── net.js          서버 통신           input.js  키보드·마우스
 │       ├── menu.js         로비(빠른 시작·친선전)·설정      audio.js / sfx.js  소리
 │       └── util.js, dom.js 도우미
-├── tests/                  unit / protocol·tdm·zone 등(서버) / browser·editor(Chrome)
+├── tests/                  unit / protocol·tdm·zone 등(서버) / browser·studio(Chrome)
 ├── deploy/                 라이브 배포 스크립트
 └── docs/                   DEV.md, PROTOCOL.md, ARCHITECTURE.md
 ```
@@ -96,24 +101,24 @@ games/frontline/
 
 | 하고 싶은 것 | 고칠 곳 |
 |---|---|
-| 총 성능·피해량 조절 | `content/weapons.json` |
+| 총 성능·피해량 조절 | 스튜디오 → 무기 (`content/weapons.json`, 비교 표로 TTK 확인) |
 | 새 총 추가 | `content/weapons.json` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`). 무기고 벽에는 자동으로 걸린다 |
-| 파츠 성능 조절·새 파츠 추가 | `content/parts.json` (+ 모양은 `client/js/guns.js` 의 `OPTIC`/`BARREL`/`GRIP`) |
+| 파츠 성능 조절·새 파츠 추가 | 스튜디오 → 파츠 (`content/parts.json`) (+ 모양은 `client/js/guns.js` 의 `OPTIC`/`BARREL`/`GRIP`) |
 | 기본 출전 무기 | `shared/parts.js` 의 `DEFAULT_LOADOUT` |
 | 무기고 화면(벽 배치·조명·성능 표) | `client/js/armory.js`, 모양은 `client/css/style.css` 의 무기고 부분 |
-| 맵 수정·새 맵 | 맵 에디터(`/editor/`) → `content/maps/<id>.json`. 모드의 기본 맵은 `shared/modes.js` 의 `map` |
+| 맵 수정·새 맵 | 스튜디오(`/studio/`) → `content/maps/<id>.json`. 모드의 기본 맵은 스튜디오의 모드 데이터 `map` |
 | 새 물체 종류 (맵 부품) | `shared/maps/build.js` 의 `OBJECT_TYPES` + `shared/content/schema.js` 의 `OBJECT_SCHEMAS` |
 | 친선전 옵션(시간·정원 등) | `server/rooms.js` (`resolveRoom`), 로비 화면은 `client/js/menu.js` |
-| 새 모드 추가 | `shared/modes.js` 에 항목 추가 (로비 카드는 자동). 점수·승리 규칙이 다르면 `server/modes/` 에 규칙 파일 + `index.js` 에 등록 |
-| 점령전 수치 (점령 시간·점수 속도·목표) | `shared/modes.js` 의 `zone` 항목 |
+| 새 모드 추가 | 스튜디오의 모드 데이터에서 추가 (로비 카드는 자동). 점수·승리 규칙이 다르면 `server/modes/` 에 규칙 파일 + `index.js` 와 schema 의 `RULES` 에 등록 |
+| 점령전 수치 (점령 시간·점수 속도·목표) | 스튜디오 → 모드 (`content/modes.json`) |
 | 봇 난이도 | `server/bots/bot.js` 맨 위 상수와 `skill`, 정확도는 `shoot()` 의 `pHit` |
-| 방 인원·킬 수·봇 수 | `shared/modes.js` (모드별), 시간은 `shared/constants.js` |
+| 방 인원·킬 수·봇 수 | 스튜디오 → 모드 (모드별), 시간은 `shared/constants.js` |
 | 채팅 제한 | `server/chat.js` 상단 상수, 글자 수는 `shared/constants.js` 의 `CHAT_MAX_LEN` |
 | 화면 모양 | `client/css/style.css`, `client/index.html` |
 | 순위표·HUD 표시 | `client/js/hud.js` |
 | 미니맵 크기·표시 범위·적 표시 시간 | `client/js/minimap.js` 맨 위 상수 (`VIEW_M`), 적 표시 시간은 `minimath.js` |
 | 이름표 크기·표시 거리 | `client/js/remotes.js` (`TAG_RANGE`, 크기 계산) |
 | 넘어가기 판정(거리·높이·두께·속도) | `shared/vault.js` 맨 위 `VAULT` |
-| 기울이기 거리·각도 | `shared/constants.js` 의 `LEAN_DIST`, `LEAN_ANGLE` (속도·화면 기울기는 `client/js/player.js`, `main.js`) |
+| 기울이기 거리·각도 | `shared/constants.js` 의 `LEAN_DIST`, `LEAN_ANGLE` (속도는 `shared/movement.js`, 화면 기울기는 `client/js/main.js`) |
 | 조작키 | `client/js/input.js` (메뉴의 조작 안내는 `client/index.html`) |
 | 새 메시지 추가 | `docs/PROTOCOL.md` 맨 아래 순서대로 |

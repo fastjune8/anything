@@ -35,8 +35,8 @@ jobs:
       - name: Chrome 설치
         id: chrome
         uses: browser-actions/setup-chrome@v2
-      - name: 맵 에디터 테스트
-        run: node tests/editor.test.mjs
+      - name: 스튜디오 테스트
+        run: node tests/studio.test.mjs
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           REQUIRE_CHROME: '1'

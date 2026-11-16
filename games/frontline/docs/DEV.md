@@ -20,27 +20,21 @@ main ← (PR) ← feature/zone-ui, map/canal …
 
 > GitHub 저장소 설정 → Branches 에서 `main` 에 "PR 로만 합치기 + 테스트 통과 필수" 규칙을 걸어 두면 실수로 main 이 깨지지 않는다.
 
-## 콘텐츠와 맵 에디터
+## 콘텐츠와 스튜디오
 
-맵·무기·파츠는 코드가 아니라 **데이터**(`content/`)다. 서버가 시작할 때 `shared/content/schema.js` 로 검사하고, 틀리면 어디가 왜 틀렸는지 알려 주며 시작하지 않는다.
+맵·총 모델·무기·파츠·모드 수치는 코드가 아니라 **데이터**(`content/`)다. 서버가 시작할 때 `shared/content/schema.js` 로 검사하고, 틀리면 어디가 왜 틀렸는지 알려 주며 시작하지 않는다.
 
 ```
 content/
-  maps/index.json        맵 목록
-  maps/<id>.json         맵: 이름·크기·스폰·거점·물체 목록 (건물, 벽, 컨테이너, 상자 …)
-  weapons.json           무기 성능
-  parts.json             총기 파츠
+  maps/index.json, maps/<id>.json   맵 (물체 목록·스폰·거점)
+  guns/index.json, guns/<id>.glb    총 모델 (Blender, 규칙은 GUN_MODELING.md)
+  weapons.json · parts.json · modes.json
 ```
 
-**맵 에디터**: `npm run dev` 후 http://localhost:3002/editor/
-- 왼쪽에서 물체/스폰/거점을 골라 바닥을 클릭해 놓고, 끌어서 옮기고, 오른쪽에서 수치를 고친다. (조작은 에디터 왼쪽 아래)
-- 카메라는 유니티·언리얼과 비슷하다: **WASD** 이동, **Q/E** 좌우로 돌기, **오른쪽 버튼을 누른 채** 비행(마우스로 둘러보기 + WASD, Q/E 아래·위, 휠 = 속도), **Alt+왼쪽 끌기** 궤도, **F**/더블클릭 선택한 곳 보기, **Home** 전체 보기. 키는 위치로 인식해서 한글 입력 상태여도 된다.
-- 편집: **방향키** 격자 한 칸 이동, **G** 격자 켜기/끄기(크기는 위쪽 메뉴), **⌘C/⌘V** 마우스 위치에 붙여넣기, **⌘D** 복제, **R** 90° 회전.
-- **반대편에도 배치**를 켜면 맵 중심 대칭으로 하나 더 생긴다 (양 팀이 공평한 맵).
-- 오류(맵 밖 스폰 등)가 있으면 저장이 잠긴다. **저장**하면 `content/maps/<id>.json` 에 쓰고, 서버를 다시 켜지 않아도 새 방부터 적용된다.
-- **▶ 시험 플레이**: 저장 후 새 탭에서 그 맵·모드로 혼자 쓰는 비공개 방에 들어간다.
-- 저장된 파일을 커밋해서 PR 로 올리면 된다. 에디터는 라이브 서버에는 없다 (배포 대상에서도 빠진다).
-- 물체 종류를 늘리려면: `shared/maps/build.js` 의 `OBJECT_TYPES` (모양) + `shared/content/schema.js` 의 `OBJECT_SCHEMAS` (입력 칸). 에디터 도구와 입력 칸은 자동으로 생긴다.
+**FRONTIER Studio** (`npm run dev` → http://localhost:3002/studio/) 에서 모두 고친다. 사용법·팀원 설치는 [STUDIO.md](STUDIO.md).
+- 저장한 파일을 커밋해서 PR 로 올린다. 스튜디오는 라이브 서버에는 없다 (배포 대상에서도 빠진다).
+- 맵 물체 종류를 늘리려면: `shared/maps/build.js` 의 `OBJECT_TYPES` (모양) + `shared/content/schema.js` 의 `OBJECT_SCHEMAS` (입력 칸). 스튜디오 도구와 입력 칸은 자동으로 생긴다.
+- 새 데이터 종류를 스튜디오에서 고치게 하려면: 스키마 추가 → `studio/docs/data.js` 의 `DATA_DOCS` + `server/devtools.js` 의 `DATA_CHECKS`.
 
 ## 매일 하는 작업
 
@@ -49,7 +43,7 @@ cd games/frontline
 npm install          # 처음 한 번
 npm run dev          # http://localhost:3002  (서버 코드를 고치면 자동 재시작)
 ```
-- 서버 코드(`server/`, `shared/`)를 고치면 서버가 알아서 재시작된다. (`content/` 는 에디터 저장 시 서버가 바로 반영하므로 재시작하지 않는다)
+- 서버 코드(`server/`, `shared/`)나 `content/` 의 무기·파츠·모드를 고치면 서버가 알아서 재시작된다. (맵은 스튜디오가 저장할 때 서버가 바로 반영해서 재시작하지 않는다)
 - 화면 코드(`client/`)는 브라우저 새로고침(Cmd+Shift+R)만 하면 반영된다.
 - 같은 네트워크의 다른 기기에서 테스트하려면 `npm run dev` 가 출력하는 `같은 네트워크` 주소로 접속.
 - 화면 아래에 `DEV · v2.0.0` 표시가 떠서 라이브와 헷갈리지 않는다. (라이브에는 표시가 없다.)
@@ -61,7 +55,7 @@ npm run dev          # http://localhost:3002  (서버 코드를 고치면 자동
 npm run lint         # 정의되지 않은 이름·안 쓰는 변수 같은 실수 (1초)
 npm run test:unit    # 채팅 규칙·명중 검증 같은 순수 함수 (1초)
 npm test             # 단위(콘텐츠 검사 포함) + 서버 규칙(방/봇/명중/채팅/부활/팀전/점령전/친선전/출전 무기·파츠/경기 종료) (약 2분)
-npm run test:browser # 실제 Chrome 으로 게임(화면·이동·사격·채팅·무기고·점령전)과 맵 에디터 확인 (약 2분)
+npm run test:browser # 실제 Chrome 으로 게임(화면·이동·사격·채팅·무기고·점령전)과 스튜디오 확인 (약 3분)
 npm run test:all     # 위 전부
 ```
 - 서버/브라우저 테스트는 매번 **무작위 포트에 임시 서버**를 따로 띄우므로 dev 서버나 라이브와 겹치지 않는다.

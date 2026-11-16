@@ -9,7 +9,7 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const CLIENT_DIR = path.join(ROOT, 'client');
 export const SHARED_DIR = path.join(ROOT, 'shared');
 export const CONTENT_DIR = path.join(ROOT, 'content'); // 맵·무기·파츠 데이터 (에디터가 쓴다)
-export const EDITOR_DIR = path.join(ROOT, 'editor');   // 맵 에디터 (개발 서버에서만 제공)
+export const STUDIO_DIR = path.join(ROOT, 'studio');   // FRONTIER Studio (개발 서버에서만 제공)
 export const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
 
 export const PORT = Number(process.env.PORT) || 3000;

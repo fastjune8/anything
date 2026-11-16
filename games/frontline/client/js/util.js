@@ -15,6 +15,8 @@ export const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 
 export const params = new URLSearchParams(location.search);
 export const NOLOCK = params.has('nolock'); // 테스트용: 포인터 락 없이 진행
+export const EMBED = params.has('embed');   // 스튜디오 안에서 시험 플레이 중 (Ctrl/⌘+P 또는 로비로 나가기 = 스튜디오로 돌아감)
+export const START_AT = (params.get('at') || '').split(',').map(Number).filter(Number.isFinite); // 스튜디오: 처음 태어날 위치 [x, z]
 export const BASE_FOV = 74;
 
 // 현재 선택된(또는 들어가 있는) 모드. 로비에서 고르거나 방에 들어갈 때 setMode 로 바뀌고, 다른 모듈은 MODE_CFG 를 그대로 읽으면 된다.

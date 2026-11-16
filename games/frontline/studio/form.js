@@ -105,14 +105,45 @@ function listField(parent, spec, get, set, h) {
   parent.appendChild(box);
 }
 
+// 키 → 값 묶음 (예: 파츠의 성능 배율 { recoilV: 0.8, adsTime: 1.1 }). 정해진 키 중에서 골라 추가한다
+function dictField(parent, spec, get, set, h) {
+  const box = el('div', 'list');
+  const head = el('div', 'lhead'); head.append(el('span', 'lbl', spec.label));
+  const cur = get() || {};
+  const free = (spec.keys || []).filter(k => !(k in cur));
+  if (free.length) {
+    const pickKey = el('select'); pickKey.appendChild(new Option('+ 추가', ''));
+    for (const k of free) pickKey.appendChild(new Option(k, k));
+    pickKey.addEventListener('change', () => { if (!pickKey.value) return; set({ ...(get() || {}), [pickKey.value]: 1 }); h.onInput(); h.onCommit(); });
+    head.appendChild(pickKey);
+  }
+  box.appendChild(head);
+  for (const k of Object.keys(cur)) {
+    const line = el('div', 'litem');
+    line.append(el('span', 'lbl', k));
+    line.appendChild(input(spec.of, () => get()[k], v => { const o = { ...get() }; if (v === undefined) delete o[k]; else o[k] = v; set(o); }, h));
+    const del = el('button', 'mini del', '×'); del.type = 'button'; del.title = '삭제';
+    del.addEventListener('click', () => { const o = { ...get() }; delete o[k]; set(o); h.onInput(); h.onCommit(); });
+    line.appendChild(del);
+    box.appendChild(line);
+  }
+  parent.appendChild(box);
+}
+
 export function buildForm(parent, spec, value, h) {
   const skip = h.skip || [];
   for (const [k, f] of Object.entries(spec.fields)) {
     if (skip.includes(k)) continue;
     const get = () => value[k], set = v => { if (v === undefined) delete value[k]; else value[k] = v; };
     if (f.kind === 'list') { listField(parent, f, get, set, h); continue; }
+    if (f.kind === 'map') { dictField(parent, f, get, set, h); continue; }
     if (f.kind === 'obj') { // 묶음 (예: 건물의 네 벽 문·창문)
       const fs = el('fieldset'); fs.append(el('legend', '', f.label));
+      if (value[k] === undefined && f.optional) { // 없는 선택 묶음은 보여 주기만 하면 데이터가 바뀌지 않게, 버튼으로 추가한다
+        const add = el('button', 'mini', '+ 추가'); add.type = 'button';
+        add.addEventListener('click', () => { value[k] = blank(f); h.onInput(); h.onCommit(); });
+        fs.appendChild(add); parent.appendChild(fs); continue;
+      }
       if (value[k] === undefined) value[k] = blank(f);
       buildForm(fs, f, value[k], h);
       parent.appendChild(fs);

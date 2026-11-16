@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRONTIER Studio</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<link rel="stylesheet" href="./studio.css">
+</head>
+<body>
+<header id="top">
+  <b class="logo">FRONT<em>IER</em> Studio</b>
+  <button id="saveAll" type="button" title="열린 것 모두 저장 (⌘⇧S)">모두 저장</button>
+  <span class="sep"></span>
+  <div id="docBar"></div>
+  <span class="grow"></span>
+  <a class="navlink" href="/" target="_blank" title="게임을 새 탭에서">게임 열기 ↗</a>
+</header>
+<main id="shell">
+  <aside id="left">
+    <section id="assets"></section>
+    <section id="tools"></section>
+  </aside>
+  <section id="center">
+    <nav id="tabs"></nav>
+    <div id="stage">
+      <canvas id="view"></canvas>
+      <div id="overlays"></div>
+      <div id="play" hidden>
+        <iframe id="playFrame" title="시험 플레이" allow="fullscreen; pointer-lock"></iframe>
+        <div id="playBar"><b>▶ 시험 플레이 중</b><span>Ctrl/⌘+P 또는 ■ 로 멈춤 · 마우스를 풀려면 Esc</span><button id="playStop" type="button">■ 멈춤</button></div>
+      </div>
+      <div id="drop"><div><b>.glb 를 놓으면 총 모델로 엽니다</b></div></div>
+      <div id="flash" hidden></div>
+      <div id="empty"><div><b>왼쪽 목록에서 열 것을 고르세요</b><span>맵 · 총 모델 · 무기 · 파츠 · 모드</span></div></div>
+    </div>
+    <section id="console">
+      <header><b>콘솔</b><span id="conCount"></span><span class="grow"></span><button id="conClear" type="button" class="mini">지우기</button><button id="conToggle" type="button" class="mini">접기</button></header>
+      <div id="conLog"></div>
+    </section>
+  </section>
+  <aside id="inspector"></aside>
+</main>
+<script type="module" src="./studio.js"></script>
+</body>
+</html>

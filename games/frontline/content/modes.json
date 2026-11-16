@@ -1,0 +1,5 @@
+[
+  {"id":"zone","name":"점령전 5 대 5","desc":"거점 하나를 차지하고 지킨다 · 100점 선승","map":"warehouse","rules":"zone","max":10,"fill":10,"teams":2,"goal":100,"zone":{"capture":8,"decay":0.5,"pointEvery":1,"height":4}},
+  {"id":"ffa","name":"개인 데스매치","desc":"모두가 적 · 20킬 선승","map":"frontline","rules":"deathmatch","max":8,"fill":6,"teams":0,"goal":20},
+  {"id":"tdm","name":"팀 데스매치 5 대 5","desc":"두 팀 · 팀 합계 50킬 선승","map":"warehouse","rules":"deathmatch","max":10,"fill":10,"teams":2,"goal":50}
+]

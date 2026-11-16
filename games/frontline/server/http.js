@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { APP_ENV, CLIENT_DIR, CONTENT_DIR, EDITOR_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
+import { APP_ENV, CLIENT_DIR, CONTENT_DIR, STUDIO_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
 import { roomStats, listCustomRooms } from './rooms.js';
 import { DEV_TOOLS, handleDevApi } from './devtools.js';
 
@@ -16,7 +16,7 @@ const MIME = {
 const MOUNTS = [
   { prefix: '/shared/', dir: SHARED_DIR, cache: 'no-cache' },
   { prefix: '/content/', dir: CONTENT_DIR, cache: 'no-cache' },
-  ...(DEV_TOOLS ? [{ prefix: '/editor/', dir: EDITOR_DIR, cache: 'no-cache' }] : []), // 맵 에디터 (라이브에서는 없음)
+  ...(DEV_TOOLS ? [{ prefix: '/studio/', dir: STUDIO_DIR, cache: 'no-cache' }] : []), // 스튜디오 (라이브에서는 없음)
   { prefix: '/vendor/three/', dir: THREE_DIR, cache: 'max-age=86400' },
   { prefix: '/', dir: CLIENT_DIR, cache: 'no-cache' },
 ];
@@ -27,7 +27,7 @@ export function createHttpServer() {
     try { url = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
     catch { res.writeHead(400).end(); return; }
 
-    if (url === '/editor') { res.writeHead(302, { Location: '/editor/' }).end(); return; }
+    if (DEV_TOOLS && (url === '/studio' || url.startsWith('/editor'))) { res.writeHead(302, { Location: '/studio/' }).end(); return; } // 예전 에디터 주소도 스튜디오로
     if (handleDevApi(req, res, url)) return; // 개발 서버: 에디터 저장 API
 
     // 상태 확인 (배포 전에 접속 중인 유저가 있는지 보는 용도)

@@ -50,8 +50,11 @@
 | `/rooms` | `{rooms: [{code, name, mode, humans, max, state, minutes, bots}]}` — 공개 친선전 방 목록 (비공개 방은 나오지 않는다) |
 | `/content/*` | `content/` 폴더 (맵·무기·파츠 데이터) |
 | `/status` | `{env, version, editor, uptime, rooms, humans, modes: {zone: {rooms, humans}, ffa: {…}, tdm: {…}}}` — 로비의 모드별 인원 표시, 배포 전 접속자 확인 |
-| `/editor/` | 맵 에디터 (**개발 서버만**, 라이브 404) |
-| `PUT /api/maps/<id>` | 맵 저장 (에디터가 쓴다, **개발 서버만**). 본문 = 맵 JSON. 검사 실패 시 400 `{ok:false, errors}` |
+| `/studio/` | FRONTIER Studio (**개발 서버만**, 라이브 404. `/editor/` 는 여기로 옮겨 감) |
+| `PUT /api/maps/<id>` | 맵 저장 (**개발 서버만**, 아래 API 모두 같음). 본문 = 맵 JSON. 검사 실패 시 400 `{ok:false, errors}` |
+| `PUT /api/guns/<id>` | 총 모델 저장. 본문 = .glb |
+| `PUT /api/content/<weapons\|parts\|modes>` | 데이터 파일 저장 (검사 후) |
+| `PUT /api/drafts/<맵 id>` / `GET /api/drafts/draft_<맵 id>` | 시험 플레이용 임시 맵 (파일에 쓰지 않음). 게임은 `?draft=` 로 받아 간다 |
 
 ## 새 메시지를 추가하려면
 1. 이 문서에 한 줄 추가

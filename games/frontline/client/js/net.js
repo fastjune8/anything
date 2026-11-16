@@ -10,7 +10,7 @@ import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
 import { loadMap } from './scene.js';
 import { sfx, audioAt } from './sfx.js';
 import { me, wp, inp, game, roster, net } from './state.js';
-import { $, V3, NOLOCK, MODE_CFG, setMode, lerp, esc } from './util.js';
+import { $, V3, NOLOCK, MODE_CFG, setMode, lerp, esc, START_AT } from './util.js';
 import { setText, setDisplay } from './dom.js';
 import { placeMe } from './weapon.js';
 
@@ -82,7 +82,12 @@ function onMessage(m) {
       feed('<span class="w">새 경기 시작</span>');
       break;
     case 'spawn':
-      if (m.id === me.id) { placeMe(m.p); game.invUntil = performance.now() + (m.inv || 0); }
+      if (m.id === me.id) {
+        // 스튜디오에서 "카메라 위치에서 시작" 을 고르면 처음 한 번은 그 자리에서 태어난다
+        const at = START_AT.length === 2 && !game.startedAt ? [START_AT[0], 0, START_AT[1]] : m.p;
+        game.startedAt = true;
+        placeMe(at); game.invUntil = performance.now() + (m.inv || 0);
+      }
       else {
         const r = remotes.get(m.id);
         if (r) { r.alive = true; r.hasPos = true; r.deadT = 0; r.hp = MAX_HP; r.invUntil = performance.now() + (m.inv || 0); r.tpos.fromArray(m.p); r.pos.fromArray(m.p); }

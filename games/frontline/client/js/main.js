@@ -15,7 +15,7 @@ import { isActive } from './input.js';
 import { join, nameEl } from './menu.js';
 import { me, inv, wp, inp, game, roster, net, loadout, eff, PITCH_MAX } from './state.js';
 import { armory, updateArmory } from './armory.js';
-import { $, params, BASE_FOV, lerp, clamp, smooth } from './util.js';
+import { $, params, BASE_FOV, EMBED, lerp, clamp, smooth } from './util.js';
 
 let last = performance.now(), menuAngle = 0;
 function frame(now) {
@@ -76,3 +76,5 @@ fetch('/status').then(r => r.json()).then(st => {
 window.__g = { me, remotes, roster, inv, net, remoteHit, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory,
   input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }
+// 스튜디오 안에서 시험 플레이 중: Ctrl/⌘+P 로 멈추고 스튜디오로 돌아간다 (Unity 의 Play 버튼과 같은 단축키)
+if (EMBED) addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.code === 'KeyP') { e.preventDefault(); parent.postMessage({ t: 'studio-stop' }, location.origin); } }, true);

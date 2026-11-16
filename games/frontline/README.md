@@ -14,11 +14,13 @@
 npm install
 npm run dev          # http://localhost:3002
 ```
-맵 에디터: 개발 서버에서 http://localhost:3002/editor/ (라이브에는 없다)
+**FRONTIER Studio** (맵·총 모델·무기·파츠·모드 편집): 개발 서버에서 http://localhost:3002/studio/ (라이브에는 없다) — [사용법](docs/STUDIO.md)
 
 ## 문서
 
-- [개발 가이드](docs/DEV.md) — 실행, 협업 방식(브랜치·PR·자동 테스트), 맵 에디터, 테스트, 라이브 배포
+- [스튜디오](docs/STUDIO.md) — 설치, 화면, 맵·총 모델·게임 데이터 편집, git 으로 주고받기 (팀원용)
+- [총 모델 만들기](docs/GUN_MODELING.md) — Blender 규칙
+- [개발 가이드](docs/DEV.md) — 실행, 협업 방식(브랜치·PR·자동 테스트), 테스트, 라이브 배포
 - [구조](docs/ARCHITECTURE.md) — 폴더·모듈 설명, 어디를 고치면 되는지
 - [통신 규약](docs/PROTOCOL.md) — 서버와 브라우저가 주고받는 메시지
 
