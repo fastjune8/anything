@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
@@ -119,6 +119,7 @@ try {
   answers.push(TEST_ID, '스튜디오 시험 맵');
   await page.click('.tab.home'); await page.click('[data-cat="maps"]'); await page.click('#newMapBtn');
   await page.waitForFunction(id => window.__ed.map.id === id, TEST_ID, { timeout: 8000 });
+  await page.click(`${ACT.tools} .tbx-h:has-text("엄폐물")`); // 하나씩 놓는 물체 묶음은 접혀 있다
   await page.click(`${ACT.tools} .tile[data-tool="obj:crate"]`);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 40);
   const placed = await page.evaluate(() => { const o = window.__ed.map.objects.at(-1); return { type: o.type, x: o.x, z: o.z, sel: window.__ed.sel }; });
@@ -159,6 +160,54 @@ try {
   check(inGame.map === `draft_${TEST_ID}` && inGame.room && inGame.colliders === boxes, '⌘P 를 누르면 화면 안에서 게임이 열리고, 저장하지 않은 물체까지 그대로 있다', JSON.stringify({ ...inGame, boxes }));
   await page.click('#playStop');
   check(!(await page.evaluate(() => window.__studio.isPlaying())) && await page.locator('#play').isHidden(), '■ 멈춤으로 스튜디오로 돌아온다');
+
+  console.log('\n[맵: 그리기 도구 · 여러 개 선택 · 프리팹]');
+  await page.keyboard.press('KeyT'); await page.waitForTimeout(300); // 위에서 보기
+  const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
+  const dragTo = async (a, b2) => { await page.mouse.move(...a); await page.mouse.down(); await page.mouse.move(...b2, { steps: 8 }); await page.mouse.up(); };
+  const count = () => page.evaluate(() => window.__ed.map.objects.length);
+  let n0 = await count();
+  await page.fill(`${ACT.tools} [data-b="wallH"]`, '3.5'); await page.selectOption(`${ACT.tools} [data-b="mat"]`, 'brick');
+  await page.click(`${ACT.tools} .tile[data-tool="draw:wall"]`);
+  await dragTo(at(0.3, 0.35), at(0.6, 0.37));
+  const w1 = await page.evaluate(() => window.__ed.map.objects.at(-1));
+  check(w1.type === 'wall' && w1.axis === 'x' && w1.to - w1.from > 5 && w1.h === 3.5 && w1.mat === 'brick', '벽 도구로 바닥을 끌면 곧은 벽이 생기고, 그리기 설정(높이·재질)이 들어간다', JSON.stringify(w1));
+  await dragTo(at(0.6, 0.35), at(0.6, 0.6));
+  const w2 = await page.evaluate(() => window.__ed.map.objects.at(-1));
+  check(w2.axis === 'z' && Math.abs(w2.at - w1.to) < 0.01 && Math.abs(Math.min(w2.from, w2.to) - w1.at) < 0.01, '앞 벽 끝에서 시작하면 이어진다 (ㄱ자)', JSON.stringify({ w1: [w1.to, w1.at], w2: [w2.at, w2.from, w2.to] }));
+  await page.click(`${ACT.tools} .tile[data-tool="draw:box"]`);
+  await dragTo(at(0.35, 0.45), at(0.45, 0.55));
+  const bx = await page.evaluate(() => window.__ed.map.objects.at(-1));
+  check(bx.type === 'box' && bx.w > 2 && bx.d > 2, '박스 도구로 끈 크기만큼 박스가 생긴다', JSON.stringify(bx));
+  await page.click(`${ACT.tools} .tile[data-tool="scatter"]`);
+  const nS = await count();
+  await dragTo(at(0.3, 0.7), at(0.65, 0.7));
+  check(await count() - nS >= 3, '흩뿌리기: 끈 길을 따라 여러 개가 생긴다', `${(await count()) - nS}개`);
+  check(await page.evaluate(() => window.__ed.sel && window.__ed.sel.kind === 'multi'), '흩뿌린 것들이 함께 골라진다');
+
+  await page.click(`${ACT.tools} .tile[data-tool="marquee"]`);
+  await dragTo(at(0.28, 0.3), at(0.62, 0.62));
+  const ms = await page.evaluate(() => ({ kind: window.__ed.sel && window.__ed.sel.kind, n: window.__ed.sel && window.__ed.sel.list ? window.__ed.sel.list.length : 0 }));
+  check(ms.kind === 'multi' && ms.n >= 3, '영역 선택으로 여러 물체를 한 번에 고른다', JSON.stringify(ms));
+  const before = await page.evaluate(() => window.__ed.sel.list.map(i => { const o = window.__ed.map.objects[i]; return o.type === 'wall' ? o.at : o.x; }));
+  await page.keyboard.press('ArrowRight');
+  const afterNudge = await page.evaluate(() => window.__ed.sel.list.map(i => { const o = window.__ed.map.objects[i]; return o.type === 'wall' ? o.at : o.x; }));
+  check(afterNudge.some((v, k) => v !== before[k]), '고른 묶음은 방향키로 함께 움직인다');
+  await page.keyboard.press('Escape');
+  // 프리팹으로 저장 → 찍기
+  await page.evaluate(() => window.__ed.selectList(window.__ed.map.objects.map((o, i) => i).slice(-3)));
+  await page.click(`${ACT.insp} button:has-text("프리팹으로 저장")`);
+  await page.fill('.modal [data-f="id"]', 'zz_test_set'); await page.fill('.modal [data-f="name"]', '시험 묶음');
+  await page.click('.modal [data-f="go"]');
+  await page.waitForFunction(() => window.__ed.prefabs.some(p => p.id === 'zz_test_set'), null, { timeout: 8000 });
+  const pf = JSON.parse(fs.readFileSync(C('prefabs.json'), 'utf8')).find(p => p.id === 'zz_test_set');
+  check(pf && pf.objects.length === 3 && !pf.objects.some(o => o.sym), '고른 물체를 프리팹으로 저장하면 content/prefabs.json 에 들어간다 (가운데 기준 좌표)', JSON.stringify(pf && pf.objects.length));
+  n0 = await count();
+  await page.click(`${ACT.tools} .tile[data-tool="prefab:zz_test_set"]`);
+  await page.mouse.click(...at(0.8, 0.8));
+  check(await count() === n0 + 3, '팔레트의 프리팹을 고르고 클릭하면 그 자리에 묶음이 찍힌다');
+  await page.keyboard.press('ControlOrMeta+z');
+  check(await count() === n0, '찍은 것도 ⌘Z 로 한 번에 되돌린다');
 
   console.log('\n[총 모델]');
   await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#sampleBtn');

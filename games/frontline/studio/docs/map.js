@@ -5,9 +5,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld } from '/js/world.js';
 import { expandObject, buildLayout, OBJECT_TYPES } from '/shared/maps/build.js';
-import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap } from '/shared/content/schema.js';
+import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap, MATERIALS } from '/shared/content/schema.js';
 import { MODES } from '/shared/modes.js';
 import { buildForm } from '../form.js';
+import { formDialog } from '../dialog.js';
 
 const r2 = v => Math.round(v * 100) / 100;
 const TEAM_COLOR = { '-1': 0xe9ecef, 0: 0x5aa9ff, 1: 0xff4b3a };
@@ -87,6 +88,15 @@ export async function createMapDoc(ctx, id, opts = {}) {
   let snap = JSON.stringify(map);
   const undoStack = [], redoStack = [];
   let lastErrors = [];
+  // 팔레트(그리기 설정): 새로 그리는 물체에 쓴다
+  const brush = { mat: 'concrete', wallH: 2.8, wallT: 0.35, boxH: 1.2, tint: '', roof: true, sym: false, scatter: 'crate', spacing: 2.5 };
+  // 프리팹: 물체 묶음 (content/prefabs.json, 팀과 git 으로 공유)
+  let prefabs = await fetch('/content/prefabs.json', { cache: 'no-store' }).then(x => (x.ok ? x.json() : [])).catch(() => []);
+  let gesture = null;     // 끌어서 그리는 중: { kind: 'draw'|'marquee', what, start, end } · 흩뿌리기: { kind: 'scatter', last, made }
+  let lastWallEnd = null; // 벽을 이어 그릴 때 시작점이 여기에 붙는다
+  const previewGroup = new THREE.Group(); scene.add(previewGroup);
+  const previewMat = new THREE.MeshBasicMaterial({ color: 0xffb43a, transparent: true, opacity: 0.35, depthWrite: false });
+  const previewLine = new THREE.LineBasicMaterial({ color: 0xffd23a, depthTest: false });
 
   function drawHelpers() {
     for (const c of [...helpGroup.children]) { helpGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
@@ -143,9 +153,10 @@ export async function createMapDoc(ctx, id, opts = {}) {
   function drawSelection() {
     selGroup.clear();
     if (!sel) return;
-    if (sel.kind === 'obj') {
+    if (sel.kind === 'obj' || sel.kind === 'multi') {
+      const ids = new Set(sel.kind === 'multi' ? sel.list : [sel.i]);
       for (const m of pickGroup.children) {
-        if (m.userData.i !== sel.i) continue;
+        if (!ids.has(m.userData.i)) continue;
         const l = new THREE.LineSegments(edgeGeo, m.userData.mirror ? selMirrorMat : selMat);
         l.scale.copy(m.scale).multiplyScalar(1.01); l.position.copy(m.position); l.renderOrder = 10;
         selGroup.add(l);
@@ -177,23 +188,32 @@ export async function createMapDoc(ctx, id, opts = {}) {
   const undo = () => { if (undoStack.length) { redoStack.push(snap); restore(undoStack.pop()); } };
   const redo = () => { if (redoStack.length) { undoStack.push(snap); restore(redoStack.pop()); } };
 
+  // 선택한 것의 실제 데이터 (여러 개면 물체 목록)
   function selected() {
     if (!sel) return null;
     if (sel.kind === 'obj') return map.objects[sel.i] || null;
+    if (sel.kind === 'multi') { const l = sel.list.map(i => map.objects[i]); return l.every(Boolean) ? l : null; }
     if (sel.kind === 'zone') return (map.zones || [])[sel.i] || null;
     if (sel.kind === 'spawn') { const list = sel.team < 0 ? map.spawns.ffa : (map.spawns.team || [])[sel.team]; return (list && list[sel.i]) || null; }
     return null;
   }
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const anchorOf = o => OBJECT_TYPES[o.type].anchor(o);
+  // 여러 개를 고른 상태로 (하나면 그냥 그 물체, 없으면 선택 없음)
+  function selectList(list) {
+    list = [...new Set(list)].sort((x, y) => x - y);
+    sel = !list.length ? null : list.length === 1 ? { kind: 'obj', i: list[0] } : { kind: 'multi', list };
+    drawSelection(); renderPanel();
+  }
+  const selIndices = () => (!sel ? [] : sel.kind === 'obj' ? [sel.i] : sel.kind === 'multi' ? sel.list : []);
   function spawnList(team) {
     if (team < 0) return map.spawns.ffa;
     if (!map.spawns.team) map.spawns.team = [[], []];
     return map.spawns.team[team];
   }
 
-  // 옮기기: orig(옮기기 시작할 때의 복사본) 에서 (dx, dz) 만큼
-  function moveTo(orig, dx, dz) {
-    if (sel.kind === 'spawn') { spawnList(sel.team)[sel.i] = [r2(orig[0] + dx), r2(orig[1] + dz)]; return; }
-    const o = selected();
+  // 물체 하나 옮기기: orig(옮기기 시작할 때의 복사본) 에서 (dx, dz) 만큼
+  function moveObj(o, orig, dx, dz) {
     if (o.type === 'wall') {
       const along = (o.axis || 'x') === 'x' ? dx : dz, across = (o.axis || 'x') === 'x' ? dz : dx;
       o.from = r2(orig.from + along); o.to = r2(orig.to + along); o.at = r2(orig.at + across);
@@ -205,6 +225,12 @@ export async function createMapDoc(ctx, id, opts = {}) {
       o.ops = {};
       for (const [side, list] of Object.entries(orig.ops)) o.ops[side] = (list || []).map(op => ({ ...op, at: r2(op.at + (side === 'n' || side === 's' ? dx : dz)) }));
     }
+  }
+  // 선택한 것 옮기기 (orig = 옮기기 시작할 때의 selected() 복사본)
+  function moveTo(orig, dx, dz) {
+    if (sel.kind === 'spawn') { spawnList(sel.team)[sel.i] = [r2(orig[0] + dx), r2(orig[1] + dz)]; return; }
+    if (sel.kind === 'multi') { sel.list.forEach((i, k) => moveObj(map.objects[i], orig[k], dx, dz)); return; }
+    moveObj(selected(), orig, dx, dz);
   }
 
   function newObject(type, x, z) {
@@ -234,25 +260,35 @@ export async function createMapDoc(ctx, id, opts = {}) {
     }
     rebuildNow(); commit(); renderPanel();
   }
+  // 물체 여러 개 추가 (그리기·흩뿌리기·프리팹·붙여넣기). 추가한 것을 고른다
+  function addObjects(list) {
+    const from = map.objects.length;
+    map.objects.push(...list);
+    rebuildNow(); selectList(list.map((_, k) => from + k)); commit();
+  }
   function removeSelected() {
     if (!sel) return;
-    if (sel.kind === 'obj') map.objects.splice(sel.i, 1);
+    if (sel.kind === 'obj' || sel.kind === 'multi') for (const i of [...selIndices()].sort((x, y) => y - x)) map.objects.splice(i, 1);
     else if (sel.kind === 'zone') map.zones.splice(sel.i, 1);
     else if (sel.kind === 'spawn') spawnList(sel.team).splice(sel.i, 1);
     sel = null; rebuildNow(); commit(); renderPanel();
   }
   function duplicateSelected() {
-    if (!sel || sel.kind !== 'obj') return;
-    const copy = JSON.parse(JSON.stringify(selected()));
-    map.objects.push(copy); sel = { kind: 'obj', i: map.objects.length - 1 };
-    moveTo(JSON.parse(JSON.stringify(copy)), 2, 2);
-    rebuildNow(); commit(); renderPanel();
+    const idx = selIndices();
+    if (!idx.length) return;
+    addObjects(idx.map(i => { const c = clone(map.objects[i]); moveObj(c, clone(c), 2, 2); return c; }));
   }
+  // 90° 회전: 하나면 제자리에서, 여러 개면 묶음 가운데를 축으로 (배치까지 같이 돈다)
   function rotateSelected() {
-    const o = sel && sel.kind === 'obj' ? selected() : null;
-    if (!o) return;
-    const rot = ((o.rot || 0) + 90) % 360;
-    if (rot) o.rot = rot; else delete o.rot;
+    const idx = selIndices();
+    if (!idx.length) return;
+    const objs = idx.map(i => map.objects[i]), anchors = objs.map(anchorOf);
+    const cx = anchors.reduce((s2, a) => s2 + a[0], 0) / anchors.length, cz = anchors.reduce((s2, a) => s2 + a[1], 0) / anchors.length;
+    objs.forEach((o, k) => {
+      if (objs.length > 1) { const [ax, az] = anchors[k]; moveObj(o, clone(o), r2(cx - (az - cz) - ax), r2(cz + (ax - cx) - az)); } // build.js 의 회전과 같은 방향
+      const rot = ((o.rot || 0) + 90) % 360;
+      if (rot) o.rot = rot; else delete o.rot;
+    });
     rebuildNow(); commit(); renderPanel();
   }
 
@@ -287,6 +323,94 @@ export async function createMapDoc(ctx, id, opts = {}) {
     camera.lookAt(controls.target);
   }
 
+  // ───────── 그리기 도구 ─────────
+  const symOpt = () => (brush.sym ? { sym: true } : {});
+  // 끈 두 점 → 만들 물체 (그리기 설정 반영). 너무 작으면 null
+  function drawnObject(what, a, b) {
+    if (what === 'wall') { // 벽: 더 많이 끈 방향(동서/남북)으로 곧게
+      const dx = b[0] - a[0], dz = b[1] - a[1];
+      if (Math.hypot(dx, dz) < 0.5) return null;
+      const base = { type: 'wall', h: brush.wallH, t: brush.wallT, mat: brush.mat, ops: [], ...symOpt() };
+      return Math.abs(dx) >= Math.abs(dz) ? { ...base, axis: 'x', at: a[1], from: Math.min(a[0], b[0]), to: Math.max(a[0], b[0]) }
+        : { ...base, axis: 'z', at: a[0], from: Math.min(a[1], b[1]), to: Math.max(a[1], b[1]) };
+    }
+    const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[1], b[1]), z1 = Math.max(a[1], b[1]);
+    const w = r2(x1 - x0), d = r2(z1 - z0), cx = r2((x0 + x1) / 2), cz = r2((z0 + z1) / 2);
+    if (what === 'box') return w < 0.2 || d < 0.2 ? null : { type: 'box', x: cx, y: 0, z: cz, w, h: brush.boxH, d, mat: brush.mat, ...(brush.tint ? { tint: brush.tint } : {}), ...symOpt() };
+    if (what === 'building') return w < 3 || d < 3 ? null : { type: 'building', x: cx, z: cz, w, d, h: Math.max(2.5, brush.wallH), mat: brush.mat, roof: brush.roof, ops: { n: [], s: [{ at: cx, w: 1.6, type: 'door' }], e: [], w: [] }, ...symOpt() };
+    return null;
+  }
+  // 그리는 중인 모양을 반투명으로 (영역 선택은 테두리)
+  function showPreview() {
+    previewGroup.clear();
+    if (!gesture) return;
+    if (gesture.kind === 'marquee') {
+      const [a, b] = [gesture.start, gesture.end], y = 0.12;
+      const pts = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]].map(([x, z]) => new THREE.Vector3(x, y, z));
+      const loop = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), previewLine); loop.renderOrder = 12;
+      previewGroup.add(loop); return;
+    }
+    const o = gesture.kind === 'draw' && drawnObject(gesture.what, gesture.start, gesture.end);
+    if (!o) return;
+    for (const b of expandObject(o).boxes) {
+      const m = new THREE.Mesh(unitBox, previewMat); m.scale.set(b.w, b.h, b.d); m.position.set(b.x, b.y + b.h / 2, b.z); previewGroup.add(m);
+    }
+    const len = o.type === 'wall' ? r2(o.to - o.from) : null;
+    r('hint').textContent = o.type === 'wall' ? `벽 ${len}m · 높이 ${o.h}m` : `${OBJECT_SCHEMAS[o.type].label} ${o.w} × ${o.d}m`;
+  }
+  // 흩뿌리기: 끄는 길을 따라 일정 간격으로 (크기·방향은 조금씩 다르게)
+  const SCATTER = { crate: '상자', barrel: '드럼통', tree: '나무', sandbags: '모래주머니', barrier: '콘크리트 방벽' };
+  const TINTS = ['#7a2a1e', '#35506b', '#4a5a32', '#596066'];
+  function scatterAt(p) {
+    const rnd = (a, b) => r2(a + Math.random() * (b - a)), axis = Math.random() < 0.5 ? 'x' : 'z', [x, z] = p;
+    const o = { crate: { type: 'crate', x, z, s: rnd(0.9, 1.4) }, barrel: { type: 'barrel', x, z, tint: TINTS[(Math.random() * TINTS.length) | 0] },
+      tree: { type: 'tree', x, z, s: rnd(0.8, 1.3) }, sandbags: { type: 'sandbags', x, z, len: rnd(3, 5), axis }, barrier: { type: 'barrier', x, z, axis } }[brush.scatter];
+    map.objects.push({ ...o, ...symOpt() }); gesture.made.push(map.objects.length - 1); rebuild();
+  }
+  function finishGesture() {
+    const g = gesture; gesture = null; previewGroup.clear(); setTool(tool); // 안내 문구 되돌리기
+    if (g.kind === 'scatter') { if (g.made.length) { rebuildNow(); selectList(g.made); commit(); } return; }
+    if (g.kind === 'marquee') { // 영역 안에 기준점이 있는 물체를 고른다 (Shift = 더하기)
+      const x0 = Math.min(g.start[0], g.end[0]), x1 = Math.max(g.start[0], g.end[0]), z0 = Math.min(g.start[1], g.end[1]), z1 = Math.max(g.start[1], g.end[1]);
+      const hit = map.objects.map((o, i) => [anchorOf(o), i]).filter(([[x, z]]) => x >= x0 && x <= x1 && z >= z0 && z <= z1).map(([, i]) => i);
+      selectList(g.add ? [...selIndices(), ...hit] : hit);
+      if (hit.length) ctx.log(`${selIndices().length}개 골랐습니다`);
+      return;
+    }
+    const o = drawnObject(g.what, g.start, g.end);
+    if (!o) return;
+    if (o.type === 'wall') lastWallEnd = o.axis === 'x' ? [g.end[0], g.start[1]] : [g.start[0], g.end[1]]; // 다음 벽은 여기서 이어 그릴 수 있다
+    addObjects([o]);
+  }
+
+  // ───────── 프리팹 ─────────
+  async function saveAsPrefab() {
+    const idx = selIndices();
+    if (!idx.length) return;
+    const v = await formDialog({
+      title: '프리팹으로 저장', ok: '저장',
+      lead: `고른 물체 ${idx.length}개를 묶어 팔레트에 저장합니다. 어느 맵에서든 클릭 한 번으로 찍을 수 있습니다 (content/prefabs.json — git 으로 팀과 공유).`,
+      fields: [{ key: 'id', label: 'id', required: true, pattern: '^[a-z][a-z0-9_]*$', hint: '영문 소문자로 시작, 소문자·숫자·_', placeholder: '예: checkpoint' },
+        { key: 'name', label: '이름', required: true, placeholder: '예: 검문소' }],
+      validate: x => (prefabs.some(p => p.id === x.id) ? `id "${x.id}" 는 이미 있습니다` : null),
+    });
+    if (!v) return;
+    const objs = idx.map(i => clone(map.objects[i])), an = objs.map(anchorOf);
+    const cx = snapV(an.reduce((a, p) => a + p[0], 0) / an.length), cz = snapV(an.reduce((a, p) => a + p[1], 0) / an.length);
+    const rel = objs.map(o => { const c = clone(o); moveObj(c, clone(o), -cx, -cz); delete c.sym; return c; }); // 가운데를 (0, 0) 으로, 대칭은 찍을 때 정한다
+    if (await savePrefabs([...prefabs, { id: v.id, name: v.name, objects: rel }])) ctx.log(`프리팹 저장: ${v.name} (${v.id}, 물체 ${rel.length}개) — 팔레트의 "프리팹" 에서 찍을 수 있습니다`, 'ok');
+  }
+  async function savePrefabs(next) {
+    const res = await fetch('/api/content/prefabs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
+    const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    if (!out.ok) { ctx.log(`프리팹 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('프리팹 저장 실패'); return false; }
+    prefabs = next; renderPrefabs(); return true;
+  }
+  function stampPrefab(id, x, z) {
+    const pf = prefabs.find(p => p.id === id);
+    if (pf) addObjects(pf.objects.map(o => { const c = clone(o); moveObj(c, clone(o), x, z); return { ...c, ...symOpt() }; }));
+  }
+
   let drag = null;
   const listeners = [
     ['pointerdown', e => {
@@ -295,8 +419,20 @@ export async function createMapDoc(ctx, id, opts = {}) {
       if (e.button !== 0) return;
       if (e.altKey) { orbiting = true; controls.enabled = false; return; }
       const p = groundPoint(e);
-      if (tool) { if (p) place(p[0], p[1]); if (!e.shiftKey) setTool(null); return; }
+      if (tool) {
+        if (!p) return;
+        if (tool.kind === 'draw') { // 끌어서 그리기. 벽은 앞 벽 끝 근처에서 시작하면 거기에 붙는다
+          const a = tool.what === 'wall' && lastWallEnd && Math.hypot(p[0] - lastWallEnd[0], p[1] - lastWallEnd[1]) < 1.2 ? lastWallEnd : p;
+          gesture = { kind: 'draw', what: tool.what, start: a, end: a }; showPreview(); return;
+        }
+        if (tool.kind === 'marquee') { gesture = { kind: 'marquee', start: p, end: p, add: e.shiftKey }; showPreview(); return; }
+        if (tool.kind === 'scatter') { gesture = { kind: 'scatter', last: p, made: [] }; scatterAt(p); return; }
+        if (tool.kind === 'prefab') { stampPrefab(tool.id, p[0], p[1]); if (!e.shiftKey) setTool(null); return; }
+        place(p[0], p[1]); if (!e.shiftKey) setTool(null); return; // Shift 를 누르고 있으면 계속 놓기
+      }
       const u = pick(e);
+      if (e.shiftKey && u && u.kind === 'obj') { const cur = selIndices(); selectList(cur.includes(u.i) ? cur.filter(i => i !== u.i) : [...cur, u.i]); return; } // Shift+클릭 = 더하기/빼기
+      if (sel && sel.kind === 'multi' && u && u.kind === 'obj' && sel.list.includes(u.i)) { if (p) drag = { start: p, orig: clone(selected()), mirror: !!u.mirror, moved: false }; return; } // 고른 묶음 끌기
       sel = u ? (u.kind === 'spawn' ? { kind: 'spawn', team: u.team, i: u.i } : { kind: u.kind, i: u.i }) : null;
       drawSelection(); renderPanel();
       if (u && p) drag = { start: p, orig: JSON.parse(JSON.stringify(selected())), mirror: !!u.mirror, moved: false };
@@ -306,6 +442,11 @@ export async function createMapDoc(ctx, id, opts = {}) {
       if (orbiting) { orbitBy(-e.movementX * 0.006, -e.movementY * 0.006); return; }
       const p = groundPoint(e);
       cursor = p; showCoords();
+      if (gesture) {
+        if (!p) return;
+        if (gesture.kind === 'scatter') { if (Math.hypot(p[0] - gesture.last[0], p[1] - gesture.last[1]) >= brush.spacing) { gesture.last = p; scatterAt(p); } return; }
+        gesture.end = p; showPreview(); return;
+      }
       if (!drag) { if (!tool) canvas.style.cursor = pick(e) ? 'pointer' : 'default'; return; }
       if (!p) return;
       let dx = p[0] - drag.start[0], dz = p[1] - drag.start[1];
@@ -317,6 +458,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     ['pointerup', e => {
       if (e.button === 2 && fly) { endFly(); return; }
       if (orbiting) { orbiting = false; controls.enabled = true; controls.update(); return; }
+      if (gesture) { finishGesture(); return; }
       if (drag && drag.moved) { commit(); renderPanel(); }
       drag = null;
     }],
@@ -351,7 +493,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
       case 'KeyT': topView(); break;
       case 'Home': overview(); break;
       case 'KeyG': setSnap(snapStep ? 0 : lastSnap); break;
-      case 'Escape': setTool(null); sel = null; drawSelection(); renderPanel(); break;
+      case 'Escape': gesture = null; previewGroup.clear(); lastWallEnd = null; setTool(null); sel = null; drawSelection(); renderPanel(); break;
       case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight': e.preventDefault(); nudge(e.code, e.shiftKey); break;
     }
   }
@@ -390,18 +532,16 @@ export async function createMapDoc(ctx, id, opts = {}) {
     rebuildNow(); commit(); renderPanel();
   }
   function copySelected() {
-    const o = selected();
-    if (!o || sel.kind !== 'obj') return;
-    clipboard = JSON.parse(JSON.stringify(o));
-    ctx.flash('복사했습니다 — ⌘V 로 마우스 위치에 붙여넣기');
+    const idx = selIndices();
+    if (!idx.length) return;
+    clipboard = idx.map(i => clone(map.objects[i]));
+    ctx.flash(`${idx.length}개 복사했습니다 — ⌘V 로 마우스 위치에 붙여넣기`);
   }
-  function paste() {
+  function paste() { // 묶음 가운데가 마우스 위치에 오도록
     if (!clipboard) return;
-    const copy = JSON.parse(JSON.stringify(clipboard));
-    map.objects.push(copy); sel = { kind: 'obj', i: map.objects.length - 1 };
-    const [ax, az] = OBJECT_TYPES[copy.type].anchor(copy), [tx, tz] = cursor || [ax + 2, az + 2];
-    moveTo(JSON.parse(JSON.stringify(copy)), r2(snapV(tx) - ax), r2(snapV(tz) - az));
-    rebuildNow(); commit(); renderPanel();
+    const an = clipboard.map(anchorOf), ax = an.reduce((a, p) => a + p[0], 0) / an.length, az = an.reduce((a, p) => a + p[1], 0) / an.length;
+    const [tx, tz] = cursor || [ax + 2, az + 2], dx = r2(snapV(tx) - snapV(ax)), dz = r2(snapV(tz) - snapV(az));
+    addObjects(clipboard.map(o => { const c = clone(o); moveObj(c, clone(o), dx, dz); return c; }));
   }
   function setSnap(v) { snapStep = v; if (v) lastSnap = v; r('snap').value = String(v); showCoords(); }
   function showCoords(extra) {
@@ -423,35 +563,89 @@ export async function createMapDoc(ctx, id, opts = {}) {
   }
 
   // ───────── 도구 패널 / 속성 / 검사 ─────────
-  const toolKey = t => (t.kind === 'obj' ? `obj:${t.type}` : t.kind === 'spawn' ? `spawn:${t.team}` : 'zone');
+  const toolKey = t => ({ obj: `obj:${t.type}`, spawn: `spawn:${t.team}`, zone: 'zone', draw: `draw:${t.what}`, marquee: 'marquee', scatter: 'scatter', prefab: `prefab:${t.id}` }[t.kind]);
+  const HINT = {
+    obj: '바닥을 클릭해 놓기 · Shift+클릭 = 계속 놓기 · Esc = 취소', spawn: '바닥을 클릭해 놓기 · Shift+클릭 = 계속 놓기', zone: '바닥을 클릭해 놓기',
+    'draw:wall': '바닥을 끌어 벽 그리기 (곧게 동서/남북) · 앞 벽 끝에서 시작하면 이어진다 · Esc = 그만',
+    'draw:box': '바닥을 끌어 사각형 박스 그리기 (높이·재질은 그리기 설정) · Esc = 그만',
+    'draw:building': '바닥을 끌어 건물 그리기 (3m 이상, 남쪽 벽에 문) · Esc = 그만',
+    scatter: '바닥을 끌면 지나간 길에 일정 간격으로 흩뿌린다 · Esc = 그만',
+    marquee: '끌어서 영역 안의 물체를 고르기 · Shift = 더하기 · 고른 뒤 끌기/방향키/R/⌘D/Del',
+    prefab: '바닥을 클릭해 프리팹 찍기 · Shift+클릭 = 계속 찍기',
+  };
   function setTool(t) {
     tool = t;
     for (const b of r('palette').querySelectorAll('.tile')) b.classList.toggle('on', !!t && b.dataset.tool === toolKey(t));
     canvas.style.cursor = t ? 'crosshair' : 'default';
-    r('hint').textContent = t ? '바닥을 클릭해 놓기 · Shift+클릭 = 계속 놓기 · Esc = 취소' : '';
+    r('hint').textContent = t ? HINT[toolKey(t)] || HINT[t.kind] || '' : '';
+    if (!t || t.kind !== 'draw') lastWallEnd = null;
   }
   // 도구 상자: 묶음별 타일 (묶음 제목을 누르면 접힌다)
   const ICON = { building: '⌂', wall: '▬', box: '■', container: '▤', crate: '▣', sandbags: '≋', barrier: '▭', barrel: '◍', tower: '♜', tree: '♣' };
   const GROUPS = [['구조물', ['building', 'wall', 'box']], ['엄폐물', ['container', 'crate', 'sandbags', 'barrier', 'barrel']], ['자연 · 기타', ['tree', 'tower']]];
-  (function buildPalette() {
-    const pal = r('palette');
-    const group = (title, items) => {
-      const h = html('div', 'tbx-h'); h.textContent = title; h.addEventListener('click', () => h.classList.toggle('shut'));
-      const tiles = html('div', 'tiles');
-      for (const [label, icon, t, color] of items) {
-        const b = html('button', 'tile'); b.type = 'button'; b.dataset.tool = toolKey(t); b.title = `${label} 놓기 — 바닥을 클릭`;
-        const ic = html('span', 'ic'); ic.textContent = icon; if (color) ic.style.color = color;
-        b.append(ic, document.createTextNode(label));
-        b.addEventListener('click', () => setTool(tool && toolKey(tool) === toolKey(t) ? null : t));
-        tiles.appendChild(b);
-      }
-      pal.append(h, tiles);
-    };
-    for (const [title, types] of GROUPS) group(title, types.filter(t => OBJECT_SCHEMAS[t]).map(t => [OBJECT_SCHEMAS[t].label, ICON[t] || '■', { kind: 'obj', type: t }]));
-    group('스폰 지점', [['개인전', '●', { kind: 'spawn', team: -1 }, '#e9ecef'], ['0팀', '●', { kind: 'spawn', team: 0 }, '#5aa9ff'], ['1팀', '●', { kind: 'spawn', team: 1 }, '#ff4b3a']]);
-    group('모드', [['거점', '◎', { kind: 'zone' }, '#ffb43a']]);
-    pal.appendChild(Object.assign(html('p', 'note'), { textContent: '고른 뒤 화면 바닥을 클릭해 놓습니다. Shift+클릭 = 계속 놓기, Esc = 그만. 조작법은 ? (F1)' }));
+  // 도구 상자: 그리기 → 그리기 설정(팔레트) → 하나씩 놓기 → 프리팹 → 스폰 → 모드
+  const pal = r('palette');
+  function tileGroup(title, items, open = true) {
+    const h = html('div', `tbx-h${open ? '' : ' shut'}`); h.textContent = title; h.addEventListener('click', () => h.classList.toggle('shut'));
+    const tiles = html('div', 'tiles');
+    for (const [label, icon, t, color, tip] of items) {
+      const b = html('button', 'tile'); b.type = 'button'; b.dataset.tool = toolKey(t); b.title = tip || `${label} 놓기 — 바닥을 클릭`;
+      const ic = html('span', 'ic'); ic.textContent = icon; if (color) ic.style.color = color;
+      b.append(ic, document.createTextNode(label));
+      b.addEventListener('click', () => setTool(tool && toolKey(tool) === toolKey(t) ? null : t));
+      tiles.appendChild(b);
+    }
+    pal.append(h, tiles);
+    return tiles;
+  }
+  tileGroup('그리기', [
+    ['벽', '✎', { kind: 'draw', what: 'wall' }, '#ffb43a', '벽 그리기 — 바닥을 끌기'], ['박스', '▭', { kind: 'draw', what: 'box' }, '#ffb43a', '사각형 박스 그리기 — 바닥을 끌기'],
+    ['건물', '⌂', { kind: 'draw', what: 'building' }, '#ffb43a', '건물 그리기 — 바닥을 끌기'], ['흩뿌리기', '✿', { kind: 'scatter' }, '#ffb43a', '흩뿌리기 — 끄는 길을 따라'],
+    ['영역 선택', '⬚', { kind: 'marquee' }, '#ffd23a', '영역 선택 — 끌어서 여러 개 고르기'],
+  ]);
+  // 그리기 설정 (팔레트)
+  (function brushPanel() {
+    const h = html('div', 'tbx-h'); h.textContent = '그리기 설정'; h.addEventListener('click', () => h.classList.toggle('shut'));
+    const box = html('div', 'brush');
+    const row = (label, input) => { const l = html('label', 'kv'); l.style.gridTemplateColumns = '64px 1fr'; l.append(document.createTextNode(label), input); box.appendChild(l); return input; };
+    const num = (key, min, max, step) => { const i = html('input'); i.type = 'number'; i.min = min; i.max = max; i.step = step; i.value = brush[key]; i.dataset.b = key; i.addEventListener('input', () => { const v = Number(i.value); if (Number.isFinite(v) && v >= min && v <= max) brush[key] = v; }); return i; };
+    const mat = html('select'); for (const m of MATERIALS) mat.appendChild(new Option(m, m)); mat.value = brush.mat; mat.dataset.b = 'mat';
+    mat.addEventListener('change', () => { brush.mat = mat.value; });
+    row('재질', mat); row('벽 높이', num('wallH', 0.5, 20, 0.1)); row('벽 두께', num('wallT', 0.1, 3, 0.05)); row('박스 높이', num('boxH', 0.2, 20, 0.1));
+    const colorWrap = html('span', 'in'), color = html('input'), useColor = html('input');
+    color.type = 'color'; color.value = '#888888'; useColor.type = 'checkbox'; useColor.title = '박스에 색 입히기';
+    const syncColor = () => { brush.tint = useColor.checked ? color.value : ''; };
+    color.addEventListener('input', () => { useColor.checked = true; syncColor(); }); useColor.addEventListener('change', syncColor);
+    colorWrap.append(useColor, color); row('박스 색', colorWrap);
+    const sc = html('select'); for (const [k, v] of Object.entries(SCATTER)) sc.appendChild(new Option(v, k)); sc.value = brush.scatter; sc.dataset.b = 'scatter';
+    sc.addEventListener('change', () => { brush.scatter = sc.value; });
+    row('흩뿌릴 것', sc); row('간격 (m)', num('spacing', 0.5, 20, 0.5));
+    const tog = (label, key, tip) => { const l = html('label', 'tog'), c = html('input'); c.type = 'checkbox'; c.checked = brush[key]; c.dataset.b = key; c.addEventListener('change', () => { brush[key] = c.checked; }); l.title = tip; l.append(c, document.createTextNode(label)); box.appendChild(l); };
+    tog('건물 지붕', 'roof', '건물 그리기에 지붕을 덮는다'); tog('반대편에도 (대칭)', 'sym', '그리는 것마다 맵 중심 반대편에도 하나 더');
+    pal.append(h, box);
   })();
+  for (const [title, types] of GROUPS) tileGroup(title, types.filter(t => OBJECT_SCHEMAS[t]).map(t => [OBJECT_SCHEMAS[t].label, ICON[t] || '■', { kind: 'obj', type: t }]), false);
+  // 프리팹 (저장한 물체 묶음)
+  const prefabHead = html('div', 'tbx-h'); prefabHead.textContent = '프리팹'; prefabHead.addEventListener('click', () => prefabHead.classList.toggle('shut'));
+  const prefabBox = html('div'); pal.append(prefabHead, prefabBox);
+  function renderPrefabs() {
+    prefabBox.replaceChildren();
+    if (!prefabs.length) { prefabBox.appendChild(Object.assign(html('p', 'note'), { textContent: '아직 없습니다. 물체를 여러 개 고르고(영역 선택) 오른쪽에서 "프리팹으로 저장".' })); return; }
+    const tiles = html('div', 'tiles');
+    for (const pf of prefabs) {
+      const t = { kind: 'prefab', id: pf.id };
+      const b = html('button', `tile${tool && toolKey(tool) === toolKey(t) ? ' on' : ''}`); b.type = 'button'; b.dataset.tool = toolKey(t); b.title = `${pf.name} (물체 ${pf.objects.length}개) — 바닥을 클릭해 찍기 · 우클릭 = 삭제`;
+      b.append(Object.assign(html('span', 'ic'), { textContent: '❖' }), document.createTextNode(pf.name));
+      b.addEventListener('click', () => setTool(tool && toolKey(tool) === toolKey(t) ? null : t));
+      b.addEventListener('contextmenu', async ev => { ev.preventDefault(); if (confirm(`프리팹 "${pf.name}" 을 지울까요? (이미 찍은 물체는 그대로)`)) { if (await savePrefabs(prefabs.filter(x => x.id !== pf.id))) ctx.log(`프리팹 삭제: ${pf.name}`); } });
+      tiles.appendChild(b);
+    }
+    prefabBox.appendChild(tiles);
+  }
+  renderPrefabs();
+  tileGroup('스폰 지점', [['개인전', '●', { kind: 'spawn', team: -1 }, '#e9ecef'], ['0팀', '●', { kind: 'spawn', team: 0 }, '#5aa9ff'], ['1팀', '●', { kind: 'spawn', team: 1 }, '#ff4b3a']]);
+  tileGroup('모드', [['거점', '◎', { kind: 'zone' }, '#ffb43a']]);
+  pal.appendChild(Object.assign(html('p', 'note'), { textContent: '조작법은 ? (F1)' }));
 
   function renderPanel() {
     inspector.replaceChildren();
@@ -471,10 +665,20 @@ export async function createMapDoc(ctx, id, opts = {}) {
       inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: '물체를 클릭하면 여기서 고칠 수 있습니다.' }));
       return;
     }
+    if (sel.kind === 'multi') { // 여러 개
+      title(`물체 ${o.length}개 선택`);
+      const count = {}; for (const x of o) count[x.type] = (count[x.type] || 0) + 1;
+      inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: Object.entries(count).map(([t, n]) => `${OBJECT_SCHEMAS[t].label} ${n}`).join(' · ') }));
+      inspector.appendChild(Object.assign(document.createElement('p'), { className: 'note', textContent: '고른 것 중 하나를 끌면 함께 움직입니다. 방향키 · R(묶음째 회전) · ⌘D · ⌘C/⌘V · Del 도 함께. Shift+클릭으로 더하기/빼기.' }));
+      const allSym = o.every(x => x.sym);
+      btns([['회전 (R)', rotateSelected], ['복제 (⌘D)', duplicateSelected], ['❖ 프리팹으로 저장', saveAsPrefab, 'primary'],
+        [allSym ? '대칭 끄기' : '대칭 켜기', () => { for (const x of o) { if (allSym) delete x.sym; else x.sym = true; } rebuildNow(); commit(); renderPanel(); }], ['삭제 (Del)', removeSelected, 'danger']]);
+      return;
+    }
     if (sel.kind === 'obj') {
       title(`${OBJECT_SCHEMAS[o.type].label} #${sel.i}`);
       buildForm(inspector, objectSpec(o.type), o, { ...h, skip: ['type'] });
-      btns([['회전 (R)', rotateSelected], ['복제 (⌘D)', duplicateSelected], ['삭제 (Del)', removeSelected, 'danger']]);
+      btns([['회전 (R)', rotateSelected], ['복제 (⌘D)', duplicateSelected], ['❖ 프리팹으로 저장', saveAsPrefab], ['삭제 (Del)', removeSelected, 'danger']]);
     } else if (sel.kind === 'zone') {
       title(`거점 ${o.id}`);
       buildForm(inspector, ZONE, o, h);
@@ -549,6 +753,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
       select: s => { sel = s; drawSelection(); renderPanel(); },
       moveTo: (dx, dz) => { moveTo(JSON.parse(JSON.stringify(selected())), dx, dz); rebuildNow(); commit(); renderPanel(); },
       removeSelected, rotateSelected, duplicateSelected, rebuildNow, camera, controls, get snap() { return snapStep; }, get clipboard() { return clipboard; },
+      brush, get prefabs() { return prefabs; }, selectList, saveAsPrefab, get tool() { return tool; },
     },
   };
 }

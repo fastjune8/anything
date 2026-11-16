@@ -104,6 +104,19 @@ export const PARTS_SCHEMA = obj('파츠 목록', {
   parts: dict('자리별 파츠', list('파츠', PART_SCHEMA)),
 });
 
+// ───────── 프리팹 (맵 에디터에서 만든 물체 묶음, 클릭 한 번으로 찍는다) ─────────
+// objects 는 맵의 물체와 같은 모양이고, 좌표는 묶음 가운데가 (0, 0) 이 되도록 저장한다
+export const PREFAB_SCHEMA = obj('프리팹', {
+  id: str('id', { pattern: '^[a-z][a-z0-9_]*$' }), name: str('이름'),
+  objects: list('물체', obj('물체', {}), { custom: 'object', minLen: 1 }),
+});
+export function checkPrefabs(list) {
+  const errors = check(list, F('list', '프리팹 목록', { of: PREFAB_SCHEMA }));
+  const ids = (Array.isArray(list) ? list : []).map(p => p && p.id);
+  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`프리팹 id 중복: ${id}`); });
+  return errors;
+}
+
 // ───────── 등록된 에셋 ─────────
 // 스튜디오에서 검증을 통과한 것만 "데이터로 등록" 해서 게임 데이터가 참조할 수 있게 한다.
 // 지금은 모델(content/models.json). 효과 에디터가 생기면 같은 모양으로 content/effects.json 을 더한다.
