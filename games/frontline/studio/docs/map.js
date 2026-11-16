@@ -571,7 +571,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
       _m.set(0, 0, 0).addScaledVector(_f, fwd).addScaledVector(_r, side).normalize().multiplyScalar(Math.max(10, dist * 0.9) * fast * dt);
       camera.position.add(_m); controls.target.add(_m);
     }
-    if (updown) orbitBy(-updown * 1.5 * fast * dt, 0);
+    if (updown) orbitBy(updown * 1.5 * fast * dt, 0); // Q = 왼쪽으로, E = 오른쪽으로 돌기
   }
 
   function nudge(code, big) {
