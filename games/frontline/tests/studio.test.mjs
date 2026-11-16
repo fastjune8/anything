@@ -229,6 +229,12 @@ try {
   await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:ak"]');
   await page.waitForFunction(() => window.__dd && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
   check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'ak' && (await page.textContent('#edKind')).includes('데이터 에디터'), '홈에서 무기 카드를 두 번 누르면 데이터 에디터가 그 무기를 고른 채 열린다');
+  const mp5Row = await page.textContent('#overlays > div:not([hidden]) table.cmp tbody tr:nth-child(3)');
+  const regList = await page.textContent(`${ACT.tools}`);
+  check(mp5Row.includes('시험 소총') && regList.includes('시험 소총') && regList.includes('MP5'), '데이터 에디터에 등록된 모델이 보인다 (무기 표의 모델 열, 도구 상자의 "등록된 모델" 과 연결된 무기)', mp5Row);
+  await page.evaluate(() => window.__dd.select(2));
+  const opts = await page.evaluate(() => [...document.querySelectorAll('#inspector > div:not([hidden]) select')].flatMap(s => [...s.options].map(o => o.value)));
+  check(opts.includes('zz_gun_test'), '무기의 "모델" 은 등록된 모델 중에서 고르는 목록이다');
   await page.evaluate(() => window.__dd.select(0));
   const ttk0 = await page.textContent('#overlays > div:not([hidden]) table.cmp tbody tr:first-child td:nth-child(6)');
   await page.fill(`${ACT.insp} .row:has(.lbl:text-is("피해")) input`, '40');

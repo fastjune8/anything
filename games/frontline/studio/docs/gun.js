@@ -258,7 +258,8 @@ export async function createGunDoc(ctx, id, opts = {}) {
       const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
       if (!out.ok) { ctx.log(`등록 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('등록 실패 — 콘솔을 보세요'); return; }
       close();
-      ctx.log(`데이터로 등록: ${savedId}${out.linked ? ` → 무기 ${out.linked} 의 모델` : ''} (content/models.json)`, 'ok'); ctx.flash('데이터로 등록했습니다');
+      ctx.log(`데이터로 등록: ${savedId}${out.linked ? ` → 무기 ${out.linked} 의 모델` : ' — 아직 어느 무기에도 연결 안 함 (데이터 에디터 → 무기 → "모델" 에서 고를 수 있습니다)'} (content/models.json)`, 'ok');
+      ctx.flash(out.linked ? '데이터로 등록했습니다' : '등록했습니다 — 무기에 연결하려면 데이터 에디터 → 무기 → 모델');
       await ctx.refreshAssets(); updateRegister();
     });
     if (f('unreg')) f('unreg').addEventListener('click', async () => {

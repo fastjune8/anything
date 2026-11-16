@@ -42,6 +42,24 @@ export async function createDataDoc(ctx, id) {
     jump.appendChild(b);
   }
   tools.append(jump, Object.assign(el('p', 'note'), { textContent: `가운데에서 항목을 고르고 오른쪽 속성에서 고칩니다. 저장(⌘S)하면 개발 서버가 다시 시작되어 게임에 반영됩니다. 파일: content/${info.file}` }));
+  // 무기 데이터: 데이터로 등록된 모델 목록 (어느 무기에 연결됐는지, 누르면 모델 에디터)
+  const regBox = el('div');
+  if (id === 'weapons') tools.append(Object.assign(el('div', 'tbx-h'), { textContent: '등록된 모델' }), regBox);
+  function renderRegistry() {
+    if (id !== 'weapons') return;
+    regBox.replaceChildren();
+    const reg = ctx.registry();
+    if (!reg.length) { regBox.appendChild(Object.assign(el('p', 'note'), { textContent: '아직 없습니다. 모델 에디터에서 "데이터로 등록" 하면 여기 나오고, 무기의 "모델" 에서 고를 수 있습니다.' })); return; }
+    for (const m of reg) {
+      const users = data.filter(w => w.model === m.id).map(w => w.name);
+      const b = el('button', 'tile'); b.type = 'button'; b.style.cssText = 'width:100%;flex-direction:row;justify-content:flex-start;gap:8px;padding:7px 9px;margin-bottom:5px;text-align:left';
+      b.title = `${m.id} — 눌러서 모델 에디터로`;
+      const t = el('span'); t.append(Object.assign(el('b'), { textContent: m.name }), el('br'), Object.assign(el('span', 'note'), { textContent: users.length ? `→ ${users.join(', ')}` : '연결된 무기 없음' }));
+      b.append(Object.assign(el('span', 'ic'), { textContent: '⌐' }), t);
+      b.addEventListener('click', () => ctx.openAsset(`gun:${m.id}`));
+      regBox.appendChild(b);
+    }
+  }
   const toolbar = el('div');
   toolbar.innerHTML = `<span class="grp"><button type="button" data-r="undo" title="되돌리기 (⌘Z)">↶</button><button type="button" data-r="redo" title="다시 하기 (⌘⇧Z)">↷</button></span>
     <span class="grow"></span><span class="grp"><span class="status" data-r="status"></span><button type="button" class="primary" data-r="save" title="저장 (⌘S)">저장</button></span>`;
@@ -52,7 +70,7 @@ export async function createDataDoc(ctx, id) {
   const list = () => (id === 'parts' ? data.parts[slot] : data);
   const schema = () => (id === 'weapons' ? WEAPON_SCHEMA : id === 'parts' ? PART_SCHEMA : MODE_SCHEMA);
   const item = () => list()[cur];
-  const check = () => (id === 'weapons' ? checkWeapons(data) : id === 'parts' ? checkParts(data, ctx.weaponIds()) : checkModes(data, ctx.assets().maps).concat(data.filter(m => !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙`)));
+  const check = () => (id === 'weapons' ? checkWeapons(data, ctx.registry().map(m => m.id)) : id === 'parts' ? checkParts(data, ctx.weaponIds()) : checkModes(data, ctx.assets().maps).concat(data.filter(m => !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙`)));
 
   const isDirty = () => JSON.stringify(data) !== saved;
   function commit() {
@@ -117,13 +135,14 @@ export async function createDataDoc(ctx, id) {
     if (id === 'weapons') {
       page.append(el('p', 'lead', '몸통 기준 TTK = 체력 100 을 깎는 데 걸리는 시간 (첫 발은 0ms). 수치를 고치면 바로 다시 계산된다.'), itemButtons());
       const dps = data.map(w => calcDamage(w, 'body', 10) * w.pellets * w.rpm / 60), maxDps = Math.max(...dps);
-      page.append(table(['무기', '분류', '피해', '분당', 'DPS (10m)', 'TTK 10m', 'TTK 30m', 'TTK 60m', '머리 TTK 10m', '탄창', '재장전', '이동'],
+      const modelName = w => { const m = w.model && ctx.registry().find(x => x.id === w.model); return m ? m.name : w.model ? `${w.model} (등록 안 됨)` : '코드'; };
+      page.append(table(['무기', '분류', '모델', '피해', '분당', 'DPS (10m)', 'TTK 10m', 'TTK 30m', 'TTK 60m', '머리 TTK 10m', '탄창', '재장전', '이동'],
         data.map((w, i) => ({
           on: i === cur,
-          cells: [w.name, w.cls, `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''}`, w.rpm, (() => { const d = el('span'); d.append(fmt(dps[i]), bar(dps[i], maxDps)); return d; })(),
+          cells: [w.name, w.cls, modelName(w), `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''}`, w.rpm, (() => { const d = el('span'); d.append(fmt(dps[i]), bar(dps[i], maxDps)); return d; })(),
             `${fmt(ttk(w, 10))}ms`, `${fmt(ttk(w, 30))}ms`, `${fmt(ttk(w, 60))}ms`, `${fmt(ttk(w, 10, 'head'))}ms`, w.mag, `${w.reload}s`, `${Math.round(w.move * 100)}%`],
         })), i => { cur = i; render(); renderInspector(); }));
-      page.append(el('p', 'dnote', '무기 추가는 총 모델이 게임에 연결된 뒤에 지원한다 (지금은 코드로 만든 총 7종).'));
+      page.append(el('p', 'dnote', '모델 = 이 무기가 쓸 등록된 모델 (오른쪽 "모델" 에서 고른다). 게임 화면에 실제로 그리는 연결은 다음 단계 — 지금 게임은 코드로 만든 총을 그린다. 무기 추가도 그 뒤에 지원한다.'));
     } else if (id === 'parts') {
       const seg = el('div', 'seg'); seg.style.maxWidth = '520px'; seg.style.marginBottom = '10px';
       for (const s of data.slots) {
@@ -161,7 +180,14 @@ export async function createDataDoc(ctx, id) {
     const x = item();
     if (!x) return;
     inspector.appendChild(el('h2', '', `${x.name || x.id}`));
-    buildForm(inspector, schema(), x, { onInput: () => render(), onCommit: () => { commit(); renderInspector(); } });
+    // 무기의 "모델" 은 등록된 모델 중에서 고르는 목록으로 보여 준다
+    let spec = schema();
+    if (id === 'weapons') {
+      const reg = ctx.registry().map(m => m.id);
+      if (x.model && !reg.includes(x.model)) reg.push(x.model);
+      spec = { ...spec, fields: { ...spec.fields, model: { kind: 'enum', label: '모델 (데이터로 등록된 모델 · 비우면 코드로 만든 총)', options: reg, optional: true } } };
+    }
+    buildForm(inspector, spec, x, { onInput: () => { render(); renderRegistry(); }, onCommit: () => { commit(); renderInspector(); renderRegistry(); } });
     if (id !== 'weapons') {
       const btns = el('div', 'btns'), del = el('button', 'danger', '삭제'); del.type = 'button';
       del.addEventListener('click', removeItem); btns.appendChild(del); inspector.appendChild(btns);
@@ -193,10 +219,11 @@ export async function createDataDoc(ctx, id) {
   r('save').addEventListener('click', () => save());
   if (id === 'weapons') ctx.setWeapons(data, true);
 
-  render(); renderInspector();
+  render(); renderInspector(); renderRegistry();
   return {
     kind: 'data', id, title: info.title, icon: '≡', is3D: false, overlay, tools, toolbar, inspector,
-    activate() {}, deactivate() {}, resize() {}, frame() {},
+    activate() { render(); renderInspector(); renderRegistry(); }, // 다른 곳(모델 등록 등)에서 바뀐 것을 반영
+    deactivate() {}, resize() {}, frame() {},
     isDirty, save, reload,
     // 홈에서 고른 항목으로 바로 간다 ({ select: id, slot })
     focus({ select, slot: s }) {
