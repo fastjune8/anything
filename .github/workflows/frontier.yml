@@ -35,8 +35,16 @@ jobs:
       - name: Chrome 설치
         id: chrome
         uses: browser-actions/setup-chrome@v2
-      - name: 브라우저 테스트 (게임 + 맵 에디터)
-        run: npm run test:browser
+      - name: 맵 에디터 테스트
+        run: node tests/editor.test.mjs
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          REQUIRE_CHROME: '1'
+      # 게임 화면 테스트는 이동·사격처럼 시간이 흐르는 걸 본다. 그래픽 카드가 없는 GitHub 서버에서는 화면이 1초에 몇 장밖에
+      # 안 그려져 게임 시간이 느리게 흘러 실패하므로 참고용으로만 돌린다 (막지 않음). 라이브 배포 전에는 deploy.sh 가 로컬에서 전부 돌린다.
+      - name: 게임 화면 테스트 (참고용)
+        continue-on-error: true
+        run: node tests/browser.test.mjs
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           REQUIRE_CHROME: '1'

@@ -9,7 +9,8 @@ main ← (PR) ← feature/zone-ui, map/canal …
 ```
 1. `main` 에서 브랜치를 딴다: 코드는 `feature/<내용>`, 맵·데이터만 고치면 `map/<맵 id>` 처럼.
 2. 고치고 커밋 → GitHub 에 올리고 **PR** 을 연다.
-3. PR 마다 **GitHub Actions 가 전체 테스트를 자동으로 돌린다** (`.github/workflows/frontier.yml`, 약 5분). 초록불이어야 합친다.
+3. PR 마다 **GitHub Actions 가 테스트를 자동으로 돌린다** (`.github/workflows/frontier.yml`, 약 5분). 초록불이어야 합친다.
+   게임 화면 테스트만은 GitHub 서버(그래픽 카드 없음)에서 너무 느려 참고용이다 — 화면·조작을 바꿨으면 로컬에서 `npm run test:browser`. (라이브 배포 때는 자동으로 전부 돈다)
 4. 상대가 한 번 훑어보고 `main` 에 합친다. 라이브 배포는 `main` 에서만 한다.
 
 두 사람이 부딪히지 않게 나누는 기준:
