@@ -1,1 +1,3 @@
-[]
+[
+  {"id":"ar_lancer","name":"ar_lancer","kind":"gun","file":"guns/ar_lancer.glb","tris":2782,"bytes":172164,"warnings":0,"registered":"2026-11-16"}
+]
