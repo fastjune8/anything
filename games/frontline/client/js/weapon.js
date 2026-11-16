@@ -1,6 +1,5 @@
 // 사격, 재장전, 무기 교체, 탄약 관리
 import { MAX_HP } from '/shared/constants.js';
-import { WEAPONS } from '/shared/weapons.js';
 import { rayWorld } from '/shared/collision.js';
 import { camera, colliders } from './scene.js';
 import { impact, addTracer, muzzleLight } from './fx.js';
@@ -8,7 +7,7 @@ import { remoteHit } from './remotes.js';
 import { guns, showGun } from './viewmodel.js';
 import { showHit } from './hud.js';
 import { sfx } from './sfx.js';
-import { me, inv, wp, inp, game, net, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
+import { me, inv, wp, inp, game, net, loadout, eff, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
 import { V3, UP, DEG, lerp, clamp } from './util.js';
 
 const _o = new V3(), _d = new V3(), _f = new V3(), _r = new V3(), _u = new V3(), _mz = new V3();
@@ -21,7 +20,7 @@ function muzzleWorld(out) {
 
 // 한 발 쏘기: 탄 소모 → 탄도(퍼짐) 계산 → 벽/사람 맞힘 판정 → 서버에 알림 → 반동/이펙트/소리
 function fire() {
-  const w = WEAPONS[wp.cur], st = inv[wp.cur];
+  const w = eff[wp.cur], st = inv[wp.cur];
   st.ammo--; wp.cooldown = 60 / w.rpm; inp.fireFresh = false;
   camera.getWorldDirection(_f);
   _r.crossVectors(_f, UP).normalize(); _u.crossVectors(_r, _f);
@@ -71,23 +70,24 @@ function fire() {
 }
 
 export function startReload() {
-  const w = WEAPONS[wp.cur], st = inv[wp.cur];
+  const w = eff[wp.cur], st = inv[wp.cur];
   if (wp.reload || wp.drawT > 0 || st.ammo >= w.mag || st.reserve <= 0 || !me.alive) return;
   wp.reload = { t: 0, total: w.shell ? 0.45 : w.reload, shell: !!w.shell, ev: 0, first: true };
   net.send({ t: 'rl', w: wp.cur });
 }
 
+// i: WEAPONS 번호. 들고 들어온 무기(무기고에서 고른 2개)로만 바꿀 수 있다.
 export function switchTo(i) {
-  if (i === wp.cur || i < 0 || i >= WEAPONS.length || !me.alive) return;
-  wp.prev = wp.cur; wp.cur = i; wp.reload = null; wp.drawT = WEAPONS[i].draw; wp.adsT = 0; wp.bloom = 0; inp.fireFresh = false; wp.cooldown = 0;
+  if (i === wp.cur || !loadout.slots.includes(i) || !me.alive) return;
+  wp.prev = wp.cur; wp.cur = i; wp.reload = null; wp.drawT = eff[i].draw; wp.adsT = 0; wp.bloom = 0; inp.fireFresh = false; wp.cooldown = 0;
   sfx.mech('draw');
   showGun();
 }
 
 const RELOAD_EV = [[0.15, 'magout'], [0.62, 'magin'], [0.88, 'bolt']]; // [재장전 진행도, 소리]
 export function updateWeapon(dt, active) {
-  const w = WEAPONS[wp.cur], st = inv[wp.cur];
-  const can = active && me.alive && game.matchState !== 'ended';
+  const w = eff[wp.cur], st = inv[wp.cur];
+  const can = active && me.alive && game.matchState !== 'ended' && !me.vault; // 넘어가는 동안은 쏠 수 없다
   wp.cooldown = Math.max(0, wp.cooldown - dt);
   wp.drawT = Math.max(0, wp.drawT - dt);
   wp.bloom = Math.max(0, wp.bloom - dt * (w.bloomMax || 1) * 3.2);
@@ -116,7 +116,7 @@ export function updateWeapon(dt, active) {
 
   const wantAds = can && adsInput() && !wp.reload && wp.drawT <= 0 && !wp.sprinting;
   wp.adsT = clamp(wp.adsT + (wantAds ? dt : -dt) / w.adsTime, 0, 1);
-  wp.sprintT = lerp(wp.sprintT, wp.sprinting ? 1 : 0, 1 - Math.exp(-dt * 10));
+  wp.sprintT = lerp(wp.sprintT, wp.sprinting || me.vault ? 1 : 0, 1 - Math.exp(-dt * 12)); // 넘어갈 때는 달릴 때처럼 총을 내린다
 
   if (can && (w.auto ? inp.fireHeld : inp.fireFresh) && wp.drawT <= 0 && wp.cooldown <= 0) {
     if (wp.reload && wp.reload.shell && st.ammo > 0) { wp.reload = null; wp.cooldown = 0.25; } // 산탄총은 장전 중 사격으로 끊을 수 있다
@@ -143,10 +143,11 @@ export function updateWeapon(dt, active) {
 }
 
 // ───── 부활/새 경기 때 상태 초기화 ─────
-function resetLoadout() { WEAPONS.forEach((w, i) => { inv[i].ammo = w.mag; inv[i].reserve = w.reserve; }); wp.reload = null; wp.cooldown = 0; wp.bloom = 0; wp.burstN = 0; }
+function resetLoadout() { eff.forEach((w, i) => { inv[i].ammo = w.mag; inv[i].reserve = w.reserve; }); wp.reload = null; wp.cooldown = 0; wp.bloom = 0; wp.burstN = 0; }
 export function placeMe(p) {
   me.pos.set(p[0], p[1], p[2]); me.vel.set(0, 0, 0);
   me.yaw = Math.atan2(p[0], p[2]) || 0; me.pitch = 0; wp.kickP = wp.kickY = 0;
   me.hp = MAX_HP; me.alive = true; me.crouch = false; me.onGround = true; me.stepOff = 0; me.deadT = 0;
-  resetLoadout(); wp.drawT = WEAPONS[wp.cur].draw; showGun();
+  me.vault = null; me.lean = 0; me.leanOff = 0;
+  resetLoadout(); wp.drawT = eff[wp.cur].draw; showGun();
 }

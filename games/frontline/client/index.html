@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FRONTLINE DUEL</title>
+<title>FRONTIER</title>
 <link rel="icon" href="data:,">
 <script type="importmap">
 { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
@@ -49,9 +49,10 @@
 
 <div class="overlay" id="menu">
   <div class="card">
-    <h1>FRONTLINE <em>DUEL</em></h1>
+    <h1>FRONT<em>IER</em></h1>
     <div class="sub">사람이 모자라면 봇이 채워서 바로 시작됩니다</div>
     <input type="text" id="name" maxlength="14" placeholder="콜사인 (이름)" autocomplete="off">
+    <button type="button" id="armoryBtn"><span class="at">무기고</span><span id="loadoutSum"></span><span class="ag">무기 · 파츠 변경 ›</span></button>
     <div id="tabs"><button type="button" data-tab="quick" class="on">빠른 시작</button><button type="button" data-tab="custom">친선전 (방 만들기)</button></div>
 
     <div id="paneQuick">
@@ -82,13 +83,27 @@
       <div><span>사격</span><kbd>마우스 좌클릭</kbd></div>
       <div><span>정조준 / 스코프</span><kbd>우클릭 · T</kbd></div>
       <div><span>재장전</span><kbd>R</kbd></div>
-      <div><span>무기 교체</span><kbd>1–7 · 휠 · Q</kbd></div>
+      <div><span>무기 교체</span><kbd>1 · 2 · 휠</kbd></div>
+      <div><span>기울이기</span><kbd>Q · E</kbd></div>
       <div><span>달리기</span><kbd>Shift</kbd></div>
       <div><span>앉기</span><kbd>C</kbd></div>
-      <div><span>점프</span><kbd>Space</kbd></div>
+      <div><span>점프 · 넘어가기</span><kbd>Space</kbd></div>
       <div><span>채팅</span><kbd>Enter</kbd></div>
     </div>
   </div>
+</div>
+
+<div id="armory">
+  <div id="arTop"><h2>무기고</h2><span>벽에 걸린 무기를 클릭해 살펴보세요 · 전장에는 두 자루를 들고 갑니다</span></div>
+  <div id="arLabels"></div>
+  <aside id="arPanel">
+    <div class="ar-head"><h3 id="arName"></h3><span id="arCls"></span></div>
+    <div id="arEquip"><button type="button" data-slot="0"></button><button type="button" data-slot="1"></button></div>
+    <div id="arStats"></div>
+    <div class="ar-sec">파츠 <small>마우스를 올리면 성능 변화를 미리 봅니다</small></div>
+    <div id="arParts"></div>
+    <div class="ar-foot"><div id="arSum"></div><button type="button" id="arClose">완료</button></div>
+  </aside>
 </div>
 
 <div class="overlay" id="pause">

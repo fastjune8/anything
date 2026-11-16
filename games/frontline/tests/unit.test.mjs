@@ -58,6 +58,84 @@ console.log('\n[명중 검증: resolveHits]');
   check(unknownPart.dmg === Math.round(calcDamage(awm, 'body', 5)) && !unknownPart.head, '알 수 없는 부위는 body 로 처리한다');
 }
 
+console.log('\n[총기 파츠: 성능과 트레이드오프]');
+{
+  const { SLOTS, PARTS, partsFor, applyParts, describePart, sanitizeParts, sanitizeLoadout } = await import('../shared/parts.js');
+  const byId = id => WEAPONS.find(w => w.id === id);
+  const m4 = byId('m4'), awmW = byId('awm');
+
+  // 규칙: 어떤 파츠도 장점만 있거나 단점만 있으면 안 된다 (달 수 있는 모든 무기에서)
+  const oneSided = [];
+  let combos = 0;
+  for (const w of WEAPONS) for (const s of SLOTS) for (const p of partsFor(w.id, s.id)) {
+    combos++;
+    const d = describePart(w, p);
+    if (!d.pros.length || !d.cons.length) oneSided.push(`${w.name}+${p.name}`);
+  }
+  check(combos > 40 && oneSided.length === 0, `모든 파츠가 무기마다 장점과 단점을 함께 가진다 (${combos}가지 조합)`, oneSided.join(', '));
+  check(SLOTS.length === 5 && SLOTS.every(s => PARTS[s.id].length >= 2), '자리 5곳(조준경·총열·손잡이·탄창·개머리판)마다 고를 파츠가 2개 이상 있다');
+  check(WEAPONS.every(w => SLOTS.filter(s => partsFor(w.id, s.id).length).length >= 3), '모든 무기에 파츠를 달 수 있는 자리가 3곳 이상 있다');
+
+  const before = JSON.stringify(m4);
+  const ext = applyParts(m4, { mag: 'ext' });
+  check(ext.mag === 40 && ext.reload > m4.reload && JSON.stringify(m4) === before, '확장 탄창: 30 → 40발, 재장전은 느려진다 (원본 무기 데이터는 바뀌지 않는다)');
+  const sup = applyParts(m4, { barrel: 'suppressor' });
+  check(sup.quiet === true && sup.falloff[0] < m4.falloff[0] && sup.snd.vol < m4.snd.vol && sup.dmg === m4.dmg, '소음기: 조용해지고 사거리가 줄어든다 (기본 피해는 그대로)');
+  check(calcDamage(sup, 'body', 60) < calcDamage(m4, 'body', 60) && calcDamage(sup, 'body', 5) === calcDamage(m4, 'body', 5), '소음기를 단 총은 먼 거리 피해가 더 작고, 가까운 거리는 같다');
+  check(applyParts(awmW, { barrel: 'suppressor' }).falloff === null, '거리별 피해 감소가 없는 무기는 사거리 파츠의 영향을 받지 않는다');
+  const all = applyParts(m4, { optic: 'acog', barrel: 'comp', grip: 'vertical', mag: 'fast', stock: 'heavy' });
+  check(all.adsFov < m4.adsFov && all.recoilV < m4.recoilV * 0.7 && all.mag === 25 && all.adsTime > m4.adsTime, '다섯 자리의 파츠가 함께 적용된다');
+  check(applyParts(m4, { optic: 'scope_hi', grip: 'nope' }).adsFov === m4.adsFov, '달 수 없는 파츠·없는 파츠는 성능을 바꾸지 않는다');
+
+  check(JSON.stringify(sanitizeParts('m9', { optic: 'acog', barrel: 'suppressor', stock: 'heavy', grip: 5, hack: 'x' })) === '{"barrel":"suppressor"}', 'sanitizeParts: 그 무기에 달 수 없는 것, 형식이 틀린 것은 버린다');
+  const ids = lo => lo.map(l => l.id).join(',');
+  check(ids(sanitizeLoadout(undefined)) === 'm4,m9' && ids(sanitizeLoadout('x')) === 'm4,m9' && ids(sanitizeLoadout([null, 7])) === 'm4,m9', 'sanitizeLoadout: 값이 없거나 깨졌으면 기본 무기(M4A1, M9)');
+  check(ids(sanitizeLoadout([{ id: 'awm' }, { id: 'awm' }])) === 'awm,m4', '같은 무기를 두 번 넣으면 하나만 인정하고 기본 무기로 채운다');
+  check(ids(sanitizeLoadout([{ id: 'ak' }, { id: 'mp5' }, { id: 'awm' }])) === 'ak,mp5', '무기는 2개까지만 들고 갈 수 있다');
+  const lo = sanitizeLoadout([{ id: 'ak', parts: { mag: 'ext', optic: 'scope_hi' } }, { id: 'nothing' }]);
+  check(lo[0].wi === WEAPONS.indexOf(byId('ak')) && JSON.stringify(lo[0].parts) === '{"mag":"ext"}' && lo[1].id === 'm4', '무기 번호(wi)와 정리된 파츠를 돌려주고, 없는 무기는 기본 무기로 바꾼다');
+
+  // 서버 명중 검증: 들고 온 무기로만 맞힐 수 있고, 파츠가 반영된 성능으로 계산한다
+  const mi = WEAPONS.indexOf(m4), ai = WEAPONS.indexOf(awmW);
+  const shooter = { alive: true, wstats: { [mi]: sup } }, foe = { alive: true };
+  const players = new Map([[0, shooter], [1, foe]]);
+  check(resolveHits(players, shooter, { w: ai, hits: [['head', 5, 1]] }) === null, '들고 오지 않은 무기의 명중 신고는 무효(null)');
+  check(resolveHits(players, shooter, { w: mi, hits: [['body', 60, 1]] }).damages[0].dmg === Math.round(calcDamage(sup, 'body', 60)), '피해는 파츠가 반영된 성능으로 계산한다');
+}
+
+console.log('\n[넘어가기 / 오르기: findVault]');
+{
+  const { findVault } = await import('../shared/vault.js');
+  const { getMap } = await import('../shared/maps/index.js');
+  const cs = getMap('frontline').layout.colliders;
+  const opts = { radius: 0.35, standH: 1.75, crouchH: 1.2, minH: 0.45 };
+  const N = { x: 0, z: 1 }; // +z 방향을 보고 있다
+  const go = (x, z, c = cs, o = opts) => findVault(c, { x, y: 0, z }, N, o);
+
+  const win = go(3, -7); // 중앙 폐허 남쪽 벽의 창문 (턱 1.0m, 위 2.0m 부터 벽)
+  check(win && win.type === 'vault' && win.to[2] > -5.4 && win.to[1] === 0, '창문 앞에서: 창문을 넘어 건물 안쪽 바닥에 내려선다', JSON.stringify(win));
+  check(win && win.duck < 1.0 && Math.abs(win.top - 1.0) < 1e-6, '창문을 지날 때는 틈(1.0m)보다 낮게 몸을 숙인다', win && `duck ${win.duck}`);
+  check(go(0, -7) === null, '창문이 없는 벽 앞에서는 넘지 않는다 (그냥 점프)');
+  const bags = go(0, -16); // 모래주머니 (높이 1.0, 두께 0.6)
+  check(bags && bags.type === 'vault' && bags.to[2] >= -14.36 && bags.to[1] === 0, '모래주머니를 넘어 반대편에 내려선다', JSON.stringify(bags));
+  const box = go(-1.2, 2.2); // 상자 (1.1m 정육면체)
+  check(box && box.type === 'vault' && box.to[2] >= 4.39, '상자(1.1m)는 넘어간다', JSON.stringify(box));
+  check(go(-16, -14) === null, '컨테이너(2.6m)처럼 높은 것은 넘지 못한다');
+  check(go(30, 20) === null, '앞에 아무것도 없으면 null');
+
+  const slab = [{ minX: -2, maxX: 2, minY: 0, maxY: 1, minZ: 0.8, maxZ: 5 }];
+  const up = go(0, 0, slab);
+  check(up && up.type === 'mantle' && up.to[1] === 1 && !up.crouch, '넓고 낮은 구조물(두께 4.2m)은 넘지 않고 위로 올라선다', JSON.stringify(up));
+  const lowGap = [...slab.map(c => ({ ...c, maxZ: 1.1 })), { minX: -2, maxX: 2, minY: 1.5, maxY: 3, minZ: 0.8, maxZ: 1.1 }];
+  check(go(0, 0, lowGap) === null, '위가 막혀 틈이 좁으면(0.5m) 넘지 않는다');
+  const blocked = [{ minX: -2, maxX: 2, minY: 0, maxY: 1, minZ: 0.8, maxZ: 1.1 }, { minX: -2, maxX: 2, minY: 0, maxY: 3, minZ: 1.3, maxZ: 1.6 }];
+  check(go(0, 0, blocked) === null, '넘어갈 반대편이 벽으로 막혀 있으면 넘지 않는다');
+  check(go(0, 0, [{ minX: -2, maxX: 2, minY: 0, maxY: 0.4, minZ: 0.6, maxZ: 1 }]) === null, '발목 높이 턱(0.4m)은 넘기 동작 없이 그냥 올라선다');
+  const air = findVault(cs, { x: 0, y: 0.5, z: -16 }, N, { ...opts, minH: 0.1 });
+  check(air && air.to[2] >= -14.36, '점프해 공중에 뜬 상태에서도 넘을 수 있다');
+  check([win, bags, box, up].every(v => v.dur > 0.25 && v.dur <= 0.9), '넘는 데 걸리는 시간은 0.25~0.9초', [win, bags, box, up].map(v => v.dur.toFixed(2)).join(','));
+}
+
 console.log('\n[스폰 지점]');
 {
   const { Room } = await import('../server/room.js');

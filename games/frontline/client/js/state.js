@@ -12,8 +12,17 @@ export const me = {
   id: -1, name: '', pos: new V3(0, 0, -54), vel: new V3(), yaw: Math.PI, pitch: 0,
   onGround: true, crouch: false, h: STAND_H, hp: MAX_HP, alive: true, stepOff: 0, deadT: 0,
   team: -1, // 팀전에서 내 팀 (0/1), 개인전은 -1
+  lean: 0, leanOff: 0,          // 기울이기: 입력(-1 왼쪽 ~ 1 오른쪽) / 실제로 머리가 옆으로 나간 거리(m, 벽에 막히면 줄어든다)
+  vault: null, vaultLock: false, // 넘어가는 중이면 진행 정보 / 넘은 뒤 Space 를 뗄 때까지 다시 넘지 않음
+  airT: 0,                      // 땅을 떠난 뒤 지난 시간 (점프 직후 공중에서도 넘을 수 있게)
 };
 export const inv = WEAPONS.map(w => ({ ammo: w.mag, reserve: w.reserve })); // 무기별 탄약
+
+// ───── 출전 무기 (무기고에서 고른다. 저장/변경은 loadout.js) ─────
+// slots: 들고 들어가는 무기 2개 (WEAPONS 번호), parts: 무기별로 달아 둔 파츠 { 자리: 파츠id }
+export const loadout = { slots: [0, 6], parts: WEAPONS.map(() => ({})) };
+// 파츠가 반영된 무기 성능. 게임 중 성능은 WEAPONS[i] 대신 eff[i] 를 읽는다. (loadout.js 가 내용을 채운다)
+export const eff = WEAPONS.map(w => ({ ...w }));
 
 // ───── 무기/뷰모델 상태 (wp = weapon) ─────
 export const wp = {
@@ -51,7 +60,7 @@ export const net = {
 // ───── 상태만으로 계산되는 값 ─────
 export function hSpeed() { return Math.hypot(me.vel.x, me.vel.z); }
 export function currentSpread() {
-  const w = WEAPONS[wp.cur];
+  const w = eff[wp.cur];
   return lerp(w.hip, w.ads, wp.adsT) * (me.crouch ? 0.75 : 1)
     + hSpeed() * 0.25 * (1 - 0.7 * wp.adsT) + (me.onGround ? 0 : 3) + wp.bloom * (1 - 0.5 * wp.adsT);
 }

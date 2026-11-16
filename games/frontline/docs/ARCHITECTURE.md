@@ -22,7 +22,9 @@ games/frontline/
 │   ├── constants.js        체력·시간 등 공통 상수
 │   ├── modes.js            게임 모드 (개인전 ffa / 팀전 tdm): 맵·인원·팀 수·목표 킬
 │   ├── weapons.js          무기 7종 데이터와 피해 계산
+│   ├── parts.js            총기 파츠(조준경·총열·손잡이·탄창·개머리판)와 출전 무기 2개 규칙: 성능 계산, 입력값 정리
 │   ├── collision.js        광선-박스 충돌
+│   ├── vault.js            낮은 구조물 넘어가기/오르기 경로 계산 (findVault)
 │   └── maps/
 │       ├── index.js        맵 목록, getMap(id)
 │       ├── parts.js        맵 부품 (벽, 건물, 컨테이너, 상자 …)
@@ -34,8 +36,9 @@ games/frontline/
 │       ├── main.js         시작 + 프레임 루프
 │       ├── state.js        공유 상태 (me, wp, inp, game, roster, net)
 │       ├── scene.js        렌더러·카메라       world.js  맵/하늘 그리기
-│       ├── player.js       이동·충돌           weapon.js 사격·재장전·교체
-│       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성
+│       ├── player.js       이동·충돌·넘어가기·기울이기   weapon.js 사격·재장전·교체
+│       ├── viewmodel.js    1인칭 총 포즈       guns.js   총/병사 모델 생성, 파츠 모델 달기(setGunParts)
+│       ├── loadout.js      출전 무기·파츠 저장(브라우저)과 성능 갱신     armory.js  무기고 화면(벽에 걸린 총 + 패널)
 │       ├── remotes.js      다른 플레이어 모델·명중 판정·머리 위 이름표/체력바
 │       ├── minimap.js      미니맵(회전 원형 지도)   minimath.js  미니맵 좌표 계산(단위 테스트 대상)
 │       ├── fx.js           궤적·탄흔·파편      textures.js  이펙트 텍스처
@@ -54,12 +57,21 @@ games/frontline/
 - **검증은 서버** — 브라우저가 보내는 건 "신고"일 뿐이다. 서버가 `combat.js`/`chat.js` 로 검증하고 결과를 정한다.
 - **서버 규칙은 순수 함수로** — `chat.js`, `combat.js` 처럼 입력→결과만 있는 함수로 두면 단위 테스트가 쉽다.
 - **브라우저 모듈 간 값 공유는 `state.js` 의 객체로** — `wp.cur = 3` 처럼 속성으로 바꾼다. (모듈 간에 변수를 직접 바꿀 수 없기 때문)
-- **브라우저 모듈 의존은 한 방향** — `util → state → scene/sfx/textures → fx/remotes/viewmodel → player/hud → weapon → net/input → menu → main`. 순환 참조를 만들지 않는다.
+- **브라우저 모듈 의존은 한 방향** — `util → state → loadout → scene/sfx/textures → fx/remotes/viewmodel → player/hud → weapon → net/input → menu/armory → main`. 순환 참조를 만들지 않는다.
 
 ## 모드/맵 전환은 새로고침 없이
 - 클라이언트의 현재 모드는 `MODE_CFG`(`util.js`)에 있고 `setMode(id)` 로 바뀐다. 다른 모듈은 이 객체를 그대로 읽는다.
 - 맵은 `scene.js` 의 `loadMap(id)` 가 구조물을 통째로 갈아 끼우고 `colliders` 배열 내용을 교체한다. (하늘·지면·조명은 그대로)
 - 방에 들어갈 때는 서버가 보낸 `welcome.mode` 를 기준으로 모드/맵을 맞춘다. 나갈 때는 `net.js` 의 `leaveToLobby()` 가 연결·상태·화면을 정리한다.
+
+## 무기고: 출전 무기와 파츠
+- 전장에는 무기고에서 고른 **2자루**만 들고 간다. 무기마다 파츠를 5자리(조준경·총열·손잡이·탄창·개머리판)에 달 수 있다.
+- 규칙은 `shared/parts.js` 한 곳: 어떤 무기에 무엇을 달 수 있는지(`partsFor`), 성능 변화(`applyParts`), 설명(`describePart`), 입력값 정리(`sanitizeLoadout`).
+  모든 파츠는 장점과 단점을 함께 가져야 하고, 단위 테스트가 무기×파츠 조합 전부를 확인한다.
+- 브라우저: `loadout.js` 가 `localStorage`(`fd_loadout`)에 저장하고, 파츠가 반영된 성능을 `state.js` 의 `eff[무기번호]` 에 채운다. 게임 코드는 `WEAPONS[i]` 대신 `eff[i]` 를 읽는다.
+- 서버: `join` 의 `loadout` 을 정리해 플레이어의 `wstats`(무기번호 → 성능)에 둔다. 여기 없는 무기의 `shot`/`hit` 는 무시하고, 피해는 이 성능으로 계산한다.
+- 총 모델: `guns.js` 의 `setGunParts(gun, parts)` 하나를 1인칭 총, 다른 플레이어의 총, 무기고 벽의 총이 같이 쓴다.
+- 얻은 무기 목록은 `loadout.js` 의 `owned`. 아직 획득 시스템이 없어 전부 가진 것으로 시작한다 (무기고는 못 얻은 무기를 윤곽으로 보여 주는 것까지 되어 있다. `?owned=m4,m9` 로 확인).
 
 ## 데이터 흐름 (한 번의 사격)
 1. `input.js` 가 마우스 클릭을 `inp.fireHeld` 에 기록
@@ -73,7 +85,10 @@ games/frontline/
 | 하고 싶은 것 | 고칠 곳 |
 |---|---|
 | 총 성능·피해량 조절 | `shared/weapons.js` |
-| 새 총 추가 | `shared/weapons.js` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`) |
+| 새 총 추가 | `shared/weapons.js` + 모델 `client/js/guns.js` (+ 봇이 쓰게 하려면 `server/bots/bot.js` 의 `WEAPON_POOL`, `PREF_RANGE`). 무기고 벽에는 자동으로 걸린다 |
+| 파츠 성능 조절·새 파츠 추가 | `shared/parts.js` 의 `PARTS` (+ 모양은 `client/js/guns.js` 의 `OPTIC`/`BARREL`/`GRIP`) |
+| 기본 출전 무기 | `shared/parts.js` 의 `DEFAULT_LOADOUT` |
+| 무기고 화면(벽 배치·조명·성능 표) | `client/js/armory.js`, 모양은 `client/css/style.css` 의 무기고 부분 |
 | 맵 수정 | `shared/maps/<맵>.js` (배치와 스폰 지점이 한 파일에 있다) |
 | 새 맵 추가 | `shared/maps/` 에 파일 추가 → `maps/index.js` 에 등록 → `modes.js` 에서 모드에 연결 |
 | 친선전 옵션(시간·정원 등) | `server/rooms.js` (`resolveRoom`), 로비 화면은 `client/js/menu.js` |
@@ -85,5 +100,7 @@ games/frontline/
 | 순위표·HUD 표시 | `client/js/hud.js` |
 | 미니맵 크기·표시 범위·적 표시 시간 | `client/js/minimap.js` 맨 위 상수 (`VIEW_M`), 적 표시 시간은 `minimath.js` |
 | 이름표 크기·표시 거리 | `client/js/remotes.js` (`TAG_RANGE`, 크기 계산) |
+| 넘어가기 판정(거리·높이·두께·속도) | `shared/vault.js` 맨 위 `VAULT` |
+| 기울이기 거리·각도 | `shared/constants.js` 의 `LEAN_DIST`, `LEAN_ANGLE` (속도·화면 기울기는 `client/js/player.js`, `main.js`) |
 | 조작키 | `client/js/input.js` (메뉴의 조작 안내는 `client/index.html`) |
 | 새 메시지 추가 | `docs/PROTOCOL.md` 맨 아래 순서대로 |

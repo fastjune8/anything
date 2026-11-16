@@ -32,8 +32,11 @@ export async function startServer(extraEnv = {}) {
   return { port, child, stop: () => child.kill() };
 }
 
-// 메시지를 모아 두고 조건을 기다릴 수 있는 클라이언트
-export function connect(port, name) {
+// 테스트 클라이언트가 들고 들어가는 무기 (명중 테스트가 AWM 과 M9 을 쓴다)
+export const TEST_LOADOUT = [{ id: 'awm', parts: {} }, { id: 'm9', parts: {} }];
+
+// 메시지를 모아 두고 조건을 기다릴 수 있는 클라이언트. extra: join 메시지에 더할 값 (예: { loadout })
+export function connect(port, name, extra = {}) {
   const ws = new WebSocket(`ws://localhost:${port}`);
   const c = { ws, me: -1, msgs: [], players: new Map(), autoRespawn: true }; // autoRespawn: 죽으면 1.7초 뒤 부활 요청
   ws.on('message', raw => {
@@ -52,7 +55,7 @@ export function connect(port, name) {
     while (Date.now() < end) { const m = c.find(t, fn); if (m) return m; await sleep(50); }
     return null;
   };
-  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'join', name }); res(); }); ws.on('error', rej); });
+  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'join', name, loadout: TEST_LOADOUT, ...extra }); res(); }); ws.on('error', rej); });
   return c;
 }
 

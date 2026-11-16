@@ -1,4 +1,4 @@
-/* FRONTLINE DUEL 화면 스타일 */
+/* FRONTIER 화면 스타일 */
 :root { --ui: #e9ecef; --dim: rgba(233,236,239,.6); --accent: #ffb43a; --danger: #ff4b3a; --panel: rgba(12,14,16,.72); }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0d; color: var(--ui);
@@ -44,7 +44,7 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #score #timer { display: block; font-size: 24px; font-weight: 700; line-height: 1.15; }
 #score #goal { font-size: 11px; color: var(--dim); }
 #lb { position: absolute; top: 14px; left: 14px; min-width: 180px; background: var(--panel); border-radius: 6px; padding: 6px 0; font-size: 13px; }
-#minimap { position: absolute; left: 14px; top: 176px; width: 170px; height: 170px; border-radius: 50%; background: rgba(12,14,16,.55); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+#minimap { position: absolute; right: 14px; top: 14px; width: 170px; height: 170px; border-radius: 50%; background: rgba(12,14,16,.55); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
 #lb > div { display: flex; justify-content: space-between; gap: 16px; padding: 3px 14px; }
 #lb .me { color: var(--accent); background: rgba(255,180,58,.12); }
 #lb .nm, #endBoard .nm { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -60,7 +60,7 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
   padding: 4px 12px; border-radius: 4px; font-size: 13px; display: none; }
 
 /* 킬 로그 */
-#feed { position: absolute; top: 14px; right: 16px; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; font-size: 13px; }
+#feed { position: absolute; top: 196px; right: 16px; /* 미니맵 아래 */ display: flex; flex-direction: column; gap: 5px; align-items: flex-end; font-size: 13px; }
 #feed div { background: var(--panel); padding: 5px 10px; border-radius: 4px; animation: fadeout 5s forwards; }
 #feed .w { color: var(--dim); margin: 0 6px; font-size: 11px; }
 #feed .hs { color: var(--danger); margin-left: 6px; font-size: 11px; }
@@ -193,3 +193,54 @@ button:hover { filter: brightness(1.1); } button:disabled { opacity: .5; cursor:
 #pauseRoom:empty { display: none; }
 #leave { margin-top: 16px; width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,75,58,.5); background: rgba(255,75,58,.12); color: var(--danger); font: inherit; font-weight: 700; cursor: pointer; }
 #leave:hover { background: rgba(255,75,58,.22); }
+
+/* 로비: 무기고 버튼 (지금 출전 무기 표시) */
+#armoryBtn { display: flex; align-items: center; gap: 14px; width: 100%; margin-bottom: 14px; padding: 11px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04); color: var(--ui); font: inherit; font-weight: 400; text-align: left; cursor: pointer; transition: border-color .12s, background .12s; }
+#armoryBtn:hover { border-color: var(--accent); background: rgba(255,180,58,.08); filter: none; }
+#armoryBtn .at { font-weight: 700; color: var(--accent); }
+#armoryBtn #loadoutSum { flex: 1; font-weight: 600; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+#armoryBtn .ag { font-size: 12px; color: var(--dim); white-space: nowrap; }
+
+/* 무기고: 3D 벽(캔버스) 위에 제목·이름표·오른쪽 패널을 얹는다. 빈 곳의 마우스는 캔버스로 통과한다. */
+#armory { position: fixed; inset: 0; z-index: 10; display: none; pointer-events: none; }
+#arTop { position: absolute; left: 28px; top: 20px; right: 420px; display: flex; align-items: baseline; gap: 14px; text-shadow: 0 1px 4px #000; }
+#arTop h2 { margin: 0; font-size: 26px; letter-spacing: .14em; font-weight: 800; }
+#arTop span { font-size: 13px; color: var(--dim); }
+.ar-label { position: absolute; left: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 7px 10px 8px; font-size: 13px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.ar-label .nm { font-weight: 700; letter-spacing: .04em; }
+.ar-label .nm i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--dim); margin-left: 8px; }
+.ar-label .nm.empty { color: rgba(233,236,239,.3); font-weight: 400; }
+.ar-label.sel .nm { color: var(--accent); }
+.ar-label em { font-style: normal; font-size: 11px; font-weight: 700; color: #1a1205; background: var(--accent); border-radius: 3px; padding: 1px 7px; text-shadow: none; }
+
+#arPanel { position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, 46vw); padding: 22px 22px 0; display: flex; flex-direction: column; gap: 12px;
+  background: rgba(14,16,19,.94); border-left: 1px solid rgba(255,255,255,.08); overflow-y: auto; pointer-events: auto; }
+.ar-head { display: flex; align-items: baseline; gap: 12px; }
+.ar-head h3 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: .06em; }
+.ar-head span { font-size: 12px; color: var(--dim); }
+#arEquip { display: flex; gap: 8px; }
+#arEquip button { flex: 1; padding: 9px 6px; font-size: 13px; }
+#arEquip button.on { background: rgba(255,180,58,.14); color: var(--accent); border: 1px solid var(--accent); opacity: 1; }
+#arStats { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+#arStats .st { display: grid; grid-template-columns: 76px 1fr 86px; align-items: center; gap: 10px; }
+#arStats .st span { color: var(--dim); }
+#arStats .st b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+#arStats .bar { position: relative; height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; }
+#arStats .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--ui); transition: width .15s; }
+#arStats .bar u { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: rgba(255,255,255,.45); } /* 파츠가 없을 때의 값 */
+#arStats .up b { color: #6fd08c; } #arStats .up .bar i { background: #6fd08c; }
+#arStats .down b { color: #ff8a7d; } #arStats .down .bar i { background: #ff8a7d; }
+.ar-sec { margin-top: 4px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; font-weight: 700; }
+.ar-sec small { font-weight: 400; color: var(--dim); margin-left: 8px; }
+#arParts { display: flex; flex-direction: column; gap: 10px; }
+.pslot .pt { font-size: 11px; color: var(--dim); letter-spacing: .08em; margin-bottom: 5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 6px 11px; font-size: 12px; font-weight: 600; border-radius: 5px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color: var(--ui); }
+.chip:hover { border-color: rgba(255,255,255,.4); filter: none; }
+.chip.on { border-color: var(--accent); background: rgba(255,180,58,.12); color: var(--accent); }
+.pd { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 5px; min-height: 16px; font-size: 11px; color: var(--dim); }
+.pd .pro { color: #6fd08c; } .pd .con { color: #ff8a7d; }
+.ar-foot { position: sticky; bottom: 0; background: rgb(14,16,19); margin-top: auto; padding: 12px 0 16px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 12px; }
+#arSum { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 13px; font-weight: 600; }
+#arSum em { display: inline-block; width: 18px; font-style: normal; color: var(--accent); }

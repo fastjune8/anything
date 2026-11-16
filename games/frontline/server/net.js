@@ -8,10 +8,19 @@ const HANDLERS = {
   s(me, m, room) {
     if (!(Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite))) return;
     me.pos = m.p; me.crouch = m.c ? 1 : 0;
+    me.yaw = Number(m.y) || 0; me.lean = Math.max(-1, Math.min(1, Number(m.l) || 0)); // 봇이 기울여 내민 머리를 볼 수 있게
     m.id = me.id; room.broadcast(m, me);
   },
   // 사격 / 재장전 → 소리와 이펙트용으로 다른 사람에게 전달
-  shot(me, m, room) { if (me.alive) { me.invulnUntil = 0; m.id = me.id; room.broadcast(m, me); } }, // 쏘면 스폰 무적 해제
+  shot(me, m, room) {
+    m.w |= 0;
+    const w = me.wstats[m.w];
+    if (!me.alive || !w) return;                 // 들고 있지 않은 무기의 사격은 무시
+    me.invulnUntil = 0;                          // 쏘면 스폰 무적 해제
+    m.id = me.id; delete m.q;
+    if (w.quiet) m.q = 1;                        // 소음기: 받는 쪽에서 소리를 줄이고 미니맵에 표시하지 않는다
+    room.broadcast(m, me);
+  },
   rl(me, m, room) { if (me.alive) { m.id = me.id; room.broadcast(m, me); } },
   hit: (me, m, room) => room.onHit(me, m),
   chat: (me, m, room) => room.onChat(me, m),
@@ -36,7 +45,7 @@ export function attachWebSocket(httpServer) {
         const name = String(m.name || '').trim().slice(0, 14) || '병사';
         const res = resolveRoom(m, name);
         if (res.error) { ws.send(JSON.stringify({ t: 'denied', reason: res.error })); ws.close(); return; } // 방을 못 찾음/가득 참 등
-        me = res.room.join(ws, name);
+        me = res.room.join(ws, name, m.loadout);
         return;
       }
       if (!me) return;

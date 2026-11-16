@@ -52,8 +52,9 @@ export const WEAPONS = [
   },
 ];
 
-export function calcDamage(wi, part, dist) {
-  const w = WEAPONS[wi];
+// w: 무기 번호, 또는 파츠가 반영된 성능 객체(shared/parts.js 의 applyParts 결과)
+export function calcDamage(w, part, dist) {
+  if (typeof w === 'number') w = WEAPONS[w];
   if (!w) return 0;
   let d = w.dmg;
   if (part === 'head') d *= w.head;

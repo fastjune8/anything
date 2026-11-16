@@ -1,5 +1,5 @@
 // 서버 규칙 테스트 3: 팀 데스매치 (모드 선택, 팀 배정, 아군 사격 무효, 팀 점수, 팀 승패)
-import { startServer, getStatus, check, failed, sleep } from './helpers.mjs';
+import { startServer, getStatus, check, failed, sleep, TEST_LOADOUT } from './helpers.mjs';
 import { WebSocket } from 'ws';
 
 // 모드를 지정해서 접속하는 클라이언트 (helpers 의 connect 는 기본 모드로만 접속)
@@ -19,7 +19,7 @@ function connectMode(port, name, mode) {
   c.isAlive = id => { let v = false; for (const m of c.msgs) { if (m.t === 'spawn' && m.id === id) v = true; if (m.t === 'kill' && m.victim === id) v = false; } return v; };
   c.spawnedAgo = id => { const s = [...c.msgs].reverse().find(m => m.t === 'spawn' && m.id === id); return s ? Date.now() - s.at : 0; };
   ws.on('message', raw => { const m = JSON.parse(raw); if (m.t === 'spawn') c.msgs[c.msgs.length - 1].at = Date.now(); });
-  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'join', name, mode }); res(); }); ws.on('error', rej); });
+  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'join', name, mode, loadout: TEST_LOADOUT }); res(); }); ws.on('error', rej); });
   return c;
 }
 

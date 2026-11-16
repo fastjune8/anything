@@ -1,9 +1,8 @@
 // 키보드/마우스 입력. 입력은 상태(inp)에 기록만 하고, 실제 반응은 player.js / weapon.js 가 매 프레임 처리한다.
-import { WEAPONS } from '/shared/weapons.js';
 import { canvas, camera } from './scene.js';
 import { closeChat, openChat } from './chat.js';
 import { sfx } from './sfx.js';
-import { me, wp, inp, game, net, PITCH_MAX } from './state.js';
+import { me, wp, inp, game, net, loadout, PITCH_MAX } from './state.js';
 import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
 import { setDisplay } from './dom.js';
 import { startReload, switchTo } from './weapon.js';
@@ -38,12 +37,11 @@ addEventListener('keydown', e => {
 });
 addEventListener('keydown', e => {
   if (!isActive()) return;
-  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyR', 'KeyQ', 'KeyT'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyR', 'KeyQ', 'KeyE', 'KeyT'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   inp.keys.add(e.code);
   if (e.code === 'KeyR') startReload();
-  else if (e.code === 'KeyQ') switchTo(wp.prev);
-  else if (/^Digit[1-9]$/.test(e.code)) switchTo(Number(e.code.slice(5)) - 1);
+  else if (e.code === 'Digit1' || e.code === 'Digit2') switchTo(loadout.slots[Number(e.code.slice(5)) - 1]);
 });
 addEventListener('keyup', e => inp.keys.delete(e.code));
 addEventListener('blur', () => { inp.keys.clear(); inp.fireHeld = inp.adsHeld = false; });
@@ -69,5 +67,5 @@ let wheelAt = 0;
 addEventListener('wheel', e => {
   if (!isActive()) return;
   const now = performance.now(); if (now - wheelAt < 120) return; wheelAt = now;
-  switchTo((wp.cur + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length);
+  switchTo(loadout.slots.find(i => i !== wp.cur)); // 무기가 2개뿐이라 휠은 어느 방향이든 다른 무기로
 }, { passive: true });

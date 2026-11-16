@@ -1,13 +1,13 @@
 {
-  "name": "frontline-duel",
+  "name": "frontier",
   "version": "2.0.0",
-  "description": "FRONTLINE DUEL — 봇이 섞이는 웹 FPS 자유 대전",
+  "description": "FRONTIER — 봇이 섞이는 웹 FPS 자유 대전",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server/index.js",
     "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch server/index.js",
-    "test": "node tests/unit.test.mjs && node tests/rules.test.mjs && node tests/tdm.test.mjs && node tests/custom.test.mjs && node tests/protocol.test.mjs",
+    "test": "node tests/unit.test.mjs && node tests/rules.test.mjs && node tests/tdm.test.mjs && node tests/custom.test.mjs && node tests/loadout.test.mjs && node tests/protocol.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
     "test:all": "eslint . && npm test && node tests/browser.test.mjs",
     "deploy:prod": "./deploy/deploy.sh prod",

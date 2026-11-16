@@ -1,10 +1,10 @@
 // 다른 플레이어(사람/봇): 3인칭 모델, 위치 보간/애니메이션, 명중 판정
 import * as THREE from 'three';
-import { MAX_HP } from '/shared/constants.js';
+import { MAX_HP, LEAN_ANGLE } from '/shared/constants.js';
 import { MAX_PLAYERS } from '/shared/modes.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { rayBox } from '/shared/collision.js';
-import { buildGun, buildSoldier } from './guns.js';
+import { buildGun, buildSoldier, setGunParts } from './guns.js';
 import { scene, camera } from './scene.js';
 import { flashTex } from './textures.js';
 import { sfx, audioAt } from './sfx.js';
@@ -66,12 +66,15 @@ export function addRemote(info) {
     r = {
       id: info.id, rig, name: '', bot: false, alive: false, hasPos: false,
       pos: new V3(), tpos: new V3(), yaw: 0, tyaw: 0, pitch: 0, tpitch: 0, crouch: 0, crouchT: 0,
-      weapon: 0, deadT: 0, walk: 0, stepDist: 0,
+      weapon: 0, deadT: 0, walk: 0, stepDist: 0, lean: 0, tlean: 0,
       team: -1, shotAt: -1e9, hp: MAX_HP, invUntil: 0, // invUntil: 스폰 무적이 끝나는 시각 (performance.now 기준)
     };
     remotes.set(info.id, r);
   }
   r.name = info.name; r.bot = !!info.bot; r.alive = !!info.alive;
+  // 들고 온 무기의 파츠를 모델에 반영한다 (봇이나 정보가 없으면 기본 상태)
+  const lo = new Map(Array.isArray(info.lo) ? info.lo : []);
+  r.rig.guns.forEach((g, i) => setGunParts(g, lo.get(i) || {}));
   if (typeof info.hp === 'number') r.hp = info.hp;
   if (MODE_CFG.teams) { // 팀전: 아군은 파란 계열, 적군은 붉은 계열 군복
     r.team = info.team;
@@ -101,19 +104,29 @@ export function remoteHit(o, d, maxT) {
   }
   return best;
 }
+// 기울인 상체: 엉덩이를 축으로 옆으로 기운다. 높이 y 의 점이 옆으로 나가는 거리와 내려가는 거리
+function leanShift(e, hipY, y) {
+  const a = e.lean * LEAN_ANGLE, l = y - hipY;
+  return { side: Math.sin(a) * l, drop: (1 - Math.cos(a)) * Math.abs(l) };
+}
 function hitRemote(e, o, d, maxT) {
   const c = e.crouch, p = e.pos;
-  const legTop = lerp(0.86, 0.43, c), torsoTop = lerp(1.47, 1.0, c), headY = lerp(1.61, 1.14, c);
+  const legTop = lerp(0.86, 0.43, c), torsoTop = lerp(1.47, 1.0, c), headY0 = lerp(1.61, 1.14, c), hipY = lerp(0.86, 0.45, c);
+  const rx = Math.cos(e.yaw), rz = -Math.sin(e.yaw); // 오른쪽 방향
+  const body = leanShift(e, hipY, (legTop + torsoTop) / 2), head = leanShift(e, hipY, headY0);
+  const headY = headY0 - head.drop;
   let best = null;
-  const set = (hw, y0, y1) => { hbox.minX = p.x - hw; hbox.maxX = p.x + hw; hbox.minZ = p.z - hw; hbox.maxZ = p.z + hw; hbox.minY = p.y + y0; hbox.maxY = p.y + y1; };
+  let cx = p.x, cz = p.z;
+  const set = (hw, y0, y1) => { hbox.minX = cx - hw; hbox.maxX = cx + hw; hbox.minZ = cz - hw; hbox.maxZ = cz + hw; hbox.minY = p.y + y0; hbox.maxY = p.y + y1; };
   set(0.2, 0, legTop);
   let h = rayBox(o, d, hbox, maxT);
   if (h) best = { t: h.t, part: 'leg' };
-  set(0.25, legTop, torsoTop);
+  cx = p.x + rx * body.side; cz = p.z + rz * body.side; // 몸통은 기운 만큼 옆으로
+  set(0.25, legTop, torsoTop - body.drop);
   h = rayBox(o, d, hbox, best ? best.t : maxT);
   if (h) best = { t: h.t, part: 'body' };
   // 머리 (구)
-  const ox = o.x - p.x, oy = o.y - (p.y + headY), oz = o.z - p.z, r = 0.15;
+  const ox = o.x - (p.x + rx * head.side), oy = o.y - (p.y + headY), oz = o.z - (p.z + rz * head.side), r = 0.15;
   const b = ox * d.x + oy * d.y + oz * d.z, cc = ox * ox + oy * oy + oz * oz - r * r, disc = b * b - cc;
   if (disc >= 0) {
     const t = -b - Math.sqrt(disc);
@@ -138,6 +151,7 @@ export function updateRemotes(dt) {
     e.yaw = angLerp(e.yaw, e.tyaw, k);
     e.pitch = lerp(e.pitch, e.tpitch, k);
     e.crouch = lerp(e.crouch, e.crouchT, 1 - Math.exp(-dt * 12));
+    e.lean = e.alive ? lerp(e.lean, e.tlean, 1 - Math.exp(-dt * 14)) : 0;
     const moved = Math.hypot(e.pos.x - px, e.pos.z - pz);
     const c = e.crouch;
     s.root.position.copy(e.pos);
@@ -155,6 +169,7 @@ export function updateRemotes(dt) {
       });
       s.aim.rotation.x = e.pitch;
       s.upper.rotation.x = -e.pitch * 0.25 - c * 0.18;
+      s.upper.rotation.z = -e.lean * LEAN_ANGLE; // 기울이기 (오른쪽 = +)
       if (moved > 0.001 && e.pos.y === e.tpos.y) {
         e.stepDist += moved;
         if (e.stepDist > 2.1) { e.stepDist = 0; const a = audioAt(e.pos); sfx.step(0.9 * a.att * (1 - 0.6 * c), a.pan); }
@@ -167,7 +182,8 @@ export function updateRemotes(dt) {
       s.aim.rotation.x = lerp(s.aim.rotation.x, 0.9, k);
     }
     // 이름표: 머리 바로 위. 멀어질수록 크게 그려서 멀리서도 읽을 수 있다 (가까이서는 원래 크기)
-    rig.bar.position.set(e.pos.x, e.pos.y + lerp(1.85, 1.4, c), e.pos.z);
+    const tagLean = leanShift(e, lerp(0.86, 0.45, c), lerp(1.85, 1.4, c)).side;
+    rig.bar.position.set(e.pos.x + Math.cos(e.yaw) * tagLean, e.pos.y + lerp(1.85, 1.4, c), e.pos.z - Math.sin(e.yaw) * tagLean);
     const f = Math.min(3.4, Math.max(1, dist / 14)), w = 0.75 * f;
     rig.bar.scale.set(w, w * TAG_H / TAG_W, 1);
     const key = `${e.name}|${e.hp}|${isAlly(e.team)}`;

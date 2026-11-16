@@ -2,9 +2,11 @@
 import { WEAPONS, calcDamage } from '../shared/weapons.js';
 
 // m = { w: 무기번호, hits: [[부위, 거리, 대상id], ...] }
-// 반환: { wi, damages: [{ victim, dmg, head }] } 또는 잘못된 신호면 null
+// 반환: { wi, damages: [{ victim, dmg, head }] } 또는 잘못된 신호(없는 무기, 들고 있지 않은 무기)면 null
 export function resolveHits(players, attacker, m) {
-  const wi = m.w | 0, weapon = WEAPONS[wi];
+  const wi = m.w | 0;
+  // 사람은 들고 들어온 무기(파츠 반영)로만 맞힐 수 있다. wstats 가 없는 경우(단위 테스트의 단순 객체)는 기본 성능.
+  const weapon = attacker.wstats ? attacker.wstats[wi] : WEAPONS[wi];
   if (!weapon || !Array.isArray(m.hits)) return null;
   const byVictim = new Map();
   for (const h of m.hits.slice(0, weapon.pellets)) {
@@ -14,7 +16,7 @@ export function resolveHits(players, attacker, m) {
     const part = h[0] === 'head' || h[0] === 'leg' ? h[0] : 'body';
     const dist = Math.min(400, Math.max(0, Number(h[1]) || 0));
     const acc = byVictim.get(victim) || { dmg: 0, head: false };
-    acc.dmg += calcDamage(wi, part, dist);
+    acc.dmg += calcDamage(weapon, part, dist);
     if (part === 'head') acc.head = true;
     byVictim.set(victim, acc);
   }

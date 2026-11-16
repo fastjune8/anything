@@ -47,6 +47,19 @@ try {
   b.send({ t: 'respawn' }); await sleep(300);
   check(spawnCount() === 1, '살아 있을 때의 부활 요청은 무시된다');
 
+  console.log('\n[체력 회복이 다른 사람에게도 보인다]');
+  {
+    await sleep(3200); // 부활 직후 무적이 끝나기를 기다린 뒤 한 대 맞힌다
+    a.send({ t: 'hit', w: M9, hits: [['body', 5, b.me]] });
+    check(!!(await a.waitFor('dmg', m => m.to === b.me && m.hp < 100, 2000)), '(준비) 상대가 체력을 잃었다');
+    const aA = a.msgs.length;
+    await sleep(6200); // 마지막 피해 후 5초가 지나면 0.5초마다 +5
+    const heal = a.msgs.slice(aA).filter(m => m.t === 'rh' && m.id === b.me);
+    check(heal.length >= 1 && heal[heal.length - 1].hp > heal[0].hp - 1, '회복하면 다른 사람에게도 rh(id, hp) 가 전달된다', `${heal.length}번`);
+    check(b.msgs.filter(m => m.t === 'hp').length >= 1 && !a.msgs.slice(aA).some(m => m.t === 'hp'), '본인에게는 기존 hp 메시지가 가고, 다른 사람에게는 hp 가 가지 않는다 (옛 화면 호환)');
+    check(!b.msgs.some(m => m.t === 'rh' && m.id === b.me), '회복하는 본인에게는 rh 가 가지 않는다');
+  }
+
   console.log('\n[입장 정보]');
   await sleep(3100); a.send({ t: 'hit', w: M9, hits: [['body', 5, b.me]] }); await sleep(300);
   const d = connect(srv.port, 'late'); await d.open;

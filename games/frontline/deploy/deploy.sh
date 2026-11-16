@@ -81,7 +81,7 @@ fi
 
 # ---------- 3) 배포 ----------
 UNIT="[Unit]
-Description=Frontline Duel ($TARGET)
+Description=Frontier ($TARGET)
 After=network.target
 
 [Service]

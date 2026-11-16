@@ -1,18 +1,19 @@
 // 1인칭 무기(손에 든 총): 생성, 반동/흔들림/장전/꺼내기 포즈
 import * as THREE from 'three';
 import { WEAPONS } from '/shared/weapons.js';
-import { buildGun } from './guns.js';
+import { buildGun, setGunParts } from './guns.js';
+import { onLoadoutChange } from './loadout.js';
 import { camera, vm, vmSun, world } from './scene.js';
 import { flashTex } from './textures.js';
-import { me, wp, inp, hSpeed } from './state.js';
+import { me, wp, inp, loadout, eff, hSpeed } from './state.js';
 import { $, V3, lerp, clamp, smooth } from './util.js';
 import { setDisplay } from './dom.js';
 
 const scopeEl = $('scope');
 
 const flashMat = new THREE.MeshBasicMaterial({ map: flashTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false });
-export const guns = WEAPONS.map(w => {
-  const g = buildGun(w.id, true);
+export const guns = WEAPONS.map((w, i) => {
+  const g = buildGun(w.id, true, loadout.parts[i]);
   g.flash = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), flashMat);
   g.flash.position.set(0, 0.005, g.muzzleZ - 0.05);
   g.flash.visible = false;
@@ -25,10 +26,15 @@ export const guns = WEAPONS.map(w => {
 // 현재 무기만 보이게
 export function showGun() { guns.forEach((g, i) => { g.group.visible = i === wp.cur; if (g.mag) g.mag.position.copy(g.magRest); }); }
 showGun();
+// 무기고에서 파츠나 출전 무기를 바꾸면 손에 든 총 모델에도 반영한다
+onLoadoutChange(wi => {
+  if (wi >= 0) { const g = guns[wi]; setGunParts(g, loadout.parts[wi]); g.flash.position.z = g.muzzleZ - 0.05; }
+  showGun();
+});
 
 const _hip = new V3(), _ads = new V3(), _q = new THREE.Quaternion();
 export function updateViewmodel(dt) {
-  const w = WEAPONS[wp.cur], g = guns[wp.cur];
+  const w = eff[wp.cur], g = guns[wp.cur];
   const k = smooth(0, 1, wp.adsT);
   _hip.fromArray(g.hip); _ads.set(0, -g.sightY, g.adsZ);
   const p = vm.position.copy(_hip).lerp(_ads, k);

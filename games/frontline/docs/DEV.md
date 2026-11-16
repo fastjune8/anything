@@ -20,8 +20,8 @@ npm run dev          # http://localhost:3002  (서버 코드를 고치면 자동
 ```bash
 npm run lint         # 정의되지 않은 이름·안 쓰는 변수 같은 실수 (1초)
 npm run test:unit    # 채팅 규칙·명중 검증 같은 순수 함수 (1초)
-npm test             # 단위 + 서버 규칙(방/봇/명중/채팅/부활/팀전/친선전/경기 종료) (약 1분)
-npm run test:browser # 실제 Chrome 으로 접속해 화면·이동·사격·채팅 확인 (약 1분)
+npm test             # 단위 + 서버 규칙(방/봇/명중/채팅/부활/팀전/친선전/출전 무기·파츠/경기 종료) (약 1분)
+npm run test:browser # 실제 Chrome 으로 접속해 화면·이동·사격·채팅·무기고 확인 (약 1분)
 npm run test:all     # 위 전부
 ```
 - 서버/브라우저 테스트는 매번 **무작위 포트에 임시 서버**를 따로 띄우므로 dev 서버나 라이브와 겹치지 않는다.

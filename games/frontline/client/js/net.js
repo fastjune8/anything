@@ -1,6 +1,8 @@
 // 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
-import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
+import { RESPAWN_MIN_MS, MAX_HP, LEAN_DIST } from '/shared/constants.js';
 import { WEAPONS } from '/shared/weapons.js';
+import { applyParts } from '/shared/parts.js';
+import { loadoutMessage } from './loadout.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
 import { impact, addTracer } from './fx.js';
 import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
@@ -13,12 +15,13 @@ import { setText, setDisplay } from './dom.js';
 import { placeMe } from './weapon.js';
 
 const _v = new V3();
+const QUIET = WEAPONS.map(w => applyParts(w, { barrel: 'suppressor' })); // 소음기를 단 상대의 총소리
 
 // opts: { mode } 빠른 시작 | { code } 친선전 코드로 입장 | { mode, create: { name, private, bots, minutes } } 친선전 방 만들기
 export function connect(name, opts = {}) {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   net.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE_CFG.id, ...opts }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE_CFG.id, loadout: loadoutMessage(), ...opts }));
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onMessage(m); };
   ws.onclose = () => {
     if (net.ws !== ws) return;
@@ -88,16 +91,17 @@ function onMessage(m) {
       const r = remotes.get(m.id);
       if (!r) break;
       r.tpos.fromArray(m.p); r.tyaw = m.y; r.tpitch = m.x; r.crouchT = m.c ? 1 : 0; r.weapon = m.w | 0;
+      r.tlean = Math.max(-1, Math.min(1, Number(m.l) || 0));
       if (!r.hasPos) { r.hasPos = true; r.pos.copy(r.tpos); }
       break;
     }
     case 'shot': {
       const w = WEAPONS[m.w]; if (!w) break;
       const o = new V3().fromArray(m.o), a = audioAt(o);
-      sfx.shot(w, a.dist, a.pan);
+      sfx.shot(m.q ? QUIET[m.w] : w, a.dist, a.pan);
       if (w.bolt) sfx.mech('bolt', a.att, a.pan, 0.5);
       const r = remotes.get(m.id);
-      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; r.shotAt = performance.now(); } // 쏜 사람은 무적이 풀리고, 미니맵에 잠깐 표시된다 // 쏜 사람은 무적이 풀린다
+      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; if (!m.q) r.shotAt = performance.now(); } // 쏜 사람은 무적이 풀리고, 미니맵에 잠깐 표시된다 (소음기 q 는 표시되지 않는다)
       for (const e of m.e || []) {
         const end = new V3(e[0], e[1], e[2]);
         addTracer(o, end);
@@ -124,6 +128,7 @@ function onMessage(m) {
       }
       break;
     case 'hp': me.hp = m.hp; break;
+    case 'rh': { const r = remotes.get(m.id); if (r) r.hp = m.hp; break; } // 다른 플레이어의 체력 회복
     case 'denied': leaveToLobby(DENIED[m.reason] || '입장할 수 없습니다.'); break;
     case 'chat': addChatLine(String(m.name), String(m.text), m.id === me.id); break;
     case 'kill': {
@@ -157,6 +162,7 @@ export function sendState(dt) {
   sendAcc = 0;
   net.send({
     t: 's', p: [+me.pos.x.toFixed(3), +me.pos.y.toFixed(3), +me.pos.z.toFixed(3)],
-    y: +me.yaw.toFixed(3), x: +(me.pitch + wp.kickP).toFixed(3), c: me.crouch ? 1 : 0, w: wp.cur,
+    y: +me.yaw.toFixed(3), x: +(me.pitch + wp.kickP).toFixed(3), c: me.crouch || me.vault ? 1 : 0, w: wp.cur, // 넘어가는 동안은 다른 사람 화면에서 몸을 숙인다
+    l: +(me.leanOff / LEAN_DIST).toFixed(2), // 기울이기 (-1 ~ 1)
   });
 }

@@ -67,7 +67,8 @@ try {
     const dummy = connect(srv.port, 'dummy'); await dummy.open;
     await dummy.waitFor('welcome');
     const dummyPos = [10, 0, 10];
-    const hold = setInterval(() => dummy.send({ t: 's', p: dummyPos, y: 0, x: 0, c: 0, w: 0 }), 50);
+    let dummyLean = 0;
+    const hold = setInterval(() => dummy.send({ t: 's', p: dummyPos, y: 0, x: 0, c: 0, w: 0, l: dummyLean }), 50);
     await page.waitForFunction(() => window.__g.me.alive && [...window.__g.remotes.values()].some(r => r.hasPos), null, { timeout: 10000 });
     await sleep(500);
 
@@ -100,13 +101,62 @@ try {
     check((await page.evaluate(() => window.__sent.rl || 0)) >= 1, '재장전 신호(rl)가 서버로 간다');
 
     await page.evaluate(() => window.__g.switchTo(4));
-    await page.waitForFunction(() => window.__g.cur === 4, null, { timeout: 3000 }).catch(() => {});
-    check(await page.evaluate(() => window.__g.cur) === 4, '무기를 교체한다 (5번 AWM)');
-    await sleep(1200); // AWM 꺼내는 시간 (끝나기 전의 교체 입력은 무시됨)
+    await sleep(300);
+    check(await page.evaluate(() => window.__g.cur) === 0, '들고 오지 않은 무기(AWM)로는 바꿀 수 없다');
+    check(await page.evaluate(() => document.querySelectorAll('#slots > div').length) === 2, '무기 칸은 들고 온 두 자루만 보인다');
+    await page.keyboard.press('Digit2');
+    await page.waitForFunction(() => window.__g.cur === 6, null, { timeout: 3000 }).catch(() => {});
+    check(await page.evaluate(() => window.__g.cur) === 6, '무기를 교체한다 (2번 M9)');
+    await sleep(600); // 꺼내는 시간
     await page.evaluate(() => window.__g.switchTo(0));
     await page.waitForFunction(() => window.__g.cur === 0, null, { timeout: 3000 }).catch(() => {});
     check(await page.evaluate(() => window.__g.cur) === 0, '다시 1번 M4A1 으로 교체한다');
 
+
+    const home = await page.evaluate(() => ({ p: window.__g.me.pos.toArray(), yaw: window.__g.me.yaw })); // 시험이 끝나면 원래 자리로
+    // 넘어가기: 중앙 폐허 남쪽 창문 앞에서 Space → 창문을 넘어 건물 안으로
+    await page.evaluate(() => { const g = window.__g; g.me.pos.set(3, 0, -7); g.me.vel.set(0, 0, 0); g.me.yaw = Math.PI; g.me.pitch = 0; });
+    await sleep(200);
+    await page.evaluate(() => window.__g.input({ key: 'Space' }));
+    await sleep(120);
+    const vaulting = await page.evaluate(() => !!window.__g.me.vault);
+    await page.evaluate(() => window.__g.input({ keyUp: 'Space' }));
+    await page.waitForFunction(() => !window.__g.me.vault, null, { timeout: 10000 }).catch(() => {}); // 프레임이 느린 환경에서도 끝날 때까지
+    await sleep(300);
+    const after = await page.evaluate(() => ({ x: window.__g.me.pos.x, y: window.__g.me.pos.y, z: window.__g.me.pos.z, v: !!window.__g.me.vault }));
+    check(vaulting && !after.v && after.z > -5.5 && Math.abs(after.y) < 0.05, '창문 앞에서 Space 를 누르면 창문을 넘어 건물 안으로 들어간다', JSON.stringify({ vaulting, ...after }));
+    await page.evaluate(() => { const g = window.__g; g.me.pos.set(0, 0, -7); g.me.vel.set(0, 0, 0); g.me.yaw = Math.PI; });
+    await sleep(200);
+    await page.evaluate(() => window.__g.input({ key: 'Space' })); await sleep(120);
+    const wallJump = await page.evaluate(() => ({ v: !!window.__g.me.vault, air: !window.__g.me.onGround }));
+    await page.evaluate(() => window.__g.input({ keyUp: 'Space' }));
+    await page.waitForFunction(() => window.__g.me.onGround && !window.__g.me.vault, null, { timeout: 10000 }).catch(() => {});
+    check(!wallJump.v && wallJump.air, '높은 벽 앞에서는 넘지 않고 그냥 점프한다', JSON.stringify(wallJump));
+
+    // 기울이기: E 로 오른쪽, 벽 쪽으로는 벽에 막힌 만큼만, 상대에게 전달
+    await page.evaluate(() => { const g = window.__g; g.me.pos.set(20, 0, 20); g.me.vel.set(0, 0, 0); });
+    dummy.msgs.length = 0;
+    await page.evaluate(() => window.__g.input({ key: 'KeyE' })); await sleep(600);
+    const leanR = await page.evaluate(() => window.__g.me.leanOff);
+    const sentLean = dummy.msgs.filter(m => m.t === 's' && m.id !== dummy.me).pop();
+    await page.evaluate(() => window.__g.input({ keyUp: 'KeyE' })); await sleep(500);
+    check(leanR > 0.35 && (await page.evaluate(() => Math.abs(window.__g.me.leanOff))) < 0.05, 'E 를 누르면 오른쪽으로 기울고, 떼면 돌아온다', `${leanR.toFixed(2)}`);
+    check(sentLean && sentLean.l > 0.85, '기울이기가 다른 플레이어에게 전달된다 (l)', JSON.stringify(sentLean));
+    await page.evaluate(() => { const g = window.__g; g.me.pos.set(0, 0, -6.5); g.me.yaw = Math.PI / 2; }); // 왼쪽 0.5m 에 벽
+    await page.evaluate(() => window.__g.input({ key: 'KeyQ' })); await sleep(600);
+    const leanWall = await page.evaluate(() => window.__g.me.leanOff);
+    await page.evaluate(() => window.__g.input({ keyUp: 'KeyQ' })); await sleep(400);
+    check(leanWall < -0.1 && leanWall > -0.25, '벽 쪽으로는 벽을 뚫지 않을 만큼만 기운다', leanWall.toFixed(2));
+
+    // 상대가 기울이면 내민 머리에 맞는다 (명중 판정도 같이 기운다)
+    const headRay = () => page.evaluate(id => { const g = window.__g, r = g.remotes.get(id); const h = g.remoteHit({ x: r.pos.x + 0.36, y: r.pos.y + 1.53, z: r.pos.z + 8 }, { x: 0, y: 0, z: -1 }, 20); return h ? h.part : null; }, dummy.me);
+    const noLean = await headRay();
+    dummyLean = 1; await sleep(700);
+    const withLean = await headRay();
+    dummyLean = 0;
+    check(noLean === null && withLean === 'head', '상대가 오른쪽으로 기울이면 옆으로 나온 머리가 맞는다', `${noLean} → ${withLean}`);
+    await page.evaluate(h => { const g = window.__g; g.me.pos.fromArray(h.p); g.me.vel.set(0, 0, 0); g.me.yaw = h.yaw; }, home);
+    await sleep(200);
 
     // 채팅: Enter 로 열고, 입력 중에는 이동하지 않고, Enter 로 보내고, Esc 로 취소한다
     const chatOpenNow = () => page.evaluate(() => document.getElementById('chat').classList.contains('open'));
@@ -164,6 +214,21 @@ try {
     await page.evaluate(() => window.__g.input({ fire: false }));
     check(!!gotDmg, '실제로 쏴서 맞히면 서버가 상대에게 피해를 준다', gotDmg ? '' : JSON.stringify(await page.evaluate(() => { const g = window.__g, r = [...g.remotes.values()][0]; return { sent: window.__sent, cur: g.cur, ammo: g.inv[g.cur].ammo, alive: g.me.alive, pos: g.me.pos.toArray(), yaw: g.me.yaw, pitch: g.me.pitch, remote: r && r.pos.toArray(), ralive: r && r.alive }; })));
 
+    // 상대 체력바가 회복을 따라간다 (회복이 본인에게만 알려지던 버그의 회귀 테스트)
+    {
+      const dummyId = await page.evaluate(() => [...window.__g.remotes.values()][0].id);
+      await sleep(3200); // 스폰 무적이 끝날 때까지
+      dummy.send({ t: 'chat', text: 'x' });
+      const hitter = connect(srv.port, 'hitter'); await hitter.open; await hitter.waitFor('welcome'); await sleep(3300);
+      hitter.send({ t: 'hit', w: 6, hits: [['body', 5, dummy.me]] }); hitter.send({ t: 'hit', w: 6, hits: [['body', 5, dummy.me]] });
+      await sleep(500);
+      const hurt = await page.evaluate(id => window.__g.remotes.get(id).hp, dummyId);
+      await sleep(7500); // 5초 + 회복 몇 번
+      const healed = await page.evaluate(async id => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const r = window.__g.remotes.get(id); return { hp: r.hp, key: r.rig.tagKey }; }, dummyId);
+      check(hurt < 100 && healed.hp > hurt && healed.key.includes(`|${healed.hp}|`), '맞아서 줄었던 상대의 체력바가 회복되면 그대로 올라간다', `${hurt} → ${healed.hp}, 이름표 ${healed.key}`);
+      hitter.ws.close();
+    }
+
     // 부활: 자동 부활은 없고, 최소 시간이 지난 뒤 아무 키나 누르면 부활한다
     dummy.send({ t: 'hit', w: 4, hits: [['head', 5, await page.evaluate(() => window.__g.me.id)]] });
     await page.waitForFunction(() => !window.__g.me.alive, null, { timeout: 4000 }).catch(() => {});
@@ -180,6 +245,69 @@ try {
 
     check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
     clearInterval(hold); dummy.ws.close();
+    await page.close();
+  }
+
+  // ───────── 무기고 ─────────
+  console.log('\n[무기고]  (로비에서 무기 2개와 파츠를 고른다)');
+  {
+    const srv = await startServer({ MATCH_SECONDS: '120', GOAL: '999', BOT_FILL: '0' }); servers.push(srv);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    await page.goto(`http://localhost:${srv.port}/?nolock`);
+    await page.waitForFunction(() => window.__g, null, { timeout: 15000 });
+    check((await page.textContent('#loadoutSum')).includes('M4A1') && (await page.textContent('#loadoutSum')).includes('M9'), '로비에 지금 출전 무기(M4A1, M9)가 보인다');
+
+    await page.click('#armoryBtn'); await sleep(600);
+    const opened = await page.evaluate(() => ({ open: window.__g.armory.open, menu: getComputedStyle(document.getElementById('menu')).display, labels: [...document.querySelectorAll('.ar-label .nm')].map(e => e.firstChild.textContent), badges: document.querySelectorAll('.ar-label em').length }));
+    check(opened.open && opened.menu === 'none', '무기고 버튼을 누르면 로비 대신 무기고가 열린다');
+    check(opened.labels.length === 8 && ['M4A1', 'AK-47', 'MP5', 'M870', 'AWM', 'M249', 'M9'].every(n => opened.labels.includes(n)), '벽에 가진 무기 7자루와 빈 거치대 한 칸이 걸려 있다', opened.labels.join(','));
+    check(opened.badges === 2, '출전 무기 두 자루에 표시가 붙는다');
+
+    // 벽에 걸린 AK-47 을 클릭해 고른다 (이름표 바로 위가 그 무기의 거치대)
+    const at = await page.evaluate(() => { const b = [...document.querySelectorAll('.ar-label')].find(e => e.textContent.includes('AK-47')).getBoundingClientRect(); return [b.x + b.width / 2, b.y - 30]; });
+    await page.mouse.move(at[0], at[1]); await page.mouse.click(at[0], at[1]); await sleep(200);
+    check(await page.textContent('#arName') === 'AK-47', '벽의 무기를 클릭하면 그 무기가 선택된다');
+
+    await page.hover('#arParts [data-slot="mag"][data-part="ext"]'); await sleep(100);
+    const pre = await page.evaluate(() => ({ row: [...document.querySelectorAll('#arStats .st')].find(e => e.textContent.includes('탄창')).textContent, mag: window.__g.eff[1].mag, desc: document.querySelector('[data-desc="mag"]').textContent }));
+    check(pre.row.includes('40발') && pre.mag === 30, '파츠에 마우스를 올리면 달기 전에 성능 변화를 미리 보여 준다', JSON.stringify(pre));
+    check(pre.desc.includes('▲') && pre.desc.includes('▼'), '파츠 설명에 장점과 단점이 함께 나온다', pre.desc);
+    await page.click('#arParts [data-slot="mag"][data-part="ext"]');
+    await page.click('#arParts [data-slot="barrel"][data-part="suppressor"]');
+    const eq = await page.evaluate(() => ({ mag: window.__g.eff[1].mag, quiet: window.__g.eff[1].quiet, base: window.__g.eff[0].mag, on: [...document.querySelectorAll('#arParts .chip.on')].map(e => e.textContent).join(',') }));
+    check(eq.mag === 40 && eq.quiet === true && eq.base === 30, '파츠를 달면 그 무기의 성능만 바뀐다 (AK-47 탄창 40발 + 소음기)', JSON.stringify(eq));
+    check(eq.on.includes('확장 탄창') && eq.on.includes('소음기'), '단 파츠가 선택된 것으로 표시된다', eq.on);
+
+    await page.click('#arEquip [data-slot="0"]');
+    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === '1,6', '1번 무기로 장착하면 출전 무기가 바뀐다 (AK-47, M9)');
+    await page.click('#arEquip [data-slot="1"]');
+    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === '6,1', '이미 든 무기를 다른 자리에 넣으면 두 자리가 맞바뀐다 (항상 서로 다른 2개)');
+    await page.click('#arEquip [data-slot="0"]');
+    await page.keyboard.press('Escape'); await sleep(200);
+    check(await page.evaluate(() => !window.__g.armory.open && getComputedStyle(document.getElementById('menu')).display !== 'none') && (await page.textContent('#loadoutSum')).includes('AK-47'), 'Esc 로 닫으면 로비로 돌아오고 바뀐 출전 무기가 보인다');
+
+    await page.reload();
+    await page.waitForFunction(() => window.__g, null, { timeout: 15000 });
+    check(await page.evaluate(() => window.__g.loadout.slots.join(',') === '1,6' && window.__g.eff[1].mag === 40), '새로고침해도 출전 무기와 파츠가 유지된다');
+
+    await page.fill('#name', 'Armorer'); await page.click('#join');
+    await page.waitForFunction(() => window.__g.joined && window.__g.me.alive, null, { timeout: 10000 });
+    const peer = connect(srv.port, 'peer'); await peer.open;
+    const w = await peer.waitFor('welcome');
+    const seen = w && w.players.find(p => p.name === 'Armorer');
+    check(seen && JSON.stringify(seen.lo) === '[[1,{"barrel":"suppressor","mag":"ext"}],[6,{}]]', '입장하면 서버가 내 출전 무기와 파츠를 알고, 다른 사람에게도 전달된다', JSON.stringify(seen && seen.lo));
+    const inGame = await page.evaluate(() => ({ cur: window.__g.cur, ammo: window.__g.inv[1].ammo, slots: document.getElementById('slots').textContent }));
+    check(inGame.cur === 1 && inGame.ammo === 40 && inGame.slots.includes('AK-47') && !inGame.slots.includes('M4A1'), '전장에 고른 무기(AK-47 확장 탄창 40발)를 들고 들어간다', JSON.stringify(inGame));
+    await page.evaluate(() => window.__g.input({ fire: true })); // 총을 다 꺼내면 발사된다 (프레임이 느린 환경에서도 되도록 탄이 줄 때까지 기다린다)
+    await page.waitForFunction(() => window.__g.inv[1].ammo < 40, null, { timeout: 8000 }).catch(() => {});
+    await page.evaluate(() => window.__g.input({ fire: false }));
+    const shot = await peer.waitFor('shot', m => m.id === seen.id, 3000);
+    check(!!shot && shot.q === 1 && shot.w === 1, '소음기를 단 총의 사격은 다른 사람에게 조용한 사격(q)으로 전달된다', JSON.stringify(shot));
+    check(errors.length === 0, '브라우저 오류가 없다', errors.join(' | '));
+    peer.ws.close();
     await page.close();
   }
 

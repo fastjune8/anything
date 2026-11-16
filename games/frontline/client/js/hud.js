@@ -1,8 +1,9 @@
 // 화면 표시(HUD): 체력/탄약/조준선/피격 표시, 킬 피드, 순위표, 종료 화면
 import { WEAPONS } from '/shared/weapons.js';
+import { onLoadoutChange } from './loadout.js';
 import { camera, canvas } from './scene.js';
 import { sfx } from './sfx.js';
-import { me, inv, wp, game, roster, currentSpread, isAlly } from './state.js';
+import { me, inv, wp, game, roster, loadout, eff, currentSpread, isAlly } from './state.js';
 import { $, DEG, NOLOCK, MODE_CFG, clamp, esc } from './util.js';
 import { cache, setText, setDisplay, setClass } from './dom.js';
 
@@ -11,9 +12,15 @@ const crossParts = { l: crossEl.querySelector('.l'), r: crossEl.querySelector('.
 
 export const setHudOn = on => hudEl.classList.toggle('on', on);
 
-// 무기 슬롯(1~7번)
+// 무기 슬롯(1·2번): 무기고에서 고른 두 자루
 const slotsEl = $('slots');
-const slotEls = WEAPONS.map((w, i) => { const d = document.createElement('div'); d.innerHTML = `<span>${i + 1}</span>${w.name}`; slotsEl.appendChild(d); return d; });
+let slotEls = [];
+function renderSlots() {
+  slotsEl.replaceChildren();
+  slotEls = loadout.slots.map((wi, n) => { const d = document.createElement('div'); d.innerHTML = `<span>${n + 1}</span>${WEAPONS[wi].name}`; slotsEl.appendChild(d); return d; });
+}
+renderSlots();
+onLoadoutChange(wi => { if (wi < 0) renderSlots(); });
 
 // ───── 피격/명중 표시 ─────
 let hitT = 0, vigT = 0, dirT = 0, dirFrom = null;
@@ -70,7 +77,7 @@ export function showEnd(winnerId, winTeam = -1) {
 
 // ───── 매 프레임 갱신 ─────
 export function updateHud(dt) {
-  const w = WEAPONS[wp.cur], st = inv[wp.cur];
+  const w = eff[wp.cur], st = inv[wp.cur];
   // 조준선: 탄퍼짐만큼 벌어진다
   const gap = Math.max(4, Math.tan(currentSpread() * DEG) / Math.tan(camera.fov * DEG / 2) * innerHeight / 2);
   crossParts.l.style.left = `${-gap - 9}px`; crossParts.r.style.left = `${gap}px`;
@@ -96,7 +103,7 @@ export function updateHud(dt) {
   setClass($('amC'), 'low', st.ammo <= Math.ceil(w.mag * 0.25));
   setText($('wN'), w.name);
   setText($('wC'), `${w.cls} · ${w.auto ? '연사' : w.bolt ? '볼트액션' : w.shell ? '펌프액션' : '단발'}`);
-  slotEls.forEach((el, i) => { setClass(el, 'on', i === wp.cur); setClass(el, 'empty', inv[i].ammo + inv[i].reserve === 0); });
+  slotEls.forEach((el, n) => { const i = loadout.slots[n]; setClass(el, 'on', i === wp.cur); setClass(el, 'empty', inv[i].ammo + inv[i].reserve === 0); });
 
   let hint = '';
   if (me.alive && !wp.reload) {

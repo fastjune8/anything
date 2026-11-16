@@ -2,6 +2,8 @@
 import { MAX_HP, RESPAWN_MS, RESPAWN_MIN_MS, SPAWN_PROTECT_MS } from '../shared/constants.js';
 import { getMap } from '../shared/maps/index.js';
 import { MODES } from '../shared/modes.js';
+import { WEAPONS } from '../shared/weapons.js';
+import { sanitizeLoadout, applyParts } from '../shared/parts.js';
 import { navFor } from './bots/nav.js';
 import { Bot } from './bots/bot.js';
 import { BOT_NAMES } from './bots/names.js';
@@ -36,7 +38,8 @@ export class Room {
 
   humans() { return [...this.players.values()].filter(p => !p.bot); }
   freeId() { for (let i = 0; i < this.cfg.max; i++) if (!this.players.has(i)) return i; return -1; }
-  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp, team: p.team }; }
+  // lo: 사람이 들고 온 무기 [[무기번호, 파츠], …] (다른 사람 화면에서 총에 파츠를 그려 주는 용도). 봇은 null
+  info(p) { return { id: p.id, name: p.name, bot: !!p.bot, k: p.kills, d: p.deaths, alive: p.alive, hp: p.hp, team: p.team, lo: p.loadout ? p.loadout.map(l => [l.wi, l.parts]) : null }; }
   // 방 목록에 보여 줄 요약
   summary() { return { code: this.custom.code, name: this.custom.name, mode: this.mode, humans: this.humans().length, max: this.cfg.max, state: this.state, minutes: Math.round(this.matchMs / 60000), bots: this.custom.bots }; }
   // 서로 적인가 (개인전: 나 빼고 전부, 팀전: 다른 팀)
@@ -65,9 +68,13 @@ export class Room {
   }
 
   // ───────── 입장 / 퇴장 ─────────
-  join(ws, name) {
+  // loadout: 무기고에서 고른 출전 무기 2개와 파츠 (클라이언트가 보낸 값이므로 정리해서 쓴다)
+  join(ws, name, loadout) {
     if (this.players.size >= this.cfg.max) this.removeBot();
     const p = this.newPlayer(this.freeId(), name, ws);
+    p.loadout = sanitizeLoadout(loadout);
+    p.wstats = {};                       // 무기번호 → 파츠가 반영된 성능. 여기 없는 무기로는 쏘거나 맞힐 수 없다
+    for (const l of p.loadout) p.wstats[l.wi] = applyParts(WEAPONS[l.wi], l.parts);
     this.players.set(p.id, p);
     this.sendTo(p, {
       t: 'welcome', id: p.id, mode: this.mode, room: this.custom ? { code: this.custom.code, name: this.custom.name, minutes: Math.round(this.matchMs / 60000) } : null, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
@@ -236,7 +243,8 @@ export class Room {
       for (const p of this.players.values()) {
         if (p.alive && p.hp < MAX_HP && now - p.lastHurt > 5000) {
           p.hp = Math.min(MAX_HP, p.hp + 5);
-          this.sendTo(p, { t: 'hp', hp: p.hp });
+          this.sendTo(p, { t: 'hp', hp: p.hp });                  // 본인에게 (기존 형식 유지)
+          this.broadcast({ t: 'rh', id: p.id, hp: p.hp }, p);     // 다른 사람들에게: 머리 위 체력바 갱신용
         }
       }
     }

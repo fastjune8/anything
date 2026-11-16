@@ -1,6 +1,7 @@
 // 봇 전투 AI: 시야 판단 → 이동 → 조준 → 사격 (서버 전용)
 import { rayWorld } from '../../shared/collision.js';
 import { WEAPONS, calcDamage } from '../../shared/weapons.js';
+import { LEAN_DIST } from '../../shared/constants.js';
 
 // ───────── 봇 AI ─────────
 const EYE = 1.55;
@@ -57,12 +58,22 @@ export class Bot {
     return true;
   }
 
-  hasLOS(o) {
-    const tp = o.pos, cy = o.crouch ? 0.85 : 1.2;
-    const dx = tp[0] - this.x, dy = tp[1] + cy - EYE, dz = tp[2] - this.z;
+  canSee(pt) {
+    const dx = pt[0] - this.x, dy = pt[1] - EYE, dz = pt[2] - this.z;
     const dist = Math.hypot(dx, dy, dz) || 1;
     const r = rayWorld({ x: this.x, y: EYE, z: this.z }, { x: dx / dist, y: dy / dist, z: dz / dist }, this.nav.COLLIDERS, dist);
     return r.t >= dist - 0.1;
+  }
+  // 상대의 보이는 지점 (몸 가운데, 아니면 기울여 내민 머리 쪽). 안 보이면 null
+  visiblePoint(o) {
+    const tp = o.pos, cy = o.crouch ? 0.85 : 1.2;
+    const center = [tp[0], tp[1] + cy, tp[2]];
+    if (this.canSee(center)) return center;
+    const l = o.lean || 0;
+    if (Math.abs(l) < 0.2) return null;
+    const off = l * LEAN_DIST * 0.85, yaw = o.yaw || 0;
+    const peek = [tp[0] + Math.cos(yaw) * off, tp[1] + cy + 0.18, tp[2] - Math.sin(yaw) * off];
+    return this.canSee(peek) ? peek : null;
   }
 
   update(dt) {
@@ -72,15 +83,16 @@ export class Bot {
 
     // 1) 시야: 가장 가까운 보이는 적
     const now = Date.now();
-    let best = null, bestD = Infinity;
+    let best = null, bestD = Infinity, bestPt = null;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     for (const o of this.room.players.values()) {
       if (!this.room.isEnemy(p, o) || !o.alive || !o.pos || o.invulnUntil > now) continue; // 아군/무적인 상대는 노리지 않는다
       const dx = o.pos[0] - this.x, dz = o.pos[2] - this.z, d = Math.hypot(dx, dz);
       if (d > VIEW || d >= bestD) continue;
       if (d > 6 && (dx * fx + dz * fz) / d < Math.cos(FOV_HALF)) continue;
-      if (!this.hasLOS(o)) continue;
-      best = o; bestD = d;
+      const pt = this.visiblePoint(o);
+      if (!pt) continue;
+      best = o; bestD = d; bestPt = pt;
     }
     if (best) {
       if (this.target !== best) { this.target = best; this.react = (0.25 + Math.random() * 0.35) * (1.4 - this.skill); }
@@ -131,9 +143,9 @@ export class Bot {
     // 5) 조준 방향
     let wantYaw = this.yaw, wantPitch = 0, aimed = false;
     if (best) {
-      const tp = best.pos, dx = tp[0] - this.x, dz = tp[2] - this.z;
+      const dx = bestPt[0] - this.x, dz = bestPt[2] - this.z;
       wantYaw = Math.atan2(-dx, -dz);
-      wantPitch = Math.atan2(tp[1] + (best.crouch ? 0.85 : 1.2) - EYE, Math.hypot(dx, dz));
+      wantPitch = Math.atan2(bestPt[1] - EYE, Math.hypot(dx, dz));
     } else if (this.path && this.pi < this.path.length) {
       wantYaw = Math.atan2(-(this.path[this.pi][0] - this.x), -(this.path[this.pi][1] - this.z));
     }
@@ -148,7 +160,7 @@ export class Bot {
     if (best && this.react <= 0 && this.pause <= 0 && aimed) {
       let shots = 0;
       while (this.fireCd <= 0 && shots < 3) {
-        this.shoot(best, bestD, w);
+        this.shoot(best, bestD, w, bestPt);
         this.fireCd += 60 / w.rpm; shots++;
         if (--this.burst <= 0) {
           this.pause = w.auto ? 0.25 + Math.random() * 0.55 : 0.05 + Math.random() * 0.25;
@@ -161,13 +173,15 @@ export class Bot {
     p.pos[0] = this.x; p.pos[1] = 0; p.pos[2] = this.z;
   }
 
-  shoot(target, dist, w) {
-    const wi = this.weapon, tp = target.pos, cy = target.crouch ? 0.85 : 1.2;
-    const tx = tp[0], ty = tp[1] + cy, tz = tp[2];
+  // pt: 노리는 지점 (visiblePoint). 벽 뒤에서 머리만 내민 상대는 맞히기 어렵다
+  shoot(target, dist, w, pt) {
+    const wi = this.weapon;
+    const tx = pt[0], ty = pt[1], tz = pt[2];
+    const peeking = pt[1] - target.pos[1] > (target.crouch ? 0.9 : 1.25);
     const ox = this.x, oy = EYE, oz = this.z;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const muzzle = [+(ox + fx * 0.6).toFixed(2), +(oy - 0.1).toFixed(2), +(oz + fz * 0.6).toFixed(2)];
-    const pHit = Math.max(0.08, 0.82 - dist * 0.011) * this.skill * (w.pellets > 1 ? 0.85 : 1);
+    const pHit = Math.max(0.08, 0.82 - dist * 0.011) * this.skill * (w.pellets > 1 ? 0.85 : 1) * (peeking ? 0.45 : 1);
 
     let dmg = 0, head = false;
     const ends = [];
