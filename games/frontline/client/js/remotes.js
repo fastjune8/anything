@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { MAX_HP, LEAN_ANGLE } from '/shared/constants.js';
 import { MAX_PLAYERS } from '/shared/modes.js';
 import { WEAPONS } from '/shared/weapons.js';
-import { rayBox } from '/shared/collision.js';
+import { hitPose, leanShift } from '/shared/hitbox.js';
 import { buildGun, buildSoldier, setGunParts } from './guns.js';
 import { scene, camera } from './scene.js';
 import { flashTex } from './textures.js';
@@ -94,45 +94,18 @@ export function clearRemotes() { for (const id of [...remotes.keys()]) removeRem
 
 // ───── 명중 판정 ─────
 // 광선(o, d)이 maxT 안에서 맞히는 가장 가까운 플레이어: { t, part: 'head'|'body'|'leg', id } 또는 null
-const hbox = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
 export function remoteHit(o, d, maxT) {
   let best = null;
   for (const r of remotes.values()) {
     if (!r.alive || !r.hasPos || r.invUntil > performance.now() || isAlly(r.team)) continue; // 무적 중인 상대와 아군은 맞지 않는다
     const h = hitRemote(r, o, d, best ? best.t : maxT);
-    if (h && (!best || h.t < best.t)) best = { t: h.t, part: h.part, id: r.id };
+    if (h && (!best || h.t < best.t)) best = { t: h.t, part: h.part, id: r.id, n: r.n | 0 }; // n: 내가 보고 있던 상대 위치의 서버 시각 번호 (랙 보정)
   }
   return best;
 }
-// 기울인 상체: 엉덩이를 축으로 옆으로 기운다. 높이 y 의 점이 옆으로 나가는 거리와 내려가는 거리
-function leanShift(e, hipY, y) {
-  const a = e.lean * LEAN_ANGLE, l = y - hipY;
-  return { side: Math.sin(a) * l, drop: (1 - Math.cos(a)) * Math.abs(l) };
-}
+// 판정 모양은 서버(랙 보정 검증)와 같은 것을 쓴다 (shared/hitbox.js)
 function hitRemote(e, o, d, maxT) {
-  const c = e.crouch, p = e.pos;
-  const legTop = lerp(0.86, 0.43, c), torsoTop = lerp(1.47, 1.0, c), headY0 = lerp(1.61, 1.14, c), hipY = lerp(0.86, 0.45, c);
-  const rx = Math.cos(e.yaw), rz = -Math.sin(e.yaw); // 오른쪽 방향
-  const body = leanShift(e, hipY, (legTop + torsoTop) / 2), head = leanShift(e, hipY, headY0);
-  const headY = headY0 - head.drop;
-  let best = null;
-  let cx = p.x, cz = p.z;
-  const set = (hw, y0, y1) => { hbox.minX = cx - hw; hbox.maxX = cx + hw; hbox.minZ = cz - hw; hbox.maxZ = cz + hw; hbox.minY = p.y + y0; hbox.maxY = p.y + y1; };
-  set(0.2, 0, legTop);
-  let h = rayBox(o, d, hbox, maxT);
-  if (h) best = { t: h.t, part: 'leg' };
-  cx = p.x + rx * body.side; cz = p.z + rz * body.side; // 몸통은 기운 만큼 옆으로
-  set(0.25, legTop, torsoTop - body.drop);
-  h = rayBox(o, d, hbox, best ? best.t : maxT);
-  if (h) best = { t: h.t, part: 'body' };
-  // 머리 (구)
-  const ox = o.x - (p.x + rx * head.side), oy = o.y - (p.y + headY), oz = o.z - (p.z + rz * head.side), r = 0.15;
-  const b = ox * d.x + oy * d.y + oz * d.z, cc = ox * ox + oy * oy + oz * oz - r * r, disc = b * b - cc;
-  if (disc >= 0) {
-    const t = -b - Math.sqrt(disc);
-    if (t > 0 && t < (best ? best.t : maxT)) best = { t, part: 'head' };
-  }
-  return best;
+  return hitPose({ x: e.pos.x, y: e.pos.y, z: e.pos.z, crouch: e.crouch, yaw: e.yaw, lean: e.lean }, o, d, maxT);
 }
 
 // ───── 매 프레임 갱신 ─────
@@ -182,7 +155,7 @@ export function updateRemotes(dt) {
       s.aim.rotation.x = lerp(s.aim.rotation.x, 0.9, k);
     }
     // 이름표: 머리 바로 위. 멀어질수록 크게 그려서 멀리서도 읽을 수 있다 (가까이서는 원래 크기)
-    const tagLean = leanShift(e, lerp(0.86, 0.45, c), lerp(1.85, 1.4, c)).side;
+    const tagLean = leanShift(e.lean, lerp(0.86, 0.45, c), lerp(1.85, 1.4, c)).side;
     rig.bar.position.set(e.pos.x + Math.cos(e.yaw) * tagLean, e.pos.y + lerp(1.85, 1.4, c), e.pos.z - Math.sin(e.yaw) * tagLean);
     const f = Math.min(3.4, Math.max(1, dist / 14)), w = 0.75 * f;
     rig.bar.scale.set(w, w * TAG_H / TAG_W, 1);

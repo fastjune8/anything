@@ -18,6 +18,8 @@ export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'
 export const STARTED_AT = Date.now();
 
 export const TICK_MS = 50; // 방 업데이트 주기 (봇 AI, 체력 회복)
+// 명중 신고 확인(랙 보정). 라이브는 항상 켜짐. 점수·규칙만 보는 서버 테스트는 HIT_CHECK=off 로 끈다 (아무 데서나 쏜 신고로 킬을 만들기 위해)
+export const HIT_CHECK = APP_ENV === 'prod' || process.env.HIT_CHECK !== 'off';
 
 // 아래는 테스트에서 시간을 줄이려고 환경변수로 바꿀 수 있다
 export const goalFor = cfg => Number(process.env.GOAL) || cfg.goal;

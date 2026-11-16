@@ -18,7 +18,7 @@ const browser = await chromium.launch({
 });
 const servers = [];
 async function openPage(env, query = '') {
-  const srv = await startServer(env); servers.push(srv);
+  const srv = await startServer({ HIT_CHECK: 'on', ...env }); servers.push(srv); // 실제로 쏘는 테스트: 랙 보정 확인을 켠다
   const page = await browser.newPage({ viewport: { width: 1000, height: 560 } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -224,7 +224,14 @@ try {
       await sleep(3200); // 스폰 무적이 끝날 때까지
       dummy.send({ t: 'chat', text: 'x' });
       const hitter = connect(srv.port, 'hitter'); await hitter.open; await hitter.waitFor('welcome'); await sleep(3300);
-      hitter.send({ t: 'hit', w: 6, hits: [['body', 5, dummy.me]] }); hitter.send({ t: 'hit', w: 6, hits: [['body', 5, dummy.me]] });
+      hitter.send({ t: 'tp', p: [16, 0, 10] }); await sleep(300); // 가짜 플레이어가 잘 보이는 곳에서 (사이에 벽 없음)
+      { // 실제로 몸을 겨눈 명중 신고 두 발 (서버가 랙 보정으로 확인한다)
+        const ds = [...hitter.msgs].reverse().find(m => m.t === 's' && m.id === dummy.me), eye = [16, 1.62, 10], tgt = [dummyPos[0], 1.2, dummyPos[2]];
+        const len = Math.hypot(tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]), d = [(tgt[0] - eye[0]) / len, (tgt[1] - eye[1]) / len, (tgt[2] - eye[2]) / len];
+        for (let k = 0; k < 2; k++) hitter.send({ t: 'hit', w: 6, o: eye, hits: [['body', len, dummy.me, ...d, ds ? ds.n : 0]] });
+        const got = await dummy.waitFor('dmg', m => m.to === dummy.me && m.from === hitter.me, 2000);
+        check(!!got, '(준비) 다른 사람이 가짜 플레이어를 맞혔다 (서버가 명중을 인정)');
+      }
       await sleep(500);
       const hurt = await page.evaluate(id => window.__g.remotes.get(id).hp, dummyId);
       await sleep(7500); // 5초 + 회복 몇 번
@@ -234,7 +241,13 @@ try {
     }
 
     // 부활: 자동 부활은 없고, 최소 시간이 지난 뒤 아무 키나 누르면 부활한다
-    dummy.send({ t: 'hit', w: 4, hits: [['head', 5, await page.evaluate(() => window.__g.me.id)]] });
+    { // 가짜 플레이어가 실제로 내 머리를 겨눈 명중 신고 (서버가 랙 보정으로 확인한다: 방향·위치·tick 번호)
+      const myId = await page.evaluate(() => window.__g.me.id);
+      const mine = [...dummy.msgs].reverse().find(m => m.t === 's' && m.id === myId);
+      const eye = [dummyPos[0], 1.62, dummyPos[2]], head = [mine.p[0], mine.p[1] + 1.61, mine.p[2]];
+      const len = Math.hypot(head[0] - eye[0], head[1] - eye[1], head[2] - eye[2]);
+      dummy.send({ t: 'hit', w: 4, o: eye, hits: [['head', len, myId, (head[0] - eye[0]) / len, (head[1] - eye[1]) / len, (head[2] - eye[2]) / len, mine.n]] });
+    }
     await page.waitForFunction(() => !window.__g.me.alive, null, { timeout: 4000 }).catch(() => {});
     check(!(await page.evaluate(() => window.__g.me.alive)), '(준비) 내가 죽었다');
     await sleep(4000);

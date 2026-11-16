@@ -34,7 +34,7 @@ function fire() {
     const wh = rayWorld(_o, _d, colliders);
     const eh = remoteHit(_o, _d, wh.t);
     let t = wh.t, n = wh.n;
-    if (eh) { t = eh.t; n = 6; hits.push([eh.part, Math.round(t * 10) / 10, eh.id]); }
+    if (eh) { t = eh.t; n = 6; hits.push([eh.part, Math.round(t * 10) / 10, eh.id, +_d.x.toFixed(5), +_d.y.toFixed(5), +_d.z.toFixed(5), eh.n]); } // 방향·시각 번호: 서버가 그때 그 자리로 되돌려 확인한다
     const end = _o.clone().addScaledVector(_d, t);
     impact(end, n);
     addTracer(_mz, end);
@@ -42,7 +42,7 @@ function fire() {
   }
   net.send({ t: 'shot', w: wp.cur, o: [+_mz.x.toFixed(2), +_mz.y.toFixed(2), +_mz.z.toFixed(2)], e: ends });
   if (hits.length) {
-    net.send({ t: 'hit', w: wp.cur, hits });
+    net.send({ t: 'hit', w: wp.cur, o: [+_o.x.toFixed(3), +_o.y.toFixed(3), +_o.z.toFixed(3)], hits }); // o: 쏜 눈 위치
     showHit(hits.some(h => h[0] === 'head'));
   }
   game.invUntil = 0; // 쏘면 스폰 무적 해제

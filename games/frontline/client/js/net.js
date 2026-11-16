@@ -101,7 +101,7 @@ function onMessage(m) {
     case 's': { // 다른 사람의 위치/시선
       const r = remotes.get(m.id);
       if (!r) break;
-      r.tpos.fromArray(m.p); r.tyaw = m.y; r.tpitch = m.x; r.crouchT = m.c ? 1 : 0; r.weapon = m.w | 0;
+      r.tpos.fromArray(m.p); r.tyaw = m.y; r.tpitch = m.x; r.crouchT = m.c ? 1 : 0; r.weapon = m.w | 0; r.n = m.n | 0; // n: 서버 시각 번호 (명중 신고에 붙여 보낸다 → 랙 보정)
       r.tlean = Math.max(-1, Math.min(1, Number(m.l) || 0));
       if (!r.hasPos) { r.hasPos = true; r.pos.copy(r.tpos); }
       break;

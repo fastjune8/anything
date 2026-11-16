@@ -26,7 +26,7 @@ export const failed = () => failures;
 export async function startServer(extraEnv = {}) {
   const port = 3200 + Math.floor(Math.random() * 700);
   const child = spawn(process.execPath, ['server/index.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', HIT_CHECK: 'off', ...extraEnv } /* 서버 규칙 테스트는 아무 데서나 쏜 신고로 킬을 만든다. 실제 사격을 보는 테스트는 HIT_CHECK: 'on' */, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
   child.stdout.on('data', d => { log += d; });

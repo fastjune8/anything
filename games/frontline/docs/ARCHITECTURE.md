@@ -14,6 +14,7 @@ games/frontline/
 │   ├── room.js             방 하나: 입장/퇴장, 봇 채우기, 스폰, 피해·킬, 경기 진행, 채팅
 │   ├── chat.js             채팅 규칙 (글자 정리, 도배 방지)       ← 순수 함수
 │   ├── combat.js           명중 신고 검증·피해 합산 (거리는 서버 위치로)  ← 순수 함수
+│   ├── lagcomp.js          랙 보정: 2초 자세 기록, 명중 신고를 그 순간으로 되돌려 확인 (방향·벽·쏜 위치·부위)
 │   ├── motion.js           서버 권한 이동 (M1): 입력 → shared/movement.js → 위치. 속도 핵 방지, 본인/다른 사람에게 보낼 상태
 │   ├── devtools.js         스튜디오용 API: 맵·총 모델·데이터 저장, 시험 플레이용 임시 맵 (개발 서버에서만)
 │   ├── modes/              모드 규칙: 점수·승리·봇 목표 (index.js 에 규칙 객체가 갖출 것 설명)
@@ -34,6 +35,7 @@ games/frontline/
 │   │   └── format.js       콘텐츠 JSON 저장 형식 (한 항목 = 한 줄)
 │   ├── collision.js        광선-박스 충돌
 │   ├── vault.js            낮은 구조물 넘어가기/오르기 경로 계산 (findVault)
+│   ├── hitbox.js           사람 몸 명중 판정 모양 (브라우저 판정과 서버 랙 보정이 같이 씀)
 │   └── maps/
 │       ├── index.js        맵 목록(content/maps), getMap(id)
 │       ├── build.js        맵 데이터의 물체 목록 → 박스·나무·충돌 박스 (회전·대칭 포함)

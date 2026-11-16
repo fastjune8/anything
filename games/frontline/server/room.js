@@ -11,7 +11,8 @@ import { sanitizeChat, allowChat } from './chat.js';
 import { resolveHits } from './combat.js';
 import { createRules } from './modes/index.js';
 import { resetMotion, selfState, publicState } from './motion.js';
-import { PORT, TICK_MS, MATCH_MS, RESTART_MS, goalFor, botFillFor, lanAddresses } from './config.js';
+import { recordHistory, verifyHit } from './lagcomp.js';
+import { PORT, TICK_MS, MATCH_MS, RESTART_MS, HIT_CHECK, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
 const SAFE_SPAWN_DIST = 25; // 이 거리(m) 안에 적이 있는 스폰 지점은 피한다
@@ -38,6 +39,7 @@ export class Room {
     this.endsAt = Date.now() + this.matchMs;
     this.restartTimer = null;
     this.regenAcc = 0;
+    this.tickN = 0; // tick 번호 (랙 보정: 위치 기록과 명중 신고가 같은 번호로 맞춰진다)
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
@@ -192,7 +194,8 @@ export class Room {
   // 사람이 보낸 명중 신호
   onHit(p, m) {
     if (this.state !== 'playing' || !p.alive) return;
-    const result = resolveHits(this.players, p, m);
+    const verify = HIT_CHECK ? (victim, h, claimed) => verifyHit(this, p, victim, m.o, [h[3], h[4], h[5]], h[6], claimed) : null;
+    const result = resolveHits(this.players, p, m, verify);
     if (!result) return;
     for (const { victim, dmg, head } of result.damages) this.applyDamage(p, victim, result.wi, dmg, head);
   }
@@ -231,6 +234,7 @@ export class Room {
   tick() {
     if (this.state !== 'playing') return;
     const dt = TICK_MS / 1000, now = Date.now();
+    this.tickN++;
     if (now >= this.endsAt) { this.endMatch(); return; }
 
     for (const p of this.players.values()) {
@@ -238,15 +242,16 @@ export class Room {
       if (this.state !== 'playing') return;
       p.bot.update(dt);
       if (p.alive) {
-        this.broadcast({ t: 's', id: p.id, p: [r2(p.pos[0]), 0, r2(p.pos[2])], y: +p.bot.yaw.toFixed(3), x: +p.bot.pitch.toFixed(3), c: 0, w: p.bot.weapon });
+        this.broadcast({ t: 's', id: p.id, p: [r2(p.pos[0]), 0, r2(p.pos[2])], y: +p.bot.yaw.toFixed(3), x: +p.bot.pitch.toFixed(3), c: 0, w: p.bot.weapon, n: this.tickN });
       }
     }
+    recordHistory(this); // 랙 보정용: 이번 tick 의 모든 자세
     // 사람: 서버가 계산한 위치를 본인(전체 상태)과 다른 사람(위치·시선)에게
     for (const p of this.players.values()) {
       if (p.bot || !p.ms || !p.msDirty) continue;
       p.msDirty = false;
       this.sendTo(p, selfState(p));
-      if (p.alive) this.broadcast(publicState(p), p);
+      if (p.alive) this.broadcast({ ...publicState(p), n: this.tickN }, p);
     }
     if (this.state !== 'playing') return;
     if (this.rules.tick(dt)) { this.endMatch(); return; } // 모드 규칙 (예: 점령전 거점 점수)
