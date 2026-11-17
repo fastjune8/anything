@@ -12,7 +12,11 @@ const loader = new GLTFLoader();
 await Promise.all(WEAPONS.filter(w => w.model).map(async w => {
   const reg = registry.find(m => m.id === w.model);
   if (!reg) return;
-  try { loaded.set(w.id, (await loader.loadAsync(`/content/${reg.file}`)).scene); }
+  try {
+    const gltf = await loader.loadAsync(`/content/${reg.file}`);
+    gltf.scene.animations = gltf.animations; // 모션 클립(재장전 등)도 같이 둔다 → 복제할 때 따라간다
+    loaded.set(w.id, gltf.scene);
+  }
   catch (e) { console.warn(`총 모델을 불러오지 못해 코드로 만든 총을 씁니다: ${reg.file}`, e); }
 }));
 

@@ -207,11 +207,14 @@ export function setGunParts(gun, parts = {}) {
 }
 
 // 1인칭 팔 (손 위치: spec.gripZ/gripY = 오른손, supportZ/supportY = 왼손)
+// 반환: 왼팔 그룹 (모션 클립의 anim_hand_l 을 따라 움직일 수 있게 따로 묶는다)
 export function attachArms(group, spec) {
-  const gy = spec.gripY ?? -0.085;
+  const gy = spec.gripY ?? -0.085, armL = new THREE.Group();
+  group.add(armL);
   limb(group, [0.005, gy, spec.gripZ], [0.13, gy - 0.215, spec.gripZ + 0.42], 0.075);
-  if (spec.pistol) limb(group, [-0.02, (spec.supportY ?? -0.09), spec.supportZ], [-0.22, -0.3, 0.42], 0.075);
-  else limb(group, [-0.005, spec.supportY ?? -0.05, spec.supportZ], [-0.24, -0.3, spec.supportZ + 0.4], 0.075);
+  if (spec.pistol) limb(armL, [-0.02, (spec.supportY ?? -0.09), spec.supportZ], [-0.22, -0.3, 0.42], 0.075);
+  else limb(armL, [-0.005, spec.supportY ?? -0.05, spec.supportZ], [-0.24, -0.3, spec.supportZ + 0.4], 0.075);
+  return armL;
 }
 
 // 총 모델 그룹 + 기준점(spec) → 파츠를 달 수 있는 총 객체. 코드로 만든 총과 Blender 모델(gunmodel.js)이 같이 쓴다
@@ -229,9 +232,13 @@ function buildFromModel(src, modelId, withArms, parts, detail) {
   group.add(root); group.updateMatrixWorld(true);
   const spec = gunSpec(group);
   if (!spec) return null;
-  if (withArms) attachArms(group, spec);
+  const armL = withArms ? attachArms(group, spec) : null;
   const gun = wrapGun(group, spec, parts, detail);
   gun.model = modelId; // 어떤 모델로 만들었는지 (확인·테스트용)
+  // 모션 클립 (Blender 에서 만든 재장전 등, docs/GUN_MODELING.md 11). anim_hand_l = 왼손 목표
+  gun.animRoot = root; gun.clips = root.animations || []; gun.armL = armL;
+  root.traverse(o => { if (!gun.handTarget && /^anim_hand_l/i.test(o.name)) gun.handTarget = o; });
+  if (gun.handTarget) gun.handRest = gun.handTarget.position.clone();
   return gun;
 }
 
@@ -243,8 +250,10 @@ export function buildGun(id, withArms, parts, detail = true) {
   if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts, detail); if (g) return g; }
   const group = new THREE.Group();
   const spec = (BUILD[id] || BUILD.ar)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
-  if (withArms) attachArms(group, spec);
-  return wrapGun(group, spec, parts, detail);
+  const armL = withArms ? attachArms(group, spec) : null;
+  const gun = wrapGun(group, spec, parts, detail);
+  gun.armL = armL;
+  return gun;
 }
 
 // ───────── 3인칭 병사 모델 ─────────
