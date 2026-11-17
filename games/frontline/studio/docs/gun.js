@@ -8,15 +8,15 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
-import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/gunmodel.js';
+import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/modelrules.js';
 import { sampleGunGlb } from '../samplegun.js';
 import { attachClips, poseClip, reloadMotion } from '/js/gunanim.js';
 import { dressGun, gunMats, setGunMats, setGunFx, useGunMaterials, LAYERS } from '/js/gunmat.js';
 import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
+import { html, saveContent } from '../util.js';
 
 const VM_FOV = 52; // 게임의 1인칭 총 카메라와 같은 시야각
 const hex = n => '#' + n.toString(16).padStart(6, '0');
-function html(tag, cls, inner) { const e = document.createElement(tag); if (cls) e.className = cls; if (inner) e.innerHTML = inner; return e; }
 let envTex = null; // 반사용 환경 (모든 총 문서가 같이 쓴다)
 
 export async function createGunDoc(ctx, id, opts = {}) {
@@ -286,7 +286,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
   }
   renderMatTable();
   r('matSave').addEventListener('click', async () => {
-    const out = await fetch('/api/content/gunmaterials', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gunMats()) }).then(x => x.json()).catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    const out = await saveContent('gunmaterials', gunMats());
     if (!out.ok) { ctx.log(`질감 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('질감 저장 실패'); return; }
     matSaved = JSON.stringify(gunMats()); r('matSave').disabled = true;
     ctx.log('질감 저장: content/gunmaterials.json — 모든 총(게임 포함)에 적용됩니다', 'ok'); ctx.flash('질감을 저장했습니다');

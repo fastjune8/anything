@@ -18,7 +18,7 @@ export function recordHistory(room) {
   for (const p of room.players.values()) {
     if (!p.alive || !p.pos) continue;
     const h = p.hist || (p.hist = []);
-    h.push({ n, x: p.pos[0], y: p.pos[1], z: p.pos[2], crouch: p.crouch ? 1 : 0, yaw: p.bot ? p.bot.yaw : p.yaw || 0, lean: p.lean || 0 });
+    h.push({ n, x: p.pos[0], y: p.pos[1], z: p.pos[2], crouch: p.crouch ? 1 : 0 });
     if (h.length > HISTORY) h.shift();
   }
 }
@@ -26,7 +26,7 @@ export function recordHistory(room) {
 // tick n 의 자세 (없으면 가장 가까운 것)
 export function poseAt(p, n) {
   const h = p.hist;
-  if (!h || !h.length) return p.pos ? { x: p.pos[0], y: p.pos[1], z: p.pos[2], crouch: p.crouch ? 1 : 0, yaw: p.yaw || 0, lean: p.lean || 0 } : null;
+  if (!h || !h.length) return p.pos ? { x: p.pos[0], y: p.pos[1], z: p.pos[2], crouch: p.crouch ? 1 : 0 } : null;
   if (n >= h[h.length - 1].n) return h[h.length - 1];
   if (n <= h[0].n) return h[0];
   for (let i = h.length - 1; i >= 0; i--) if (h[i].n <= n) return h[i];

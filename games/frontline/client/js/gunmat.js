@@ -8,7 +8,7 @@
 //   총마다 재질을 복제해 갖는다 → 효과(과열로 달아오름, 충전으로 빛남)가 그 총에만 걸린다. setGunFx(gun, { heat, charge })
 import * as THREE from 'three';
 import data from '/content/gunmaterials.json' with { type: 'json' };
-import { slotOf } from './gunmodel.js';
+import { slotOf } from './modelrules.js';
 
 let MATS = data;
 export const gunMats = () => MATS;

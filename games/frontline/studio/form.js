@@ -2,8 +2,8 @@
 // buildForm(부모, 정의(obj), 값 객체, { onInput, onCommit, skip })
 //  - 입력하는 동안 값 객체를 바로 고치고 onInput() (화면 미리보기), 입력이 끝나면 onCommit() (되돌리기 기록)
 //  - 목록(문·창문 등)은 항목 추가/삭제 후 폼을 다시 그린다 (onCommit 이 다시 그리기를 맡는다)
+import { el } from './util.js';
 
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const round = v => Math.round(v * 1000) / 1000;
 
 // 기본값: 목록에 새 항목을 더할 때

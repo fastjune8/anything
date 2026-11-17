@@ -1,7 +1,7 @@
 // 입력 양식 창: 정해진 칸을 모두 올바르게 채워야 "만들기" 가 눌린다. 반환: 입력값 객체 또는 null(취소)
 //   fields: [{ key, label, type: 'text' | 'select', options: [[값, 표시]], value, required, pattern, hint }]
 //   validate(values) → 오류 문장 (없으면 null). 칸마다 형식 검사 뒤에 한 번 더 부른다 (예: id 중복)
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+import { el } from './util.js';
 
 export function formDialog({ title, lead, fields, validate, ok = '만들기' }) {
   return new Promise(resolve => {

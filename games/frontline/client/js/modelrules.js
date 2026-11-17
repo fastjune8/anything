@@ -1,4 +1,4 @@
-// Blender 로 만든 총 모델(.glb) 읽기: 이름 규칙(docs/GUN_MODELING.md)에 맞춰 부착 지점·부품·색 칸을 찾고,
+// 모델 규칙 (총·근접 무기 .glb): 이름 규칙(docs/GUN_MODELING.md)에 맞춰 부착 지점·부품·색 칸을 찾고,
 // 게임의 총 기준점(spec, guns.js 의 BUILD 가 돌려주는 것과 같은 모양)으로 바꾼다. 규칙 검사도 여기서 한다.
 //   축: glTF 로 내보내면 Blender 의 +Y(앞)가 -Z, +Z(위)가 +Y 가 된다 → 게임과 같은 방향 (총구 = -Z, 위 = +Y, 오른쪽 = +X)
 import * as THREE from 'three';

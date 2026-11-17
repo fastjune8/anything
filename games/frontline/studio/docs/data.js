@@ -1,12 +1,13 @@
 // 게임 데이터 문서: content/weapons.json · parts.json · modes.json · skills.json 을 표와 입력 칸으로 고친다.
 // 가운데 = 목록과 비교 표 (고치는 대로 바로 다시 계산), 오른쪽 = 고른 항목의 입력 칸 (스키마로 자동 생성).
 // 저장하면 개발 서버가 다시 시작되어 게임에 반영된다.
-import { WEAPON_SCHEMA, PART_SCHEMA, MODE_SCHEMA, SKILL_SCHEMA, SKILL_EFFECTS, RULES, checkWeapons, checkParts, checkModes, checkSkills } from '/shared/content/schema.js';
+import { WEAPON_SCHEMA, PART_SCHEMA, MODE_SCHEMA, SKILL_SCHEMA, SKILL_EFFECTS, BUILTIN_GUNS } from '/shared/content/schema.js';
+import { CONTENT } from '/shared/content/registry.js';
 import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
 import { buildForm } from '../form.js';
 import { formDialog } from '../dialog.js';
-import { BUILTIN_GUNS } from '/shared/content/schema.js';
+import { el, saveContent } from '../util.js';
 
 export const DATA_DOCS = [
   { id: 'weapons', title: '무기', file: 'weapons.json' },
@@ -15,7 +16,6 @@ export const DATA_DOCS = [
   { id: 'skills', title: '스킬', file: 'skills.json' },
 ];
 const ICONS = { weapons: '✦', parts: '⚙', modes: '⚑', skills: '⚡' };
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const fmt = (v, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 
 // 몸통만 맞혀 100 체력을 깎는 데 걸리는 시간 (ms). 산탄총은 모든 산탄이 맞았다고 본다
@@ -77,9 +77,8 @@ export async function createDataDoc(ctx, id) {
   const list = () => (id === 'parts' ? data.parts[slot] : data);
   const schema = () => (id === 'weapons' ? WEAPON_SCHEMA : id === 'parts' ? PART_SCHEMA : id === 'skills' ? SKILL_SCHEMA : MODE_SCHEMA);
   const item = () => list()[cur];
-  const check = () => (id === 'weapons' ? checkWeapons(data, ctx.registry().map(m => m.id), skillIds()) : id === 'parts' ? checkParts(data, ctx.weaponIds()) : id === 'skills' ? checkSkills(data).concat(skillUsers()) : checkModes(data, ctx.assets().maps).concat(data.filter(m => !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙`)));
-  // 스킬을 지우거나 id 를 바꾸면 그 스킬을 쓰던 무기가 깨진다 → 오류로 알린다
-  const skillUsers = () => ctx.weapons().flatMap(w => ['primary', 'secondary'].flatMap(k => ((w.skills && w.skills[k]) || []).filter(s => !data.some(x => x.id === s)).map(s => `무기 ${w.name}: 없는 스킬 "${s}" 을 쓰고 있다 (무기 데이터에서 빼거나 스킬을 되돌리세요)`)));
+  // 검사: 서버 저장과 같은 검사 (shared/content/registry.js). 참고 = 다른 데이터의 지금 값 (열려 있는 문서가 고치는 중인 값 포함)
+  const check = () => CONTENT[id].check(data, { models: ctx.registry().map(m => m.id), skills: skillIds(), weapons: id === 'weapons' ? data : ctx.weapons(), maps: ctx.assets().maps });
 
   const isDirty = () => JSON.stringify(data) !== saved;
   function commit() {
@@ -236,8 +235,7 @@ export async function createDataDoc(ctx, id) {
   async function save() {
     errors = check();
     if (errors.length) { ctx.flash('검사 오류가 있어 저장할 수 없습니다'); ctx.log(`저장 실패 (${info.file}): ${errors[0]}`, 'error'); return false; }
-    const res2 = await fetch(`/api/content/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-    const out = await res2.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    const out = await saveContent(id, data);
     if (!out.ok) { ctx.flash('저장 실패'); ctx.log(`저장 실패 (${info.file}): ${(out.errors || []).join(' / ')}`, 'error'); return false; }
     saved = JSON.stringify(data); render(); ctx.changed();
     ctx.log(`저장: content/${info.file} — 개발 서버가 다시 시작되어 게임에 반영됩니다`, 'ok'); ctx.flash('저장했습니다');

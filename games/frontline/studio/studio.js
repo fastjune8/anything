@@ -13,9 +13,9 @@ import { createHome, EDITORS } from './home.js';
 import { createHelp } from './help.js';
 import { createTour } from './tour.js';
 import { initSplitters } from './split.js';
+import { el } from './util.js';
 
 const $ = id => document.getElementById(id);
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
 // ───────── 화면 (모든 3D 편집기가 같이 쓴다) ─────────
 const canvas = $('view');

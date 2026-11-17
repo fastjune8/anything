@@ -321,7 +321,7 @@ try {
     await page.evaluate(k => window.__studio.activate(k), prev);
   }
   const melee = await page.evaluate(async () => { // 근접 무기(칼): socket_hand_r + socket_tip, 날 끝이 앞(-Z)
-    const THREE = await import('three'), gm = await import('/js/gunmodel.js');
+    const THREE = await import('three'), gm = await import('/js/modelrules.js');
     const build = flip => {
       const root = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ name: 'metal' }), dark = new THREE.MeshStandardMaterial({ name: 'dark' });
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.03, 0.2), mat); blade.position.z = flip ? 0.12 : -0.12; root.add(blade);

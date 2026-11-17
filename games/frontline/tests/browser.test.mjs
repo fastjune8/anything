@@ -142,9 +142,9 @@ try {
     // 스킬: Q = 주무기(기본 돌격소총)에 고른 스킬 (처음엔 첫 번째 = 아드레날린), E = 보조무기(M9, 스킬 없음). 기울이기는 없어졌다
     dummy.msgs.length = 0;
     await page.keyboard.press('KeyQ');
-    const adr = await page.evaluate(() => ({ t: window.__g.skills.adrenT, cd: window.__g.skills.cd[0], lean: window.__g.me.leanOff || 0 }));
+    const adr = await page.evaluate(() => ({ t: window.__g.skills.adrenT, cd: window.__g.skills.cd[0] }));
     const sentSk = await dummy.waitFor('sk', m => m.e === 'adrenaline', 2000);
-    check(adr.t > 2 && adr.cd > 10 && !adr.lean, 'Q 를 누르면 주무기 스킬(아드레날린)이 발동하고 쿨타임이 걸린다 (기울이지 않는다)', JSON.stringify(adr));
+    check(adr.t > 2 && adr.cd > 10, 'Q 를 누르면 주무기 스킬(아드레날린)이 발동하고 쿨타임이 걸린다', JSON.stringify(adr));
     check(!!sentSk, '아드레날린을 쓰면 서버가 확인하고 다른 사람에게 알린다');
     await page.keyboard.press('KeyE');
     check((await page.textContent('#skills .sk[data-n="1"]')).includes('스킬 없음'), 'E(보조무기 M9)는 스킬이 없다고 보인다');

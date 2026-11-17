@@ -9,6 +9,7 @@ import { OBJECT_SCHEMAS, objectSpec, ZONE, checkMap, MATERIALS } from '/shared/c
 import { MODES } from '/shared/modes.js';
 import { buildForm } from '../form.js';
 import { formDialog } from '../dialog.js';
+import { html, saveContent } from '../util.js';
 
 const r2 = v => Math.round(v * 100) / 100;
 const TEAM_COLOR = { '-1': 0xe9ecef, 0: 0x5aa9ff, 1: 0xff4b3a };
@@ -17,7 +18,6 @@ const mapFields = looks => ({ fields: { name: { kind: 'str', label: '이름' }, 
   look: { kind: 'enum', label: '분위기 (빛·재질)', options: looks.map(l => l.id), optional: true, hint: looks.map(l => `${l.id} = ${l.name}`).join(' · ') + ' (비우면 첫 번째) — 분위기 에디터에서 고친다' } } });
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
-function html(tag, cls, inner) { const e = document.createElement(tag); if (cls) e.className = cls; if (inner) e.innerHTML = inner; return e; }
 export class Cancelled extends Error {}
 
 // 새 맵 기본 내용: 외곽 벽 4개, 스폰, 가운데 거점
@@ -458,8 +458,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
     if (await savePrefabs([...prefabs, { id: v.id, name: v.name, objects: rel }])) ctx.log(`프리팹 저장: ${v.name} (${v.id}, 물체 ${rel.length}개) — 팔레트의 "프리팹" 에서 찍을 수 있습니다`, 'ok');
   }
   async function savePrefabs(next) {
-    const res = await fetch('/api/content/prefabs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
-    const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    const out = await saveContent('prefabs', next);
     if (!out.ok) { ctx.log(`프리팹 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('프리팹 저장 실패'); return false; }
     prefabs = next; renderPrefabs(); return true;
   }

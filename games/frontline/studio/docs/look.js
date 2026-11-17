@@ -10,9 +10,8 @@ import { buildLayout, expandObject } from '/shared/maps/build.js';
 import { LOOK_SCHEMA, LOOK_MATERIALS, checkLooks } from '/shared/content/schema.js';
 import { buildForm } from '../form.js';
 import { formDialog } from '../dialog.js';
+import { el, clone, saveContent } from '../util.js';
 
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-const clone = v => JSON.parse(JSON.stringify(v));
 export const MAT_NAMES = { ground: '땅', concrete: '콘크리트', concreteDark: '어두운 콘크리트', brick: '벽돌', container: '컨테이너', crate: '상자', wood: '나무판', sandbag: '모래주머니', metal: '금속', barrel: '드럼통' };
 const MAT_SPEC = LOOK_SCHEMA.fields.materials.of;
 
@@ -200,8 +199,7 @@ export async function createLookDoc(ctx) {
   async function save() {
     errors = check();
     if (errors.length) { ctx.flash('검사 오류가 있어 저장할 수 없습니다'); ctx.log(`저장 실패 (looks.json): ${errors[0]}`, 'error'); return false; }
-    const out = await fetch('/api/content/looks', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-      .then(x => x.json()).catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    const out = await saveContent('looks', data);
     if (!out.ok) { ctx.flash('저장 실패'); ctx.log(`저장 실패 (looks.json): ${(out.errors || []).join(' / ')}`, 'error'); return false; }
     saved = JSON.stringify(data); status(); ctx.changed();
     for (const d of ctx.docs().values()) if (d !== doc && d.setLooks) d.setLooks(clone(data)); // 열린 맵 에디터에 바로 반영

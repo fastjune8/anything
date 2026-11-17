@@ -3,8 +3,8 @@
 import { buildLayout } from '/shared/maps/build.js';
 import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
+import { el } from './util.js';
 
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const $ = id => document.getElementById(id);
 
 // 편집기 종류 (새 편집기는 여기에 더한다. soon = 아직 없음)

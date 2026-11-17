@@ -1,7 +1,6 @@
 // 봇 전투 AI: 시야 판단 → 이동 → 조준 → 사격 (서버 전용)
 import { rayWorld } from '../../shared/collision.js';
 import { WEAPONS, calcDamage } from '../../shared/weapons.js';
-import { LEAN_DIST } from '../../shared/constants.js';
 
 // ───────── 봇 AI ─────────
 const EYE = 1.55;
@@ -76,16 +75,11 @@ export class Bot {
     const r = rayWorld({ x: this.x, y: EYE, z: this.z }, { x: dx / dist, y: dy / dist, z: dz / dist }, this.nav.COLLIDERS, dist);
     return r.t >= dist - 0.1;
   }
-  // 상대의 보이는 지점 (몸 가운데, 아니면 기울여 내민 머리 쪽). 안 보이면 null
+  // 상대의 보이는 지점 (몸 가운데, 아니면 머리). 안 보이면 null
   visiblePoint(o) {
     const tp = o.pos, cy = o.crouch ? 0.85 : 1.2;
-    const center = [tp[0], tp[1] + cy, tp[2]];
-    if (this.canSee(center)) return center;
-    const l = o.lean || 0;
-    if (Math.abs(l) < 0.2) return null;
-    const off = l * LEAN_DIST * 0.85, yaw = o.yaw || 0;
-    const peek = [tp[0] + Math.cos(yaw) * off, tp[1] + cy + 0.18, tp[2] - Math.sin(yaw) * off];
-    return this.canSee(peek) ? peek : null;
+    for (const p of [[tp[0], tp[1] + cy, tp[2]], [tp[0], tp[1] + cy + 0.4, tp[2]]]) if (this.canSee(p)) return p; // 엄폐물 위로 머리만 보일 때도
+    return null;
   }
 
   // 밀어내기에 맞음: knock 동안 밀려나며 아무것도 못 한다 (사람은 이동 상태, 봇은 여기서)

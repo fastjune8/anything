@@ -2,7 +2,7 @@
 // 조준경·총구 장치·앞 손잡이는 Blender 파츠 모델(content/parts/<id>.glb, partmodels.js)이 있으면 그것을 쓴다.
 import * as THREE from 'three';
 import { modelFor, modelIdFor } from './gunmodels.js';
-import { gunSpec } from './gunmodel.js';
+import { gunSpec } from './modelrules.js';
 import { dressGun, dressGunLite, dressMaterial } from './gunmat.js';
 import { attachClips } from './gunanim.js';
 import { partModel } from './partmodels.js';
@@ -56,21 +56,6 @@ const BUILD = {
     const irons = [...rearSight(g, 0.05, 0.08), bx(g, 0.004, 0.022, 0.004, 0, 0.051, -0.29, M.steel)];
     const mag = bx(g, 0.028, 0.15, 0.055, 0, -0.115, -0.04, M.steel, -0.12);
     return { mag, stock, irons, muzzleZ: -0.57, sightY: 0.058, hip: [0.19, -0.19, -0.42], adsZ: -0.2, gripZ: 0.07, supportZ: -0.24, optic: [0.04, 0], barrelY: 0, grip: [-0.0275, -0.24] };
-  },
-  ak(g) {
-    bx(g, 0.045, 0.07, 0.24, 0, -0.01, 0, M.steel);
-    bx(g, 0.04, 0.02, 0.2, 0, 0.033, 0.0, M.steel);
-    bx(g, 0.048, 0.05, 0.16, 0, -0.005, -0.2, M.wood);
-    bx(g, 0.035, 0.022, 0.14, 0, 0.032, -0.2, M.wood);
-    cy(g, 0.009, 0.3, 0, 0, -0.42, M.steel); cy(g, 0.007, 0.2, 0, 0.028, -0.32, M.steel);
-    bx(g, 0.02, 0.03, 0.02, 0, 0.018, -0.53, M.steel);
-    const irons = [bx(g, 0.004, 0.03, 0.004, 0, 0.045, -0.53, M.steel), ...rearSight(g, 0.052, -0.1)];
-    const stock = bx(g, 0.04, 0.09, 0.24, 0, -0.035, 0.25, M.wood, -0.1);
-    bx(g, 0.035, 0.09, 0.04, 0, -0.085, 0.08, M.wood, 0.3);
-    const mag = new THREE.Group(); g.add(mag);
-    bx(mag, 0.028, 0.1, 0.06, 0, -0.09, -0.05, M.steel, -0.2);
-    bx(mag, 0.028, 0.09, 0.058, 0, -0.165, -0.085, M.steel, -0.5);
-    return { mag, stock, irons, muzzleZ: -0.58, sightY: 0.058, hip: [0.19, -0.19, -0.42], adsZ: -0.16, gripZ: 0.08, supportZ: -0.2, optic: [0.043, 0.02], barrelY: 0, grip: [-0.03, -0.2] };
   },
   mp5(g) {
     bx(g, 0.045, 0.06, 0.26, 0, -0.005, 0, M.steel);
@@ -218,7 +203,7 @@ export function attachArms(group, spec) {
   return armL;
 }
 
-// 총 모델 그룹 + 기준점(spec) → 파츠를 달 수 있는 총 객체. 코드로 만든 총과 Blender 모델(gunmodel.js)이 같이 쓴다
+// 총 모델 그룹 + 기준점(spec) → 파츠를 달 수 있는 총 객체. 코드로 만든 총과 Blender 모델(modelrules.js)이 같이 쓴다
 // detail = false: 질감 셰이더 없이 재질 값만 (다른 플레이어가 든 총 — 작게 보이고 수가 많다)
 export function wrapGun(group, spec, parts, detail = true) {
   const att = new THREE.Group(); group.add(att); // 파츠 모델이 들어가는 곳
