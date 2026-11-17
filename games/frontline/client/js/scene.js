@@ -1,5 +1,6 @@
 // 렌더러, 장면, 카메라, 1인칭 무기용 별도 장면
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildWorld } from './world.js';
 import { getMap } from '/shared/maps/index.js';
 import { getLook } from '/shared/looks.js';
@@ -31,9 +32,12 @@ export const vmSun = new THREE.DirectionalLight(0xfff0d8, 2.6);
 vmScene.add(vmSun);
 export const vm = new THREE.Group();
 vmScene.add(vm);
-// 손에 든 총도 맵 분위기의 빛을 받는다 (해 색, 그늘 색)
+// 손에 든 총도 맵 분위기의 빛을 받는다 (해 색, 그늘 색).
+// 반사 환경: 하늘만 비추면 금속이 밋밋하다 → 실내 조명 같은 환경(빛 상자들)을 반사시켜 금속·코팅이 반짝이게
+let vmEnv = null;
 function lightViewmodel(lk) {
-  vmScene.environment = scene.environment;
+  if (!vmEnv) vmEnv = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  vmScene.environment = vmEnv; vmScene.environmentIntensity = 0.55;
   vmSun.color.set(lk.sun.color);
   vmFill.color.set(lk.fill.sky); vmFill.groundColor.set(lk.fill.ground);
 }

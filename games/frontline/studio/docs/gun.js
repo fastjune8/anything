@@ -10,7 +10,7 @@ import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
 import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/gunmodel.js';
 import { sampleGunGlb } from '../samplegun.js';
-import { dressGun, gunMats, setGunMats, setGunFx } from '/js/gunmat.js';
+import { dressGun, gunMats, setGunMats, setGunFx, useGunMaterials, LAYERS } from '/js/gunmat.js';
 import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
 
 const VM_FOV = 52; // 게임의 1인칭 총 카메라와 같은 시야각
@@ -39,10 +39,15 @@ export async function createGunDoc(ctx, id, opts = {}) {
     + sec('크기 비교', '<select data-r="ghostSel" title="지금 게임의 총을 반투명으로 겹쳐 보기"><option value="">없음</option></select>')
     + sec('파츠 달아 보기', '<div data-r="partSels"></div>')
     + sec('스킨 (색 칸)', '<select data-r="skinSel"></select><div class="slots" data-r="slotList"></div>')
-    + sec('질감 (모든 총 공통)', `<label class="tog" title="Blender 에서 정점 색으로 구운 틈새 그림자"><input type="checkbox" data-r="showAo" checked> 정점 색 AO</label>
+    + sec('질감 비교', `<label class="tog" title="끄면 Blender 에서 나온 그대로 (엔진 질감 없이) — 켜고 끄며 비교"><input type="checkbox" data-r="engineMat" checked> 엔진 질감 <kbd>M</kbd></label>
+      <label class="tog" title="금속의 브러시 결, 폴리머의 오돌토돌함"><input type="checkbox" data-r="layGrain" checked> 미세 질감</label>
+      <label class="tog" title="각진 모서리의 칠이 벗겨져 금속이 보인다"><input type="checkbox" data-r="layWear" checked> 모서리 닳음</label>
+      <label class="tog" title="도장면의 맑은 반사층"><input type="checkbox" data-r="layCoat" checked> 광택 코팅</label>
+      <label class="tog" title="Blender 에서 정점 색으로 구운 틈새 그림자"><input type="checkbox" data-r="showAo" checked> 정점 색 AO</label>
+      <label class="kv">조명<select data-r="lightSel"><option value="studio">스튜디오</option><option value="game">게임 (1인칭)</option><option value="sun">밝은 햇빛</option><option value="dark">어두운 곳</option></select></label>
+      <button type="button" data-r="closeUp" title="질감이 잘 보이게 가까이 (다시 누르면 전체)">가까이 보기</button>
       <label class="kv" title="과열 스킬: 총열(metal 칸)이 달아오른다">효과 · 열<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxHeat"></label>
-      <label class="kv" title="차지 샷 충전·아드레날린: core 가 밝아진다">효과 · 충전<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxCharge"></label>
-      <div class="matTable" data-r="matTable"></div><button type="button" data-r="matSave" disabled title="content/gunmaterials.json — 모든 총에 적용">질감 저장</button>`)
+      <label class="kv" title="차지 샷 충전·아드레날린: core 가 밝아진다">효과 · 충전<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxCharge"></label>`)
     + '<p class="note">만드는 규칙: docs/GUN_MODELING.md · 조작법은 ? (F1)</p>');
   for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
   const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span></span><span class="grow"></span>
@@ -50,7 +55,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button></span>
     <span class="sep"></span><span class="grp"><span class="pill" data-r="regState"></span>
     <button type="button" data-r="register" title="검증을 통과해 저장한 모델을 게임 데이터로 등록 (무기에 연결)">데이터로 등록</button></span>`);
-  const inspector = html('div', '', '<h2>규칙 검사</h2><div class="checks" data-r="checks"></div><h2 class="sub2">부착 지점</h2><div class="socks" data-r="socks"></div>');
+  const inspector = html('div', '', '<h2>규칙 검사</h2><div class="checks" data-r="checks"></div><h2 class="sub2">부착 지점</h2><div class="socks" data-r="socks"></div><h2 class="sub2">질감 값 <small>(모든 총 공통)</small></h2><div class="matTable" data-r="matTable"></div><button type="button" data-r="matSave" disabled title="content/gunmaterials.json — 모든 총(게임 포함)에 적용">질감 저장</button>');
   const r = n => overlay.querySelector(`[data-r="${n}"]`) || tools.querySelector(`[data-r="${n}"]`) || toolbar.querySelector(`[data-r="${n}"]`) || inspector.querySelector(`[data-r="${n}"]`);
 
   // ───────── 3D ─────────
@@ -58,7 +63,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
   scene.background = new THREE.Color(0x4f7470);
   if (!envTex) envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environment = envTex; scene.environmentIntensity = 0.5;
-  scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x3a4a48, 1.2));
+  const hemi = new THREE.HemisphereLight(0xdfe8f0, 0x3a4a48, 1.2); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff2e0, 2.2); sun.position.set(-2, 3, 1.5); scene.add(sun);
   const camera = new THREE.PerspectiveCamera(35, 1, 0.005, 50);
   const controls = new OrbitControls(camera, canvas); controls.disconnect();
@@ -187,15 +192,34 @@ export async function createGunDoc(ctx, id, opts = {}) {
   let matSaved = JSON.stringify(gunMats());
   const fxNow = () => setGunFx(fxTarget, { heat: Number(r('fxHeat').value), charge: Number(r('fxCharge').value) });
   r('fxHeat').addEventListener('input', fxNow); r('fxCharge').addEventListener('input', fxNow);
-  r('showAo').addEventListener('change', () => root.traverse(o => { if (o.isMesh && o.geometry.attributes.color) for (const m of [].concat(o.material)) { m.vertexColors = r('showAo').checked; m.needsUpdate = true; } }));
+  const setAo = () => root.traverse(o => { if (o.isMesh && o.geometry.attributes.color) for (const m of [].concat(o.material)) { m.vertexColors = r('showAo').checked; m.needsUpdate = true; } });
+  r('showAo').addEventListener('change', setAo);
   const openGuns = () => [...ctx.docs().values()].filter(d => d.kind === 'gun' && d.api && d.api.fxTarget).map(d => d.api.fxTarget);
+  // 엔진 질감 켜고 끄기 (Blender 원본과 비교) · 층 켜고 끄기 (모든 열린 총에)
+  const setEngine = on => { r('engineMat').checked = on; useGunMaterials(fxTarget, on); setAo(); };
+  r('engineMat').addEventListener('change', () => setEngine(r('engineMat').checked));
+  for (const [id, k] of [['layGrain', 'grain'], ['layWear', 'wear'], ['layCoat', 'coat']]) r(id).addEventListener('change', () => { LAYERS[k] = r(id).checked; setGunMats(null, openGuns()); });
+  // 조명: 질감은 빛에 따라 달라 보인다 → 몇 가지 환경에서 확인
+  const LIGHTS = { studio: [0x4f7470, 0.5, 1.2, 2.2], game: [0x8fb3d6, 0.55, 1.0, 2.6], sun: [0xc9d7e2, 0.85, 1.4, 3.6], dark: [0x1b1f23, 0.22, 0.35, 1.1] };
+  r('lightSel').addEventListener('change', () => { const [bg, env, h, su] = LIGHTS[r('lightSel').value]; scene.background.setHex(bg); scene.environmentIntensity = env; hemi.intensity = h; sun.intensity = su; });
+  let close = false;
+  r('closeUp').addEventListener('click', () => { // 가까이: 손잡이·몸통 쪽 (모서리 닳음과 결이 잘 보이는 거리)
+    if (view !== 'orbit') setView('orbit');
+    close = !close;
+    const box = new THREE.Box3(); for (const m of scan.meshes) box.expandByObject(m);
+    const c = box.getCenter(new THREE.Vector3()), len = box.getSize(new THREE.Vector3()).length();
+    controls.target.copy(c);
+    camera.position.copy(c).add(close ? new THREE.Vector3(len * 0.55, len * 0.18, len * 0.3) : new THREE.Vector3(len * 1.25, len * 0.35, len * 0.35));
+    r('closeUp').textContent = close ? '전체 보기' : '가까이 보기';
+  });
   function renderMatTable() {
     const box = r('matTable'), d = gunMats(); box.replaceChildren();
-    const head = html('div', 'mrow mhead', '<span>색 칸</span><span>금속</span><span>거칠기</span><span>반사</span>'); box.appendChild(head);
+    const COLS = [['metal', '금속', 1], ['rough', '거칠기', 1], ['coat', '코팅', 1], ['grain', '결', 2], ['wear', '닳음', 1]];
+    const head = html('div', 'mrow mhead', `<span>색 칸</span>${COLS.map(([, l]) => `<span>${l}</span>`).join('')}`); box.appendChild(head);
     for (const slot of GUN_SLOTS) {
       const row = html('div', 'mrow'); row.appendChild(html('span', '', slot));
-      for (const k of ['metal', 'rough', 'env']) {
-        const i = document.createElement('input'); i.type = 'number'; i.step = 0.05; i.min = 0; i.max = k === 'env' ? 3 : 1; i.value = d.slots[slot][k]; i.dataset.slot = slot; i.dataset.k = k;
+      for (const [k, , max] of COLS) {
+        const i = document.createElement('input'); i.type = 'number'; i.step = 0.05; i.min = 0; i.max = max; i.value = d.slots[slot][k] ?? 0; i.dataset.slot = slot; i.dataset.k = k;
         i.addEventListener('input', () => {
           const v = Number(i.value); if (!Number.isFinite(v)) return;
           const next = JSON.parse(JSON.stringify(gunMats())); next.slots[slot][k] = v;
@@ -250,6 +274,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
 
   // ───────── 저장 ─────────
   const doc = { kind: 'gun', modelType: type, key: savedId ? `gun:${savedId}` : null, id: savedId || id, title: savedId || name.replace(/\.glb$/i, ''), icon: '⌐', is3D: true, overlay, tools, toolbar, inspector };
+  doc.onKeyDown = e => { if (e.code === 'KeyM' && !e.metaKey && !e.ctrlKey) setEngine(!r('engineMat').checked); }; // M = 엔진 질감 켜고 끄기 (비교)
   r('gunId').value = savedId || (id === 'sample' ? '' : name.replace(/\.glb$/i, '').toLowerCase().replace(/[^a-z0-9_]/g, '_'));
   r('fname').textContent = savedId ? `content/guns/${savedId}.glb` : name;
   const idOk = () => /^[a-z0-9_]+$/.test(r('gunId').value);

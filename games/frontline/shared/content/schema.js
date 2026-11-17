@@ -227,9 +227,12 @@ export const GUN_SLOTS = ['body', 'body2', 'dark', 'metal', 'accent', 'core'];
 const GUN_SLOT_MAT = obj('색 칸 재질', {
   metal: num('금속성 (0 = 비금속, 1 = 금속)', { min: 0, max: 1, step: 0.01 }), rough: num('거칠기 (0 = 매끈, 1 = 거침)', { min: 0, max: 1, step: 0.01 }),
   env: num('주변 반사 세기', { min: 0, max: 3, step: 0.05 }), glow: num('스스로 빛나는 세기 (core)', opt({ min: 0, max: 10, step: 0.1 })),
+  coat: num('광택 코팅 (도장면의 맑은 반사층)', opt({ min: 0, max: 1, step: 0.05 })), grain: num('미세 질감 (결·오돌토돌함)', opt({ min: 0, max: 2, step: 0.05 })),
+  brushed: bool('브러시 결 (금속, 앞뒤로 긴 결)', opt()), wear: num('모서리 닳음 (칠이 벗겨진 금속이 보임)', opt({ min: 0, max: 1, step: 0.05 })),
 });
 export const GUNMAT_SCHEMA = obj('총 재질', {
   slots: dict('색 칸', GUN_SLOT_MAT, { keys: GUN_SLOTS }),
+  wearColor: color('닳은 모서리의 금속 색'), wearWidth: num('닳은 모서리 폭 (m)', { min: 0.0005, max: 0.02, step: 0.0005 }),
   heatColor: color('과열 때 달아오르는 색 (metal 칸)'), heatGlow: num('과열 빛 세기', { min: 0, max: 20, step: 0.1 }),
   chargeGlow: num('충전·스킬 때 core 빛 세기', { min: 0, max: 20, step: 0.1 }),
 });
