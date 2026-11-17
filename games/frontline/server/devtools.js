@@ -144,12 +144,13 @@ function registerModel(req, res) {
   readBody(req).then(buf => {
     let b;
     try { b = JSON.parse(buf.toString('utf8')); } catch { send(res, 400, { ok: false, errors: ['JSON 이 아님'] }); return; }
-    if (!b || b.kind !== 'gun') { send(res, 400, { ok: false, errors: ['지금은 총 모델만 등록할 수 있다 (물체 모델은 준비 중)'] }); return; }
+    if (!b || !['gun', 'melee'].includes(b.kind)) { send(res, 400, { ok: false, errors: ['지금은 총·근접 무기 모델만 등록할 수 있다 (물체 모델은 준비 중)'] }); return; }
+    if (b.kind === 'melee' && b.weapon) { send(res, 400, { ok: false, errors: ['근접 무기 모델은 아직 무기에 연결할 수 없다'] }); return; }
     const file = `guns/${b.id}.glb`, full = path.join(CONTENT_DIR, file);
     if (!/^[a-z0-9_]+$/.test(String(b.id)) || !fs.existsSync(full)) { send(res, 400, { ok: false, errors: [`content/${file} 이 없다 — 먼저 "프로젝트에 저장"`] }); return; }
     const glb = fs.readFileSync(full);
     if (glb.toString('ascii', 0, 4) !== 'glTF') { send(res, 400, { ok: false, errors: ['glb 파일이 아님'] }); return; }
-    const entry = { id: b.id, name: String(b.name || b.id).slice(0, 40), kind: 'gun', file, tris: Math.max(1, Math.round(b.tris) || 1), bytes: glb.length, warnings: Math.max(0, b.warnings | 0), registered: new Date().toISOString().slice(0, 10) };
+    const entry = { id: b.id, name: String(b.name || b.id).slice(0, 40), kind: b.kind, file, tris: Math.max(1, Math.round(b.tris) || 1), bytes: glb.length, warnings: Math.max(0, b.warnings | 0), registered: new Date().toISOString().slice(0, 10) };
     const models = readJson('models').filter(m => m.id !== b.id).concat(entry);
     const errors = checkModels(models);
     if (errors.length) { send(res, 400, { ok: false, errors }); return; }

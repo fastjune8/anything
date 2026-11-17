@@ -8,7 +8,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
-import { SOCKETS, SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf } from '/js/gunmodel.js';
+import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/gunmodel.js';
 import { sampleGunGlb } from '../samplegun.js';
 
 const VM_FOV = 52; // 게임의 1인칭 총 카메라와 같은 시야각
@@ -66,7 +66,8 @@ export async function createGunDoc(ctx, id, opts = {}) {
   const root = new THREE.Group(); root.add(gltf.scene); root.updateMatrixWorld(true);
   const scan = scanModel(root);
   const checks = checkModel(root, { bytes: buffer.byteLength }, scan);
-  const spec = gunSpec(root, scan);
+  const type = modelType(scan), SOCKETS = socketsFor(type); // 총 / 근접 무기(socket_tip 이 있고 socket_muzzle 이 없음)
+  const spec = type === 'gun' ? gunSpec(root, scan) : null;
   for (const [k, o] of Object.entries(scan.sockets)) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.007, 12, 8), new THREE.MeshBasicMaterial({ color: SOCKETS[k] ? SOCKETS[k].color : 0xffffff, depthTest: false, transparent: true }));
     m.renderOrder = 10; m.userData.socket = k; o.add(m);
@@ -78,6 +79,10 @@ export async function createGunDoc(ctx, id, opts = {}) {
   holder.add(root);
   const model = { root, gun, spec, scan, checks, bytes: buffer.byteLength, buffer, name, arms };
   const hasFail = () => checks.some(c => c.level === 'fail');
+  if (type === 'melee') { // 근접 무기: 파츠·정조준·총 크기 비교는 해당 없음
+    for (const k of ['partSels', 'ghostSel']) { const el = r(k).parentElement; el.hidden = true; el.previousElementSibling.hidden = true; }
+    tools.querySelector('[data-view="ads"]').disabled = true;
+  }
   for (const c of checks) if (c.level === 'fail') ctx.log(`[${name}] ${c.text}`, 'error');
 
   // ───────── 보기 ─────────
@@ -103,6 +108,12 @@ export async function createGunDoc(ctx, id, opts = {}) {
     } else {
       controls.enabled = false; camera.fov = VM_FOV;
       camera.position.set(0, 0, 0); camera.rotation.set(0, 0, 0);
+      if (type === 'melee') { // 근접 무기: 오른손으로 쥐고 날을 앞쪽 위로 (정조준은 없다)
+        const h = scan.sockets.hand_r ? scan.sockets.hand_r.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3();
+        holder.rotation.set(0.35, 0.25, -0.2); holder.position.set(0.2, -0.2, -0.36).sub(h.applyEuler(holder.rotation));
+        r('vhint').textContent = v === 'ads' ? '근접 무기는 정조준이 없습니다 — 1인칭과 같은 모습' : '게임에서 들고 있을 때의 모습 (오른손으로 쥠, 시야각 같음)';
+        camera.updateProjectionMatrix(); return;
+      }
       if (gun) { if (v === 'hip') holder.position.fromArray(gun.hip); else holder.position.set(0, -gun.sightY, gun.adsZ); }
       r('vhint').textContent = !gun ? '필수 부착 지점이 없어 1인칭으로 볼 수 없습니다'
         : v === 'hip' ? '게임에서 총을 들고 있을 때의 모습 (시야각 같음)' : '빨간 점 = 조준점. 가늠자·가늠쇠(또는 조준경의 점)가 여기에 겹쳐야 합니다';
@@ -194,7 +205,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
   }
 
   // ───────── 저장 ─────────
-  const doc = { kind: 'gun', key: savedId ? `gun:${savedId}` : null, id: savedId || id, title: savedId || name.replace(/\.glb$/i, ''), icon: '⌐', is3D: true, overlay, tools, toolbar, inspector };
+  const doc = { kind: 'gun', modelType: type, key: savedId ? `gun:${savedId}` : null, id: savedId || id, title: savedId || name.replace(/\.glb$/i, ''), icon: '⌐', is3D: true, overlay, tools, toolbar, inspector };
   r('gunId').value = savedId || (id === 'sample' ? '' : name.replace(/\.glb$/i, '').toLowerCase().replace(/[^a-z0-9_]/g, '_'));
   r('fname').textContent = savedId ? `content/guns/${savedId}.glb` : name;
   const idOk = () => /^[a-z0-9_]+$/.test(r('gunId').value);
@@ -235,7 +246,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
       <div style="padding:14px 18px;display:grid;gap:12px">
         <p class="note" style="margin:0">등록하면 <code>content/models.json</code> 에 올라가고, 게임 데이터(무기)가 이 모델을 쓸 수 있게 됩니다.</p>
         <label class="kv" style="grid-template-columns:90px 1fr">이름<input type="text" data-f="name"></label>
-        <label class="kv" style="grid-template-columns:90px 1fr">종류<select data-f="kind"><option value="gun">총</option><option value="prop" disabled>물체 (준비 중)</option></select></label>
+        <label class="kv" style="grid-template-columns:90px 1fr">종류<select data-f="kind" disabled><option value="gun">총</option><option value="melee">근접 무기</option><option value="prop" disabled>물체 (준비 중)</option></select></label>
         <label class="kv" style="grid-template-columns:90px 1fr">쓸 무기<select data-f="weapon"><option value="">(지금은 연결 안 함)</option></select></label>
         <div data-f="warn" ${warns.length ? '' : 'hidden'}><p class="note" style="color:var(--accent);margin:0 0 4px">확인 사항 ${warns.length}개가 남아 있습니다:</p>
           <ul class="note" style="margin:0 0 6px;padding-left:18px">${warns.map(w => `<li></li>`).join('')}</ul>
@@ -246,6 +257,8 @@ export async function createGunDoc(ctx, id, opts = {}) {
     f('name').value = e ? e.name : savedId;
     for (const w of ctx.weapons()) f('weapon').appendChild(new Option(`${w.name} (${w.cls})${w.model && w.model !== savedId ? ' · 다른 모델 사용 중' : ''}`, w.id));
     f('weapon').value = linked ? linked.id : '';
+    f('kind').value = type; // 종류는 모델 구조로 정해진다 (socket_tip = 근접 무기)
+    if (type === 'melee') { f('weapon').disabled = true; f('weapon').options[0].text = '(근접 무기를 쓰는 무기가 아직 없음 — 근접 공격이 생기면 연결)'; f('weapon').value = ''; }
     m.querySelectorAll('[data-f="warn"] li').forEach((li, i) => { li.textContent = warns[i].text; });
     const gate = () => { f('go').disabled = !!warns.length && !f('ok').checked; };
     if (warns.length) f('ok').addEventListener('change', gate);
@@ -254,7 +267,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     f('cancel').addEventListener('click', close);
     m.addEventListener('click', ev => { if (ev.target === m) close(); });
     f('go').addEventListener('click', async () => {
-      const res = await fetch('/api/register/model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedId, name: f('name').value.trim() || savedId, kind: 'gun', weapon: f('weapon').value || null, tris: Math.round(tris), warnings: warns.length }) });
+      const res = await fetch('/api/register/model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedId, name: f('name').value.trim() || savedId, kind: type, weapon: type === 'gun' ? f('weapon').value || null : null, tris: Math.round(tris), warnings: warns.length }) });
       const out = await res.json().catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
       if (!out.ok) { ctx.log(`등록 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('등록 실패 — 콘솔을 보세요'); return; }
       close();

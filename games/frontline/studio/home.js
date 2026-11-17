@@ -94,7 +94,7 @@ export function createHome(ctx) {
       case 'looks': return data.looks.map((l, i) => ({
         key: `look:${l.id}`, title: l.name, sub: `${l.id}${i === 0 ? ' · 기본' : ''} · 쓰는 맵 ${usersOf(l.id).length}개`, thumb: () => drawLookThumb(l, 400, 240), def: l,
       }));
-      case 'models': return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `총 · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
+      case 'models': return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `${reg && reg.kind === 'melee' ? '근접 무기' : '총'} · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
       case 'weapons': {
         const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets)), maxRpm = Math.max(...data.weapons.map(w => w.rpm));
         return data.weapons.map(w => ({ key: `weapon:${w.id}`, title: w.name, sub: `${w.cls} · ${w.id}`, icon: '✦', def: w,

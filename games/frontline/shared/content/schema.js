@@ -141,7 +141,7 @@ export function checkPrefabs(list) {
 // 지금은 모델(content/models.json). 효과 에디터가 생기면 같은 모양으로 content/effects.json 을 더한다.
 export const MODEL_SCHEMA = obj('등록된 모델', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'),
-  kind: oneOf('종류', ['gun', 'prop'], { hint: 'gun = 총, prop = 맵 물체' }),
+  kind: oneOf('종류', ['gun', 'melee', 'prop'], { hint: 'gun = 총, melee = 근접 무기(칼 등), prop = 맵 물체' }),
   file: str('파일 (content/ 기준)', { pattern: '^(guns|props)/[a-z0-9_]+\\.glb$' }),
   tris: int('삼각형 수', { min: 1 }), bytes: int('파일 크기 (바이트)', { min: 1 }),
   warnings: int('등록할 때 남아 있던 확인 사항 수', { min: 0 }),

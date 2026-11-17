@@ -12,6 +12,17 @@ export const SOCKETS = {
   optic: { required: false, label: '조준경 받침 (레일 윗면)', color: 0xd18cff },
   grip: { required: false, label: '앞 손잡이 (총열 덮개 아랫면)', color: 0xffa04a },
 };
+// 근접 무기(칼 등)의 부착 지점. socket_tip 이 있고 socket_muzzle 이 없으면 근접 무기로 본다
+export const MELEE_SOCKETS = {
+  hand_r: { required: true, label: '오른손 (손잡이 — 쥐는 곳)', color: 0x5aa9ff },
+  tip: { required: true, label: '날 끝 (찌르는 곳 · 공격 판정)', color: 0xff5a48 },
+  hand_l: { required: false, label: '왼손 (양손 무기만)', color: 0x7fe0a0 },
+};
+// 모델 종류: 'gun' | 'melee'
+export const modelType = scan => (scan.sockets.tip && !scan.sockets.muzzle ? 'melee' : 'gun');
+export const socketsFor = type => (type === 'melee' ? MELEE_SOCKETS : SOCKETS);
+const MELEE_LEN = { min: 0.1, max: 1.6 };
+
 // 따로 움직이거나 바뀌는 부품 (물체 이름: part_<이름>)
 export const PARTS = {
   mag: '탄창 (재장전 때 빠짐, 원점 = 탄창 윗면)',
@@ -95,8 +106,9 @@ export function gunSpec(root, scan = scanModel(root)) {
 // 규칙 검사. 반환: [{ level: 'ok'|'warn'|'fail', text }]
 export function checkModel(root, { bytes = 0 } = {}, scan = scanModel(root)) {
   const out = [], ok = t => out.push({ level: 'ok', text: t }), warn = t => out.push({ level: 'warn', text: t }), fail = t => out.push({ level: 'fail', text: t });
-  const { sockets: S, parts: P, meshes, materials } = scan;
+  const { sockets: S, parts: P, meshes } = scan;
   if (!meshes.length) { fail('모양(메시)이 하나도 없습니다'); return out; }
+  if (modelType(scan) === 'melee') { checkMelee(root, scan, bytes, ok, warn, fail); return out; }
 
   // 1) 필수 지점
   const missing = Object.entries(SOCKETS).filter(([k, v]) => v.required && !S[k]).map(([k]) => `socket_${k}`);
@@ -134,6 +146,43 @@ export function checkModel(root, { bytes = 0 } = {}, scan = scanModel(root)) {
   } else warn('part_mag 가 없어 재장전 때 탄창이 빠지는 동작이 없습니다');
   if (!P.irons.length) warn('part_irons 가 없습니다 — 조준경을 달아도 가늠자가 그대로 보입니다');
 
+  checkCommon(root, scan, bytes, ok, warn, fail);
+  return out;
+}
+
+// 근접 무기 (칼 등): 오른손·날 끝, 날 끝이 손보다 앞(-Z). 탄창·조준 관련 규칙은 없다
+function checkMelee(root, scan, bytes, ok, warn, fail) {
+  const { sockets: S, meshes } = scan;
+  ok('근접 무기로 다룹니다 (socket_tip 이 있고 socket_muzzle 이 없음)');
+  const missing = Object.entries(MELEE_SOCKETS).filter(([k, v]) => v.required && !S[k]).map(([k]) => `socket_${k}`);
+  if (missing.length) fail(`필수 부착 지점이 없습니다: ${missing.join(', ')}`);
+  else ok('필수 부착 지점 2개(오른손 · 날 끝)가 있습니다');
+  const unknown = Object.keys(S).filter(k => !MELEE_SOCKETS[k]);
+  if (unknown.length) warn(`근접 무기에서 쓰지 않는 부착 지점 (무시됨): ${unknown.map(k => 'socket_' + k).join(', ')}`);
+  const box = boxOf(meshes), size = box.getSize(new THREE.Vector3()), len = size.z;
+  if (len > 3) fail(`길이가 ${len.toFixed(2)}m 입니다 — 단위가 cm 로 내보내졌을 수 있습니다 (Blender 단위 배율 1.0, 크기 적용 Ctrl+A)`);
+  else if (len < MELEE_LEN.min) fail(`길이가 ${len.toFixed(3)}m 입니다 — 너무 작습니다 (1 = 1m)`);
+  else if (len > MELEE_LEN.max) warn(`길이가 ${len.toFixed(2)}m — 근접 무기로는 깁니다 (${MELEE_LEN.max}m 이하 권장)`);
+  else if (size.x > len || size.y > len) fail(`날이 앞(-Z)을 향하지 않습니다 (가로 ${size.x.toFixed(2)} · 높이 ${size.y.toFixed(2)} · 길이 ${len.toFixed(2)}m). Blender 에서 날 끝이 +Y 쪽이어야 합니다`);
+  else ok(`크기 ${len.toFixed(2)}m (가로 ${size.x.toFixed(2)} · 높이 ${size.y.toFixed(2)})`);
+  if (S.hand_r && S.tip) {
+    const h = posOf(S.hand_r), t = posOf(S.tip);
+    if (t.z >= h.z) fail('날 끝이 손잡이보다 뒤에 있습니다 — 거꾸로 향합니다 (Blender: 날 끝 = +Y)');
+    const off = Math.max(Math.abs(h.x), Math.abs(t.x));
+    if (off > 0.005) warn(`손잡이·날 끝이 가운데에서 ${(off * 100).toFixed(1)}cm 벗어났습니다 (x = 0 에 두세요)`);
+    if (h.length() > 0.05) warn('원점이 손잡이(socket_hand_r)에서 멀리 떨어져 있습니다 — 쥐는 곳에 두세요');
+  }
+  checkCommon(root, scan, bytes, ok, warn, fail);
+}
+
+// 총·근접 무기 공통: 크기 적용, 삼각형 수, 색 칸, 용량
+function checkCommon(root, scan, bytes, ok, warn, fail) {
+  const { meshes, materials } = scan;
+  if (modelType(scan) === 'melee') {
+    let scaled = false;
+    root.traverse(o => { if (o !== root && (Math.abs(o.scale.x - 1) > 1e-3 || Math.abs(o.scale.y - 1) > 1e-3 || Math.abs(o.scale.z - 1) > 1e-3) && !keyOf(o.name, 'socket_')) scaled = true; });
+    if (scaled) warn('크기가 적용되지 않은 물체가 있습니다 (Blender 에서 Ctrl+A → 모두 적용)');
+  }
   // 4) 삼각형 수·재질·용량
   let tris = 0;
   for (const m of meshes) { const g = m.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; }
@@ -148,7 +197,6 @@ export function checkModel(root, { bytes = 0 } = {}, scan = scanModel(root)) {
   if (bytes > 800 * 1024) fail(`파일 ${(bytes / 1024).toFixed(0)}KB — 최대 800KB`);
   else if (bytes > 300 * 1024) warn(`파일 ${(bytes / 1024).toFixed(0)}KB — 권장 300KB 이하`);
   else if (bytes) ok(`파일 ${(bytes / 1024).toFixed(0)}KB`);
-  return out;
 }
 
 // 스킨 적용 (색 칸별 색). palette = null 이면 모델 원래 색

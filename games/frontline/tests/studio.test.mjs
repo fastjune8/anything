@@ -294,6 +294,21 @@ try {
   await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.kind === 'gun', null, { timeout: 30000 });
   const sm = await page.evaluate(() => { const m = window.__gv.model; return { levels: m.checks.map(x => x.level), spec: { sightY: m.spec.sightY, adsZ: m.spec.adsZ, muzzleZ: m.spec.muzzleZ, mag: !!m.spec.mag, irons: m.spec.irons.length } }; });
   check(sm.levels.every(l => l === 'ok'), '예시 총은 규칙 검사를 모두 통과한다', JSON.stringify(sm.levels));
+  const melee = await page.evaluate(async () => { // 근접 무기(칼): socket_hand_r + socket_tip, 날 끝이 앞(-Z)
+    const THREE = await import('three'), gm = await import('/js/gunmodel.js');
+    const build = flip => {
+      const root = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ name: 'metal' }), dark = new THREE.MeshStandardMaterial({ name: 'dark' });
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.03, 0.2), mat); blade.position.z = flip ? 0.12 : -0.12; root.add(blade);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.1), dark); grip.position.z = flip ? -0.03 : 0.03; root.add(grip);
+      const h = new THREE.Object3D(); h.name = 'socket_hand_r'; root.add(h);
+      const t = new THREE.Object3D(); t.name = 'socket_tip'; t.position.z = flip ? 0.22 : -0.22; root.add(t);
+      return gm.checkModel(root, { bytes: 50000 });
+    };
+    const ok = build(false), bad = build(true);
+    return { ok: ok.map(c => c.level), okText: ok[0].text, bad: bad.filter(c => c.level === 'fail').map(c => c.text) };
+  });
+  check(melee.okText.includes('근접 무기') && melee.ok.every(l => l === 'ok'), '칼(socket_hand_r + socket_tip)은 근접 무기 규칙으로 검사해 통과한다 (가늠자·총구·왼손 필요 없음)', JSON.stringify(melee.ok));
+  check(melee.bad.some(t => t.includes('날 끝이 손잡이보다 뒤')), '날 끝이 뒤를 향하면 근접 무기 규칙에서 잡아낸다', JSON.stringify(melee.bad));
   check(Math.abs(sm.spec.sightY - 0.064) < 1e-3 && Math.abs(sm.spec.adsZ + 0.21) < 1e-3 && Math.abs(sm.spec.muzzleZ + 0.52) < 1e-3 && sm.spec.mag && sm.spec.irons === 2, '.glb 의 부착 지점·부품이 게임 기준점으로 바뀐다', JSON.stringify(sm.spec));
   const toolsNow = await page.evaluate(s => !!document.querySelector(`${s} [data-r="views"]`) && !document.querySelector(`${s} .tile[data-tool]`), ACT.tools);
   check(toolsNow && (await page.textContent('#edKind')).includes('모델 에디터'), '모델은 모델 에디터로 열리고, 도구 상자도 그 편집기 것으로 바뀐다');
