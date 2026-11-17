@@ -24,5 +24,6 @@
     {"type":"box","x":40.5,"y":0,"z":0,"w":1,"h":4.5,"d":80,"mat":"concrete"},
     {"type":"building","x":-15.25,"z":-8.25,"w":8.5,"d":5.5,"h":2.8,"mat":"concrete","roof":true,"ops":{"n":[],"s":[{"at":-15.25,"w":1.6,"type":"door"}],"e":[],"w":[]}},
     {"type":"wall","h":2.8,"t":0.35,"mat":"concrete","ops":[],"axis":"x","at":-7.5,"from":-17.5,"to":-13,"y":3.05}
-  ]
+  ],
+  "look": "sunlit"
 }

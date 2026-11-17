@@ -1,4 +1,5 @@
 [
   {"id":"ar_lancer","name":"ar_lancer","kind":"gun","file":"guns/ar_lancer.glb","tris":2782,"bytes":172164,"warnings":0,"registered":"2026-11-16"},
-  {"id":"smg_hornet_v_3","name":"smg_hornet_v_3","kind":"gun","file":"guns/smg_hornet_v_3.glb","tris":3614,"bytes":221928,"warnings":0,"registered":"2026-11-16"}
+  {"id":"smg_hornet_v_3","name":"smg_hornet_v_3","kind":"gun","file":"guns/smg_hornet_v_3.glb","tris":3614,"bytes":221928,"warnings":0,"registered":"2026-11-17"},
+  {"id":"sg_ram_v_3","name":"sg_ram_v_3","kind":"gun","file":"guns/sg_ram_v_3.glb","tris":3136,"bytes":194468,"warnings":3,"registered":"2026-11-17"}
 ]
