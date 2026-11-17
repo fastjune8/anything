@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { modelFor, modelIdFor } from './gunmodels.js';
 import { gunSpec } from './gunmodel.js';
 import { dressGun, dressGunLite, dressMaterial } from './gunmat.js';
+import { attachClips } from './gunanim.js';
 import { partModel } from './partmodels.js';
 
 const M = {
@@ -235,11 +236,7 @@ function buildFromModel(src, modelId, withArms, parts, detail) {
   const armL = withArms ? attachArms(group, spec) : null;
   const gun = wrapGun(group, spec, parts, detail);
   gun.model = modelId; // 어떤 모델로 만들었는지 (확인·테스트용)
-  // 모션 클립 (Blender 에서 만든 재장전 등, docs/GUN_MODELING.md 11). anim_hand_l = 왼손 목표
-  gun.animRoot = root; gun.clips = root.animations || []; gun.armL = armL;
-  root.traverse(o => { if (!gun.handTarget && /^anim_hand_l/i.test(o.name)) gun.handTarget = o; });
-  if (gun.handTarget) gun.handRest = gun.handTarget.position.clone();
-  return gun;
+  return attachClips(gun, root, root.animations, armL); // 모션 클립 (재장전 등, docs/GUN_MODELING.md 11). anim_hand_l = 왼손 목표
 }
 
 // withArms: 1인칭 뷰모델용 팔 포함 여부

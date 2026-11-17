@@ -104,7 +104,7 @@ export function gunSpec(root, scan = scanModel(root)) {
 }
 
 // 규칙 검사. 반환: [{ level: 'ok'|'warn'|'fail', text }]
-export function checkModel(root, { bytes = 0 } = {}, scan = scanModel(root)) {
+export function checkModel(root, { bytes = 0, clips = [] } = {}, scan = scanModel(root)) {
   const out = [], ok = t => out.push({ level: 'ok', text: t }), warn = t => out.push({ level: 'warn', text: t }), fail = t => out.push({ level: 'fail', text: t });
   const { sockets: S, parts: P, meshes } = scan;
   if (!meshes.length) { fail('모양(메시)이 하나도 없습니다'); return out; }
@@ -147,7 +147,33 @@ export function checkModel(root, { bytes = 0 } = {}, scan = scanModel(root)) {
   if (!P.irons.length) warn('part_irons 가 없습니다 — 조준경을 달아도 가늠자가 그대로 보입니다');
 
   checkCommon(root, scan, bytes, ok, warn, fail);
+  checkClips(root, scan, clips, ok, warn, fail);
   return out;
+}
+
+// 모션 클립 (docs/GUN_MODELING.md 11): 아는 이름인가, 대상이 있는가, 처음과 끝이 쉴 때 자세인가
+export const CLIP_NAMES = { reload: '재장전 (탄창식 총) — 게임이 재장전 시간에 맞춰 재생' };
+function checkClips(root, scan, clips, ok, warn, fail) {
+  if (!clips.length) { ok('모션 클립 없음 — 선택 사항 (재장전은 코드 동작, docs/GUN_MODELING.md 11)'); return; }
+  const names = new Set(); root.traverse(o => names.add(o.name));
+  for (const c of clips) {
+    if (!CLIP_NAMES[c.name]) warn(`모르는 클립 "${c.name}" — 게임이 쓰지 않습니다 (${Object.keys(CLIP_NAMES).join(', ')})`);
+    const missing = [...new Set(c.tracks.map(t => t.name.split('.')[0]).filter(n => !names.has(n)))];
+    if (missing.length) fail(`클립 ${c.name}: 모델에 없는 물체를 움직입니다 — ${missing.join(', ')}`);
+    if (c.tracks.some(t => t.name.endsWith('.scale'))) warn(`클립 ${c.name}: 크기(scale)에 키가 있습니다 — 확장 탄창 파츠와 겹치니 위치·회전만 쓰세요`);
+    const open = c.tracks.filter(t => { // 첫 키와 마지막 키가 다르다 = 끝난 뒤 쉴 때 자세로 튄다
+      const n = t.getValueSize(), v = t.values, last = v.length - n;
+      for (let i = 0; i < n; i++) if (Math.abs(v[i] - v[last + i]) > (t.name.endsWith('.quaternion') ? 0.01 : 0.002)) return true;
+      return false;
+    }).map(t => t.name.split('.')[0]);
+    if (open.length) warn(`클립 ${c.name}: 첫 프레임과 마지막 프레임이 다릅니다 (${[...new Set(open)].join(', ')}) — 끝나면 쉴 때 자세로 튑니다`);
+    const hand = c.tracks.find(t => /^anim_hand_l/i.test(t.name) && t.name.endsWith('.position'));
+    if (hand && scan.sockets.hand_l) {
+      const hl = scan.sockets.hand_l.position, v = hand.values;
+      if (Math.hypot(v[0] - hl.x, v[1] - hl.y, v[2] - hl.z) > 0.01) warn(`클립 ${c.name}: anim_hand_l 의 첫 키가 socket_hand_l 과 다른 자리입니다 — 재장전을 시작할 때 왼손이 튑니다`);
+    }
+    if (!missing.length) ok(`클립 ${c.name} (${c.duration.toFixed(2)}초 · 움직이는 것 ${new Set(c.tracks.map(t => t.name.split('.')[0])).size}개)`);
+  }
 }
 
 // 근접 무기 (칼 등): 오른손·날 끝, 날 끝이 손보다 앞(-Z). 탄창·조준 관련 규칙은 없다

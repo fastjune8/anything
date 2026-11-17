@@ -272,3 +272,7 @@ body.resizing-h { cursor: col-resize; } body.resizing-v { cursor: row-resize; }
 .matTable .mrow { display: grid; grid-template-columns: 50px repeat(5, 1fr); gap: 4px; align-items: center; font-size: 11px; }
 .matTable .mhead { color: var(--dim, #8a939c); }
 .matTable input { width: 100%; min-width: 0; }
+/* 모델 에디터 · 모션 */
+.motionbar { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+.motionbar input[type=range] { flex: 1; min-width: 0; }
+.motionbar button { min-width: 34px; }

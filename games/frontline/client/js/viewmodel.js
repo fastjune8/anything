@@ -9,6 +9,7 @@ import { me, wp, inp, loadout, eff, hSpeed } from './state.js';
 import { $, V3, lerp, clamp, smooth } from './util.js';
 import { setDisplay } from './dom.js';
 import { setGunFx } from './gunmat.js';
+import { poseClip, reloadMotion } from './gunanim.js';
 import { sk, heldSkill, heatOf, chargeReady } from './skills.js';
 
 const scopeEl = $('scope');
@@ -35,20 +36,6 @@ onLoadoutChange(wi => {
 });
 
 const _hip = new V3(), _ads = new V3(), _q = new THREE.Quaternion();
-// 총 모델에 "reload" 모션 클립이 있으면 그 동작 (없으면 null → 코드로 만든 탄창 내리기)
-function reloadAction(g) {
-  if (g.reloadAction !== undefined) return g.reloadAction;
-  const clip = (g.clips || []).find(c => c.name === 'reload');
-  if (!clip || !g.animRoot) return (g.reloadAction = null);
-  g.mixer = new THREE.AnimationMixer(g.animRoot);
-  const a = g.mixer.clipAction(clip); a.play(); a.paused = true; // 시간은 재장전 진행도로 직접 맞춘다
-  return (g.reloadAction = a);
-}
-// 클립의 f(0~1) 지점 자세로 맞추고, 왼팔이 왼손 목표(anim_hand_l)를 따라가게 한다
-function poseReload(g, a, f) {
-  a.time = f * a.getClip().duration; g.mixer.update(0);
-  if (g.armL && g.handTarget) g.armL.position.subVectors(g.handTarget.position, g.handRest);
-}
 // 총 재질 효과: 과열 → 총열(metal 칸)이 달아오름, 차지 샷 충전·아드레날린·밀어내기 준비 → core 가 밝아짐
 let fxT = 0;
 function updateGunFx(dt, g) {
@@ -85,27 +72,12 @@ export function updateViewmodel(dt) {
     rz += a * 0.22 * (1 - 0.6 * k); p.y -= a * 0.02 * (1 - 0.6 * k); rx -= a * 0.05;
   }
 
+  // 재장전: 총 전체의 움직임(공용 gunanim.js) + 모델의 "reload" 모션 클립 (없으면 탄창만 내렸다 올린다)
   if (wp.reload) {
-    let down, magDrop = 0;
-    if (wp.reload.shell) {
-      const f = wp.reload.t / wp.reload.total;
-      down = wp.reload.first ? smooth(0, 0.8, f) : 1;
-      p.z += Math.sin(Math.PI * f) * 0.015 * (wp.reload.first ? 0 : 1);
-    } else {
-      const f = wp.reload.t / wp.reload.total;
-      down = smooth(0, 0.14, f) * (1 - smooth(0.86, 1, f));
-      magDrop = smooth(0.15, 0.28, f) * (1 - smooth(0.5, 0.62, f));
-      rz += Math.sin(f * Math.PI * 3) * 0.05 * down;
-    }
-    p.y -= 0.075 * down; p.x -= 0.03 * down; rz += 0.42 * down; rx += 0.32 * down; ry += 0.15 * down;
-    const ra = !wp.reload.shell && reloadAction(g);
-    if (ra) poseReload(g, ra, wp.reload.t / wp.reload.total); // 모델의 재장전 모션
-    else if (g.mag) g.mag.position.set(g.magRest.x, g.magRest.y - 0.3 * magDrop, g.magRest.z);
-  } else {
-    const ra = reloadAction(g);
-    if (ra) poseReload(g, ra, 0); // 쉴 때 자세 (탄창·노리쇠·왼팔 제자리)
-    else if (g.mag) g.mag.position.copy(g.magRest);
-  }
+    const f = wp.reload.t / wp.reload.total, m = reloadMotion(f, wp.reload.shell, wp.reload.first);
+    p.x += m.x; p.y += m.y; p.z += m.z; rx += m.rx; ry += m.ry; rz += m.rz;
+    if (wp.reload.shell || !poseClip(g, 'reload', f)) { if (g.mag) g.mag.position.set(g.magRest.x, g.magRest.y - 0.3 * m.magDrop, g.magRest.z); }
+  } else if (!poseClip(g, 'reload', 0) && g.mag) g.mag.position.copy(g.magRest); // 쉴 때 자세 (탄창·노리쇠·왼팔 제자리)
 
   if (wp.drawT > 0) { const d = wp.drawT / w.draw; p.y -= d * d * 0.28; rx -= d * d * 0.9; }
   p.x -= 0.05 * wp.sprintT; p.y -= 0.03 * wp.sprintT; ry += 0.55 * wp.sprintT; rx -= 0.22 * wp.sprintT;

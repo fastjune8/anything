@@ -304,6 +304,22 @@ try {
   });
   check(mat.metal[0] === mat.want[0] && mat.metal[1] === mat.want[1] && mat.dark[0] === mat.want[2] && mat.dark[1] === mat.want[3], '총 재질: 색 칸 이름으로 금속성·거칠기를 엔진이 정한다 (content/gunmaterials.json)', JSON.stringify(mat));
   check(mat.glow > 1 && mat.cool === 0 && mat.own, '효과: 열을 올리면 metal 칸이 달아오르고, 총마다 자기 재질이라 다른 총에 번지지 않는다', JSON.stringify(mat));
+  { // 모션 클립: smg_hornet 의 reload 를 게임과 같은 코드로 재생 (탄창·왼손이 움직인다)
+    const prev = await page.evaluate(() => window.__studio.active.key);
+    await page.evaluate(() => window.__studio.openAsset('gun:smg_hornet_v_3'));
+    await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.key === 'gun:smg_hornet_v_3', null, { timeout: 30000 });
+    const mo = await page.evaluate(() => {
+      const api = window.__gv, g = api.model.gun, rest = g.mag.position.y;
+      api.motion.f = 0.3; api.poseMotion();
+      const out = { clips: g.clips.map(c => c.name), moved: rest - g.mag.position.y, arm: g.armL.position.length(), ok: api.model.checks.some(c => c.level === 'ok' && c.text.startsWith('클립 reload')) };
+      api.motion.f = 0; api.poseMotion();
+      out.back = Math.abs(g.mag.position.y - rest);
+      return out;
+    });
+    check(mo.clips.includes('reload') && mo.ok, '모델 에디터가 모션 클립(reload)을 찾고 규칙 검사를 한다', JSON.stringify(mo));
+    check(mo.moved > 0.05 && mo.arm > 0.05 && mo.back < 1e-4, '모션을 한 장면씩 넘기면 탄창이 빠지고 왼팔이 따라가며, 처음으로 돌리면 제자리', JSON.stringify(mo));
+    await page.evaluate(k => window.__studio.activate(k), prev);
+  }
   const melee = await page.evaluate(async () => { // 근접 무기(칼): socket_hand_r + socket_tip, 날 끝이 앞(-Z)
     const THREE = await import('three'), gm = await import('/js/gunmodel.js');
     const build = flip => {

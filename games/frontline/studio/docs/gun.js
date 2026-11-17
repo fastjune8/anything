@@ -10,6 +10,7 @@ import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
 import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/gunmodel.js';
 import { sampleGunGlb } from '../samplegun.js';
+import { attachClips, poseClip, reloadMotion } from '/js/gunanim.js';
 import { dressGun, gunMats, setGunMats, setGunFx, useGunMaterials, LAYERS } from '/js/gunmat.js';
 import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
 
@@ -39,6 +40,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     + sec('크기 비교', '<select data-r="ghostSel" title="지금 게임의 총을 반투명으로 겹쳐 보기"><option value="">없음</option></select>')
     + sec('파츠 달아 보기', '<div data-r="partSels"></div>')
     + sec('스킨 (색 칸)', '<select data-r="skinSel"></select><div class="slots" data-r="slotList"></div>')
+    + sec('모션', '<div data-r="motion"></div>')
     + sec('질감 비교', `<label class="tog" title="끄면 Blender 에서 나온 그대로 (엔진 질감 없이) — 켜고 끄며 비교"><input type="checkbox" data-r="engineMat" checked> 엔진 질감 <kbd>M</kbd></label>
       <label class="tog" title="금속의 브러시 결, 폴리머의 오돌토돌함"><input type="checkbox" data-r="layGrain" checked> 미세 질감</label>
       <label class="tog" title="각진 모서리의 칠이 벗겨져 금속이 보인다"><input type="checkbox" data-r="layWear" checked> 모서리 닳음</label>
@@ -76,7 +78,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
   const gltf = await new GLTFLoader().parseAsync(buffer, '');
   const root = new THREE.Group(); root.add(gltf.scene); root.updateMatrixWorld(true);
   const scan = scanModel(root);
-  const checks = checkModel(root, { bytes: buffer.byteLength }, scan);
+  const checks = checkModel(root, { bytes: buffer.byteLength, clips: gltf.animations }, scan);
   const type = modelType(scan), SOCKETS = socketsFor(type); // 총 / 근접 무기(socket_tip 이 있고 socket_muzzle 이 없음)
   const spec = type === 'gun' ? gunSpec(root, scan) : null;
   for (const [k, o] of Object.entries(scan.sockets)) {
@@ -84,7 +86,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     m.renderOrder = 10; m.userData.socket = k; o.add(m);
   }
   const arms = new THREE.Group(); root.add(arms);
-  if (spec) attachArms(arms, spec);
+  const armL = spec ? attachArms(arms, spec) : null;
   let parts = {};
   const gun = spec ? wrapGun(root, spec, parts) : null;
   holder.add(root);
@@ -94,6 +96,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     const used = new Set(); root.traverse(o => { if (o.isMesh && !o.userData.socket && !inArms(o)) for (const m of [].concat(o.material)) used.add(m); });
     scan.materials = [...used];
   }
+  if (gun) attachClips(gun, root, gltf.animations, armL); // 모션 클립 (게임과 같은 코드로 재생)
   const model = { root, gun, spec, scan, checks, bytes: buffer.byteLength, buffer, name, arms };
   const hasFail = () => checks.some(c => c.level === 'fail');
   if (type === 'melee') { // 근접 무기: 파츠·정조준·총 크기 비교는 해당 없음
@@ -104,6 +107,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
 
   // ───────── 보기 ─────────
   let view = 'orbit', palette = null, ghost = null;
+  const holderBase = new THREE.Vector3(); // 1인칭·정조준의 총 위치 (모션의 총 기울임은 여기에 더한다)
   const showMarkers = () => root.traverse(o => { if (o.userData.socket) o.visible = view === 'orbit' && r('showSockets').checked; });
   function setView(v, refit) {
     const changed = v !== view || refit;
@@ -132,6 +136,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
         camera.updateProjectionMatrix(); return;
       }
       if (gun) { if (v === 'hip') holder.position.fromArray(gun.hip); else holder.position.set(0, -gun.sightY, gun.adsZ); }
+      holderBase.copy(holder.position);
       r('vhint').textContent = !gun ? '필수 부착 지점이 없어 1인칭으로 볼 수 없습니다'
         : v === 'hip' ? '게임에서 총을 들고 있을 때의 모습 (시야각 같음)' : '빨간 점 = 조준점. 가늠자·가늠쇠(또는 조준경의 점)가 여기에 겹쳐야 합니다';
     }
@@ -186,6 +191,54 @@ export async function createGunDoc(ctx, id, opts = {}) {
       c.addEventListener('input', () => { palette = { ...(palette || {}), [slot]: c.value }; r('skinSel').value = 'custom'; applySkin(root, palette); });
       l.appendChild(c); box.appendChild(l);
     }
+  }
+
+  // ───────── 모션: 모델의 모션 클립을 게임과 같은 코드(gunanim.js)로 재생 · 멈춤 · 한 장면씩 ─────────
+  const mo = { clip: null, f: 0, playing: false };
+  (function motionPanel() {
+    const box = r('motion'), clips = gun ? gun.clips : [];
+    if (!clips.length) { box.appendChild(html('p', 'note', gun ? '모션 클립이 없습니다. Blender 에서 NLA 트랙 "reload" 로 만들어 내보내면 여기서 재생됩니다 (docs/GUN_MODELING.md 11)' : '총 모델에서만 재생할 수 있습니다')); return; }
+    box.innerHTML = `<label class="kv">클립<select data-r="clipSel"></select></label>
+      <div class="motionbar"><button type="button" data-r="play" title="재생 / 멈춤 (Space)">▶</button><input type="range" min="0" max="1" step="0.001" value="0" data-r="scrub" title="끌어서 한 장면씩"><span class="status" data-r="clipT">0.00초</span></div>
+      <label class="kv" title="게임은 무기 데이터의 재장전 시간에 맞춰 늘이거나 줄인다">빠르기<select data-r="clipSpeed"><option value="clip">클립 그대로</option><option value="0.25">×0.25 (느리게)</option><option value="0.5">×0.5</option></select></label>
+      <label class="tog" title="게임 1인칭처럼 재장전 때 총 전체를 기울이는 코드 동작도 같이 (1인칭·정조준 보기에서)"><input type="checkbox" data-r="clipTilt" checked> 총 기울임 (게임처럼)</label>
+      <label class="tog"><input type="checkbox" data-r="clipLoop" checked> 반복</label>`;
+    for (const c of clips) r('clipSel').appendChild(new Option(`${c.name} (${c.duration.toFixed(2)}초)`, c.name));
+    for (const w of WEAPONS) r('clipSpeed').appendChild(new Option(`게임: ${w.name} 재장전 ${w.reload}초`, `w:${w.id}`));
+    const linked = ctx.weapons().find(w => w.model === savedId); if (linked) r('clipSpeed').value = `w:${linked.id}`; // 이 모델을 쓰는 무기의 재장전 시간
+    mo.clip = clips[0].name;
+    r('clipSel').addEventListener('change', () => { mo.clip = r('clipSel').value; mo.f = 0; poseMotion(); });
+    r('play').addEventListener('click', () => togglePlay());
+    r('scrub').addEventListener('input', () => { mo.playing = false; r('play').textContent = '▶'; mo.f = Number(r('scrub').value); poseMotion(); });
+    r('clipTilt').addEventListener('change', poseMotion);
+  })();
+  function togglePlay() {
+    if (!mo.clip) return;
+    mo.playing = !mo.playing; r('play').textContent = mo.playing ? '❚❚' : '▶';
+    if (mo.playing && mo.f >= 1) mo.f = 0;
+    poseMotion();
+  }
+  // 한 바퀴에 걸리는 시간 (초): 클립 그대로 · 느리게 · 게임의 재장전 시간
+  function motionDuration() {
+    const c = gun.clips.find(x => x.name === mo.clip), v = r('clipSpeed').value;
+    if (v === 'clip') return c.duration;
+    if (v.startsWith('w:')) { const w = WEAPONS.find(x => x.id === v.slice(2)); return w ? w.reload : c.duration; }
+    return c.duration / Number(v);
+  }
+  function poseMotion() {
+    if (!gun || !mo.clip) return;
+    poseClip(gun, mo.clip, mo.f);
+    arms.visible = r('showArms').checked && (view !== 'orbit' || mo.playing || mo.f > 0); // 살펴보기에서도 모션 중에는 팔(왼손이 따라가는 모습)
+    const tilt = view !== 'orbit' && r('clipTilt').checked && mo.clip === 'reload' && (mo.playing || mo.f > 0);
+    const m = tilt ? reloadMotion(mo.f) : null;
+    if (view !== 'orbit') { holder.position.copy(holderBase); holder.rotation.set(0, 0, 0); if (m) { holder.position.add(new THREE.Vector3(m.x, m.y, m.z)); holder.rotation.set(m.rx, m.ry, m.rz); } }
+    r('scrub').value = mo.f; r('clipT').textContent = `${(mo.f * motionDuration()).toFixed(2)}초`;
+  }
+  function stepMotion(dt) {
+    if (!mo.playing) return;
+    mo.f += dt / motionDuration();
+    if (mo.f >= 1) { if (r('clipLoop').checked) mo.f %= 1; else { mo.f = 1; mo.playing = false; r('play').textContent = '▶'; } }
+    poseMotion();
   }
 
   // ───────── 질감: 색 칸별 재질 값 (모든 총 공통, content/gunmaterials.json) · 정점 색 AO 비교 · 효과 미리 보기 ─────────
@@ -274,7 +327,11 @@ export async function createGunDoc(ctx, id, opts = {}) {
 
   // ───────── 저장 ─────────
   const doc = { kind: 'gun', modelType: type, key: savedId ? `gun:${savedId}` : null, id: savedId || id, title: savedId || name.replace(/\.glb$/i, ''), icon: '⌐', is3D: true, overlay, tools, toolbar, inspector };
-  doc.onKeyDown = e => { if (e.code === 'KeyM' && !e.metaKey && !e.ctrlKey) setEngine(!r('engineMat').checked); }; // M = 엔진 질감 켜고 끄기 (비교)
+  doc.onKeyDown = e => {
+    if (e.metaKey || e.ctrlKey) return;
+    if (e.code === 'KeyM') setEngine(!r('engineMat').checked); // M = 엔진 질감 켜고 끄기 (비교)
+    else if (e.code === 'Space' && mo.clip) { e.preventDefault(); togglePlay(); } // Space = 모션 재생 / 멈춤
+  };
   r('gunId').value = savedId || (id === 'sample' ? '' : name.replace(/\.glb$/i, '').toLowerCase().replace(/[^a-z0-9_]/g, '_'));
   r('fname').textContent = savedId ? `content/guns/${savedId}.glb` : name;
   const idOk = () => /^[a-z0-9_]+$/.test(r('gunId').value);
@@ -360,13 +417,14 @@ export async function createGunDoc(ctx, id, opts = {}) {
     activate() { controls.connect(); renderer.toneMappingExposure = 0.9; canvas.style.cursor = 'default'; updateRegister(); },
     deactivate() { controls.disconnect(); },
     resize(w, h) { camera.aspect = w / h; camera.updateProjectionMatrix(); },
-    frame() {
+    frame(dt = 1 / 60) {
+      stepMotion(dt);
       if (view === 'orbit') { if (r('spin').checked) holder.rotation.y += 0.004; controls.update(); }
       updateLabels(); renderer.render(scene, camera);
     },
     isDirty: () => !savedId && id !== 'sample', // 파일로 연 모델은 프로젝트에 저장하기 전까지 "저장 안 됨"
     save,
     dispose() { controls.dispose(); scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); },
-    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera, openRegister, fxTarget },
+    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera, openRegister, fxTarget, motion: mo, togglePlay, poseMotion },
   });
 }
