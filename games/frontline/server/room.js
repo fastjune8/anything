@@ -12,7 +12,7 @@ import { resolveHits } from './combat.js';
 import { createRules } from './modes/index.js';
 import { resetMotion, selfState, publicState } from './motion.js';
 import { recordHistory, verifyHit } from './lagcomp.js';
-import { initSkills, resetSkills, damageMul, tickSkills } from './skills.js';
+import { initSkills, resetSkills, damageMul, tickSkills, afterHit } from './skills.js';
 import { PORT, TICK_MS, MATCH_MS, RESTART_MS, HIT_CHECK, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -195,11 +195,12 @@ export class Room {
 
   // 사람이 보낸 명중 신호
   onHit(p, m) {
-    if (this.state !== 'playing' || !p.alive) return;
+    if (this.state !== 'playing' || !p.alive || (p.ms && p.ms.stunT > 0)) return; // 넘어져 있는 동안은 맞힐 수 없다
     const verify = HIT_CHECK ? (victim, h, claimed) => verifyHit(this, p, victim, m.o, [h[3], h[4], h[5]], h[6], claimed) : null;
     const result = resolveHits(this.players, p, m, verify, damageMul(p, m.w | 0)); // 과열 스킬: 열만큼 피해 배율
     if (!result) return;
     for (const { victim, dmg, head } of result.damages) this.applyDamage(p, victim, result.wi, dmg, head);
+    afterHit(this, p, result.wi, result.damages); // 밀어내기 스킬
   }
 
   // ───────── 채팅 ─────────

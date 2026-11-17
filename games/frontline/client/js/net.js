@@ -128,6 +128,11 @@ function onMessage(m) {
       const a = audioAt(new V3().fromArray(m.p)); sfx.boom(a.dist, a.pan);
       break;
     }
+    case 'shove': { // 밀어내기에 맞아 넘어졌다 (위치는 서버가 옮긴다)
+      if (m.id === me.id) { sfx.hurt(); wp.kickP += 0.05; wp.kickY += (Math.random() - 0.5) * 0.08; }
+      else { const r = remotes.get(m.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); } }
+      break;
+    }
     case 'sk': { // 다른 사람이 누르는 스킬을 썼다 (지금은 아드레날린: 소리만)
       const r = remotes.get(m.id);
       if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); }

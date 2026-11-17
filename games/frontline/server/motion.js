@@ -7,7 +7,7 @@ import { newMoveState, stepMovement, MAX_STEP_DT } from '../shared/movement.js';
 import { WEAPONS } from '../shared/weapons.js';
 
 export const STEP = MAX_STEP_DT;     // 입력 하나 = 1/60초
-export const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8 }; // dash: 대쉬 스킬 키를 이 입력에서 눌렀음
+export const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8, kick: 16 }; // dash: 대쉬 스킬 키를 이 입력에서 눌렀음, kick: 이 입력에서 밀려나기 무기를 쐈음
 const BURST = 30;                    // 한꺼번에 몰려와도 받아 주는 입력 수 (0.5초 분량)
 const MAX_PER_MSG = 120;             // 메시지 하나에 들어올 수 있는 입력 수
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -20,15 +20,21 @@ export function decodeInput(a, wstats, skills = null) {
   const w = (wstats && wstats[wi]) || WEAPONS[wi] || WEAPONS[0];
   const dashSk = skills ? skills.find(s => s.skill && s.skill.effect === 'dash') : null;
   const held = skills ? skills.find(s => s.wi === wi) : null;
+  const kickSk = held && held.skill && held.skill.effect === 'kickback' ? held.skill : null;
+  const pitch = clamp(num(a[4]), -1.6, 1.6);
   return {
     move: { fwd: clamp(Math.round(num(a[0])), -1, 1), side: clamp(Math.round(num(a[1])), -1, 1),
       jump: !!(flags & FLAG.jump), crouch: !!(flags & FLAG.crouch), sprint: !!(flags & FLAG.sprint),
       speedMul: w.move * (1 - 0.4 * clamp(num(a[6]), 0, 1)),
       airSprint: !!(held && held.skill && held.skill.effect === 'sprint'),
-      dash: !!(flags & FLAG.dash) && !!dashSk, dashSkill: dashSk ? dashSk.skill : null },
-    yaw: num(a[3]), pitch: clamp(num(a[4]), -1.6, 1.6), wi,
+      dash: !!(flags & FLAG.dash) && !!dashSk, dashSkill: dashSk ? dashSk.skill : null,
+      pitch, kick: !!(flags & FLAG.kick) && !!kickSk, kickSkill: kickSk ? kickSkill(kickSk, w) : null },
+    yaw: num(a[3]), pitch, wi,
   };
 }
+
+// 밀려나기 수치: 다음 밀려나기까지 최소 간격은 연사 간격의 절반 (아드레날린으로 빨라져도 막히지 않게, 그래도 연사 속도 이상으로는 못 뜬다)
+export const kickSkill = (sk, w) => ({ force: sk.force, gap: 30 / w.rpm });
 
 // 태어날 때: 이동 상태를 새로
 export function resetMotion(p, pos, now = Date.now()) {
@@ -73,7 +79,7 @@ export function selfState(p) {
   const s = p.ms;
   return {
     t: 'me', q: p.lastSeq, k: p.tpn | 0, // k: 지금까지 받은 순간이동 수 (브라우저가 순간이동 전에 계산된 결과를 버리는 데 쓴다)
-    st: { p: [s.pos.x, s.pos.y, s.pos.z], v: [s.vel.x, s.vel.y, s.vel.z], g: s.onGround, c: s.crouch, h: s.h, so: s.stepOff, va: s.vault, vl: s.vaultLock, at: s.airT, dt: s.dashT, dc: s.dashCd, dv: s.dashV },
+    st: { p: [s.pos.x, s.pos.y, s.pos.z], v: [s.vel.x, s.vel.y, s.vel.z], g: s.onGround, c: s.crouch, h: s.h, so: s.stepOff, va: s.vault, vl: s.vaultLock, at: s.airT, dt: s.dashT, dc: s.dashCd, dv: s.dashV, su: s.stunT, sl: s.slideT, kc: s.kickCd },
   };
 }
 // 다른 사람에게: 위치·시선 (예전 `s` 와 같은 모양)

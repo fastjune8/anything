@@ -8,11 +8,11 @@ import { stepMovement, NO_INPUT, MAX_STEP_DT } from '/shared/movement.js';
 import { colliders } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, wp, inp, game, eff, adsInput, net } from './state.js';
-import { heldSkill, dashSkill, takeDash } from './skills.js';
+import { heldSkill, dashSkill, takeDash, takeKick, kickSkill } from './skills.js';
 import { startDashFx } from './dashfx.js';
 
 const STEP = MAX_STEP_DT;
-const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8 }; // server/motion.js 와 같다
+const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8, kick: 16 }; // server/motion.js 와 같다
 let acc = 0, seq = 0, tpWant = 0; // tpWant: 내가 보낸 순간이동 수 (서버가 그만큼 받기 전의 결과는 버린다)
 const pending = []; // 서버가 아직 처리하지 않은 입력 { seq, move, yaw }
 const outbox = [];  // 아직 보내지 않은 입력 (net.js 가 0.05초마다 보낸다)
@@ -25,7 +25,7 @@ function readInput(can) {
   if (!can) return [[0, 0, 0, me.yaw, me.pitch, wp.cur, ads], NO_INPUT];
   const k = inp.keys;
   const sprintFire = !!heldSkill('sprint'); // 질주 스킬: 쏘면서도 달린다
-  const dash = takeDash();
+  const dash = takeDash(), kick = takeKick();
   const move = {
     fwd: (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0),
     side: (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0),
@@ -33,8 +33,9 @@ function readInput(can) {
     sprint: k.has('ShiftLeft') && !adsInput() && (sprintFire || !inp.fireHeld) && !wp.reload,
     speedMul: w.move * (1 - 0.4 * ads), // 무거운 총·정조준 중에는 느리게 (서버도 같은 식)
     airSprint: sprintFire, dash, dashSkill: dash ? dashSkill() : null, // 서버도 같은 값 (고른 스킬에서)
+    pitch: me.pitch, kick, kickSkill: kick ? kickSkill() : null,
   };
-  const flags = (move.jump ? FLAG.jump : 0) | (move.crouch ? FLAG.crouch : 0) | (move.sprint ? FLAG.sprint : 0) | (move.dash ? FLAG.dash : 0);
+  const flags = (move.jump ? FLAG.jump : 0) | (move.crouch ? FLAG.crouch : 0) | (move.sprint ? FLAG.sprint : 0) | (move.dash ? FLAG.dash : 0) | (move.kick ? FLAG.kick : 0);
   return [[move.fwd, move.side, flags, me.yaw, me.pitch, wp.cur, ads], move];
 }
 
@@ -83,6 +84,7 @@ export function reconcile(q, st, k = 0) {
   me.onGround = st.g; me.crouch = st.c; me.h = st.h; me.stepOff = st.so;
   me.vault = st.va ? { ...st.va } : null; me.vaultLock = st.vl; me.airT = st.at;
   me.dashT = st.dt || 0; me.dashCd = st.dc || 0; me.dashV = st.dv ? { ...st.dv } : null;
+  me.stunT = st.su || 0; me.slideT = st.sl || 0; me.kickCd = st.kc || 0;
   const yaw = me.yaw;
   for (const p of pending) { me.yaw = p.yaw; stepMovement(me, p.move, colliders, STEP); }
   me.yaw = yaw;

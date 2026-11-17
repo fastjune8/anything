@@ -15,11 +15,29 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 
 // 새 상태. pos/vel 은 {x,y,z} 를 가진 객체면 된다 (브라우저는 THREE.Vector3 를 넘긴다)
 export function newMoveState(pos = { x: 0, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 0 }) {
-  return { pos, vel, yaw: 0, onGround: true, crouch: false, h: STAND_H, stepOff: 0, vault: null, vaultLock: false, airT: 0, dashT: 0, dashCd: 0, dashV: null };
+  return { pos, vel, yaw: 0, onGround: true, crouch: false, h: STAND_H, stepOff: 0, vault: null, vaultLock: false, airT: 0, dashT: 0, dashCd: 0, dashV: null, stunT: 0, slideT: 0, kickCd: 0 };
 }
 // 입력. fwd/side: -1~1, speedMul: 무기 무게·정조준 등으로 줄어드는 배율, sprint: 달리기를 원함(정조준·사격·재장전 중이 아님)
 // 스킬: airSprint = 공중에서도 달리는 속도 유지(질주), dash = 대쉬 키를 이번에 눌렀음 + dashSkill = { cd, dist, dur } (서버는 고른 스킬의 값을 넣는다)
-export const NO_INPUT = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: false, sprint: false, speedMul: 1, airSprint: false, dash: false, dashSkill: null });
+//       kick = 이번에 밀려나기 무기를 쐈음 + kickSkill = { force, gap(다음 밀려나기까지 최소 간격) }, pitch = 그때 위아래 시선
+export const NO_INPUT = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: false, sprint: false, speedMul: 1, airSprint: false, dash: false, dashSkill: null, pitch: 0, kick: false, kickSkill: null });
+const STUNNED = Object.freeze({ ...NO_INPUT });
+
+// 밀어내기에 맞음 (서버가 부른다): 수평 방향 (dx, dz) 으로 force m/s 날아가며 stun 초 동안 넘어진다 (이동·사격 불가)
+export function knockBack(s, dx, dz, force, stun) {
+  const l = Math.hypot(dx, dz) || 1;
+  s.vel.x = dx / l * force; s.vel.z = dz / l * force; s.vel.y = Math.max(s.vel.y, 2.5);
+  s.onGround = false; s.vault = null; s.dashT = 0;
+  s.stunT = stun; s.slideT = stun;
+}
+// 밀려나기: 조준(yaw, pitch)과 반대 방향으로 force 만큼 속도를 더한다
+function kick(s, i, ev) {
+  const sk = i.kickSkill, cp = Math.cos(i.pitch || 0);
+  s.vel.x += Math.sin(s.yaw) * cp * sk.force; s.vel.z += Math.cos(s.yaw) * cp * sk.force; s.vel.y -= Math.sin(i.pitch || 0) * sk.force;
+  if (s.vel.y > 0.5) s.onGround = false;
+  s.slideT = 0.35; s.kickCd = sk.gap;
+  ev.kick = true;
+}
 
 // (x, z, 높이 h) 몸통이 겹치는 물체 중 가장 높은 윗면. 겹침이 없으면 -Infinity
 // 경사로는 발밑 윗면 높이로 본다 → 걸어 들어가면 그만큼 "턱" 으로 올라선다 (조금씩이라 미끄럽게 오른다)
@@ -106,11 +124,14 @@ function startDash(s, i, ev) {
 
 // 한 단계 진행. 반환 사건: { sprinting, moved(땅 위에서 움직인 거리), landed(착지 세기 0~1), vaultStart, vaultDone }
 export function stepMovement(s, i, cs, dt) {
-  const ev = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false };
+  const ev = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false, kick: false, stunned: false };
   if (!i.jump) s.vaultLock = false;
   s.dashCd = Math.max(0, (s.dashCd || 0) - dt);
+  s.kickCd = Math.max(0, (s.kickCd || 0) - dt); s.slideT = Math.max(0, (s.slideT || 0) - dt);
+  if (s.stunT > 0) { s.stunT = Math.max(0, s.stunT - dt); i = STUNNED; ev.stunned = true; } // 넘어져 있는 동안은 아무것도 못 한다
   if (s.vault) { updateVault(s, cs, dt, ev); return ev; }
   if (i.dash) startDash(s, i, ev);
+  if (i.kick && i.kickSkill && s.kickCd <= 0) kick(s, i, ev);
   const fwd = i.fwd, side = i.side;
   // 앉기
   if (i.crouch) s.crouch = true;
@@ -130,7 +151,7 @@ export function stepMovement(s, i, cs, dt) {
     s.vel.x = s.dashV.x * (k / dt); s.vel.z = s.dashV.z * (k / dt);
     if (s.dashT <= 0) { const l = Math.hypot(s.dashV.x, s.dashV.z) || 1; s.vel.x = s.dashV.x / l * SPEED.sprint; s.vel.z = s.dashV.z / l * SPEED.sprint; s.dashT = 0; } // 끝나면 달리는 속도로
   } else {
-    const acc = 1 - Math.exp(-dt * (s.onGround ? 13 : 2.2));
+    const acc = 1 - Math.exp(-dt * (!s.onGround ? 2.2 : s.slideT > 0 ? 3 : 13)); // 밀려나는 중에는 땅에서도 미끄러진다
     s.vel.x = lerp(s.vel.x, wx, acc); s.vel.z = lerp(s.vel.z, wz, acc);
   }
 
@@ -168,11 +189,11 @@ export function stepMovement(s, i, cs, dt) {
 // 프레임 시간이 길면 MAX_STEP_DT 이하로 나눠 여러 번 진행한다. 사건은 합쳐서 돌려준다
 export function advanceMovement(s, i, cs, dt) {
   const n = Math.max(1, Math.ceil(dt / MAX_STEP_DT - 1e-9)), h = dt / n;
-  const out = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false };
+  const out = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false, kick: false };
   for (let k = 0; k < n; k++) {
     const ev = stepMovement(s, i, cs, h);
     out.sprinting = ev.sprinting; out.moved += ev.moved; out.landed = Math.max(out.landed, ev.landed);
-    out.vaultStart ||= ev.vaultStart; out.vaultDone ||= ev.vaultDone; out.dash ||= ev.dash;
+    out.vaultStart ||= ev.vaultStart; out.vaultDone ||= ev.vaultDone; out.dash ||= ev.dash; out.kick ||= ev.kick;
   }
   return out;
 }

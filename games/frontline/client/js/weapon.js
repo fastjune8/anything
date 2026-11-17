@@ -9,7 +9,7 @@ import { showHit } from './hud.js';
 import { sfx } from './sfx.js';
 import { me, inv, wp, inp, game, net, loadout, eff, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
 import { V3, UP, DEG, lerp, clamp } from './util.js';
-import { rpmMul, heldSkill, heatShot, heatOf, grenadeMode, sk, resetSkills } from './skills.js';
+import { rpmMul, heldSkill, heatShot, heatOf, grenadeMode, sk, resetSkills, onFire } from './skills.js';
 
 const _o = new V3(), _d = new V3(), _f = new V3(), _r = new V3(), _u = new V3(), _mz = new V3();
 
@@ -23,6 +23,7 @@ function muzzleWorld(out) {
 function fire() {
   const w = eff[wp.cur], st = inv[wp.cur];
   st.ammo--; wp.cooldown = 60 / (w.rpm * rpmMul()); inp.fireFresh = false; // 아드레날린: 공격 속도 증가
+  const charged = onFire(wp.cur); // 차지 샷 · 밀어내기 · 밀려나기 (스킬)
   camera.getWorldDirection(_f);
   _r.crossVectors(_f, UP).normalize(); _u.crossVectors(_r, _f);
   _o.copy(camera.position);
@@ -66,6 +67,7 @@ function fire() {
   guns[wp.cur].flash.scale.setScalar((w.pellets > 1 || w.scope ? 1.5 : 1) * (0.8 + Math.random() * 0.5) * (1 - 0.5 * wp.adsT));
   muzzleLight.position.copy(_mz); muzzleLight.intensity = 60;
   sfx.shot(w);
+  if (charged) { sfx.mech('bolt', 1); guns[wp.cur].flash.scale.multiplyScalar(1.6); wp.vmKick = 1.6; } // 충전된 한 발
   if (w.bolt) sfx.mech('bolt', 1, 0, 0.5);
   if (w.shell) sfx.mech('pump', 1, 0, 0.28);
 }
@@ -102,7 +104,7 @@ export function switchTo(i) {
 const RELOAD_EV = [[0.15, 'magout'], [0.62, 'magin'], [0.88, 'bolt']]; // [재장전 진행도, 소리]
 export function updateWeapon(dt, active) {
   const w = eff[wp.cur], st = inv[wp.cur];
-  const can = active && me.alive && game.matchState !== 'ended' && !me.vault; // 넘어가는 동안은 쏠 수 없다
+  const can = active && me.alive && game.matchState !== 'ended' && !me.vault && !(me.stunT > 0); // 넘어가는 동안·넘어져 있는 동안은 쏠 수 없다
   wp.cooldown = Math.max(0, wp.cooldown - dt);
   wp.drawT = Math.max(0, wp.drawT - dt);
   wp.bloom = Math.max(0, wp.bloom - dt * (w.bloomMax || 1) * 3.2);
@@ -167,6 +169,6 @@ export function placeMe(p) {
   me.pos.set(p[0], p[1], p[2]); me.vel.set(0, 0, 0);
   me.yaw = Math.atan2(p[0], p[2]) || 0; me.pitch = 0; wp.kickP = wp.kickY = 0;
   me.hp = MAX_HP; me.alive = true; me.crouch = false; me.onGround = true; me.stepOff = 0; me.deadT = 0;
-  me.vault = null; me.dashT = 0; me.dashCd = 0; me.dashV = null;
+  me.vault = null; me.dashT = 0; me.dashCd = 0; me.dashV = null; me.stunT = 0; me.slideT = 0; me.kickCd = 0;
   resetLoadout(); resetSkills(); wp.drawT = eff[wp.cur].draw; showGun();
 }

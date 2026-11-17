@@ -144,6 +144,31 @@ console.log('\n[무기 스킬: 대쉬 · 질주 · 과열 · 유탄]');
   check(g2.p.y < 0.1 && g2.p.z < -10, '포물선으로 날아가 땅에 떨어지면 터진다', `z ${g2.p.z.toFixed(1)}`);
   check(splashDamage(gl, 0) === gl.dmg && splashDamage(gl, gl.radius * 0.5) < gl.dmg && splashDamage(gl, gl.radius + 0.1) === 0, '폭발 피해: 가운데가 가장 크고, 반경 밖은 0');
   check(!blastReaches({ x: 0, y: 1, z: 8 }, { x: 0, y: 1, z: 12 }, wall) && blastReaches({ x: 0, y: 1, z: 8 }, { x: 2, y: 1, z: 6 }, wall), '벽 너머에는 폭발 피해가 닿지 않는다');
+
+  // 기본 산탄총: 차지 샷 · 밀어내기 · 밀려나기
+  const { knockBack } = await import('../shared/movement.js');
+  const sg = WEAPONS.find(w => w.id === 'm870');
+  check(sg.name === '기본 산탄총' && ['charge', 'shove', 'kickback'].every(id => skillsFor(sg, 0).some(x => x.id === id) && skillsFor(sg, 1).some(x => x.id === id)), 'M870 은 "기본 산탄총" 이 되었고, 주무기·보조무기 모두에서 차지 샷 · 밀어내기 · 밀려나기를 고를 수 있다');
+  const shove = getSkill('shove'), k = newMoveState(); k.yaw = 0;
+  knockBack(k, 1, 0, shove.force, shove.stun);
+  run(k, { ...NO_INPUT, fwd: 1, jump: true, speedMul: 1 }, shove.stun * 0.8);
+  const atStun = { x: k.pos.x, z: k.pos.z, stun: k.stunT };
+  check(atStun.x > 2 && Math.abs(atStun.z) < 0.05 && atStun.stun > 0, '밀어내기에 맞으면 밀려나고, 넘어진 동안은 앞으로 가려 해도 움직이지 못한다', JSON.stringify(atStun));
+  run(k, { ...NO_INPUT, fwd: 1, speedMul: 1 }, 0.6);
+  check(k.stunT === 0 && k.pos.z < atStun.z - 0.5, `${shove.stun}초 뒤에는 다시 움직일 수 있다`, k.pos.z.toFixed(2));
+  const kb = getSkill('kickback'), kick = { force: kb.force, gap: 0.4 };
+  const k1 = newMoveState(); k1.yaw = Math.PI; // 앞 = +z
+  run(k1, { ...NO_INPUT, kick: true, kickSkill: kick, pitch: 0 }, 1 / 60); run(k1, NO_INPUT, 0.3);
+  check(k1.pos.z < -0.6 && k1.onGround, '밀려나기: 앞으로 쏘면 뒤로 밀려난다', k1.pos.z.toFixed(2));
+  const k2 = newMoveState(); k2.yaw = Math.PI;
+  run(k2, { ...NO_INPUT, kick: true, kickSkill: kick, pitch: -1.4 }, 1 / 60); run(k2, NO_INPUT, 0.15);
+  check(k2.pos.y > 0.4 && !k2.onGround, '아래를 보고 쏘면 위로 뜬다', k2.pos.y.toFixed(2));
+  const k3 = newMoveState(); k3.yaw = Math.PI; k3.pos.y = 5; k3.onGround = false;
+  run(k3, { ...NO_INPUT, kick: true, kickSkill: kick, pitch: 0 }, 1 / 60); run(k3, NO_INPUT, 0.2);
+  check(k3.pos.z < -0.8, '공중에서도 밀려난다', k3.pos.z.toFixed(2));
+  const k4 = newMoveState(); k4.yaw = Math.PI;
+  run(k4, { ...NO_INPUT, kick: true, kickSkill: kick, pitch: 0 }, 0.2);
+  check(Math.abs(k4.vel.z) < kb.force * 1.05, '연사 간격보다 빨리 밀려나기가 겹치지 않는다', k4.vel.z.toFixed(2));
 }
 
 console.log('\n[넘어가기 / 오르기: findVault]');

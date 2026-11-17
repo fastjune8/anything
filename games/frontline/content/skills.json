@@ -3,5 +3,8 @@
   {"id":"sprint","name":"질주","effect":"sprint","desc":"이 무기를 든 동안 달리면서 쏠 수 있고, 뛰어올라도 달리는 속도가 유지된다"},
   {"id":"overheat","name":"과열","effect":"overheat","desc":"연사할수록 피해가 늘어난다. 총열이 과열되면 다 식을 때까지 쏠 수 없다","heat":0.035,"cool":0.5,"coolDelay":0.3,"bonus":0.4},
   {"id":"grenade","name":"유탄발사","effect":"grenade","desc":"누르면 이 총을 꺼내며 유탄 모드 (클릭 = 유탄 발사, 다시 누르면 총으로). 유탄은 시간이 지나면 한 발씩 채워진다","ammo":2,"recharge":10,"dmg":95,"radius":5,"speed":32},
-  {"id":"dash","name":"대쉬","effect":"dash","desc":"움직이는 방향(가만히 있으면 앞)으로 짧은 거리를 빠르게 이동한다","cd":6,"dist":6,"dur":0.18}
+  {"id":"dash","name":"대쉬","effect":"dash","desc":"움직이는 방향(가만히 있으면 앞)으로 짧은 거리를 빠르게 이동한다","cd":6,"dist":6,"dur":0.18},
+  {"id":"charge","name":"차지 샷","effect":"charge","desc":"7초 동안 쏘지 않았다면 다음 사격은 50% 늘어난 피해를 준다","wait":7,"bonus":0.5},
+  {"id":"shove","name":"밀어내기","effect":"shove","desc":"사용하면 다음 사격이 맞은 상대를 밀어내며 0.5초 동안 넘어뜨린다 (이동·사격 불가)","cd":10,"force":11,"stun":0.5},
+  {"id":"kickback","name":"밀려나기","effect":"kickback","desc":"쏠 때마다 조준과 반대 방향으로 밀려난다. 공중에서도 적용되고, 아래로 쏘면 뜬다","force":8}
 ]

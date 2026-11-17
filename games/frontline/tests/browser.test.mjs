@@ -271,7 +271,7 @@ try {
     await page.click('#armoryBtn'); await sleep(600);
     const opened = await page.evaluate(() => ({ open: window.__g.armory.open, menu: getComputedStyle(document.getElementById('menu')).display, labels: [...document.querySelectorAll('.ar-label .nm')].map(e => e.firstChild.textContent), badges: document.querySelectorAll('.ar-label em').length }));
     check(opened.open && opened.menu === 'none', '무기고 버튼을 누르면 로비 대신 무기고가 열린다');
-    check(opened.labels.length === 8 && ['기본 돌격소총', 'MP5', 'M870', 'AWM', 'M249', 'M9'].every(n => opened.labels.includes(n)) && !opened.labels.includes('M4A1') && !opened.labels.includes('AK-47'), '벽에 가진 무기 6자루와 빈 거치대가 걸려 있다 (M4A1·AK-47 은 기본 돌격소총으로 합쳐짐)', opened.labels.join(','));
+    check(opened.labels.length === 8 && ['기본 돌격소총', 'MP5', '기본 산탄총', 'AWM', 'M249', 'M9'].every(n => opened.labels.includes(n)) && !opened.labels.includes('M4A1') && !opened.labels.includes('AK-47'), '벽에 가진 무기 6자루와 빈 거치대가 걸려 있다 (M4A1·AK-47 은 기본 돌격소총으로 합쳐짐)', opened.labels.join(','));
     check(opened.badges === 2, '출전 무기 두 자루에 표시가 붙는다');
 
     // 벽에 걸린 MP5 를 클릭해 고른다 (이름표 바로 위가 그 무기의 거치대)

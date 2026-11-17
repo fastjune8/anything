@@ -25,7 +25,7 @@ export class Bot {
   }
 
   reset(pos) {
-    this.x = pos[0]; this.z = pos[2];
+    this.x = pos[0]; this.z = pos[2]; this.knock = null;
     this.yaw = Math.atan2(pos[0], pos[2]); this.pitch = 0;
     this.weapon = WEAPON_POOL[(Math.random() * WEAPON_POOL.length) | 0];
     this.path = null; this.pi = 0; this.repath = 0;
@@ -88,9 +88,23 @@ export class Bot {
     return this.canSee(peek) ? peek : null;
   }
 
+  // 밀어내기에 맞음: knock 동안 밀려나며 아무것도 못 한다 (사람은 이동 상태, 봇은 여기서)
+  knockBack(dx, dz, force, stun) {
+    const l = Math.hypot(dx, dz) || 1;
+    this.knock = { vx: dx / l * force, vz: dz / l * force, t: stun };
+  }
+
   update(dt) {
     const p = this.p;
     if (!p.alive) return;
+    if (this.knock) { // 넘어진 동안: 밀려나다 멈춘다
+      const k = this.knock;
+      this.tryMove(k.vx * dt, k.vz * dt);
+      k.vx *= Math.exp(-dt * 4); k.vz *= Math.exp(-dt * 4); k.t -= dt;
+      p.pos = [this.x, 0, this.z];
+      if (k.t <= 0) this.knock = null;
+      return;
+    }
     const w = WEAPONS[this.weapon];
 
     // 1) 시야: 가장 가까운 보이는 적

@@ -14,6 +14,7 @@ export const me = {
   onGround: true, crouch: false, h: STAND_H, hp: MAX_HP, alive: true, stepOff: 0, deadT: 0,
   team: -1, // 팀전에서 내 팀 (0/1), 개인전은 -1
   dashT: 0, dashCd: 0, dashV: null, // 대쉬(스킬): 남은 시간 / 다시 쓸 수 있을 때까지 / 속도
+  stunT: 0, slideT: 0, kickCd: 0,   // 밀어내기에 맞아 넘어진 시간 / 밀려나며 미끄러지는 시간 / 밀려나기(스킬) 간격
   vault: null, vaultLock: false, // 넘어가는 중이면 진행 정보 / 넘은 뒤 Space 를 뗄 때까지 다시 넘지 않음
   airT: 0,                      // 땅을 떠난 뒤 지난 시간 (점프 직후 공중에서도 넘을 수 있게)
 };

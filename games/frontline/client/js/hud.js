@@ -6,7 +6,7 @@ import { sfx } from './sfx.js';
 import { me, inv, wp, game, roster, loadout, eff, currentSpread, isAlly } from './state.js';
 import { $, DEG, NOLOCK, MODE_CFG, clamp, esc } from './util.js';
 import { SKILL_KEYS } from '/shared/skills.js';
-import { sk, slotSkill, heatOf, grenadeMode, glSkill } from './skills.js';
+import { sk, slotSkill, heatOf, grenadeMode, glSkill, chargeReady } from './skills.js';
 import { cache, setText, setDisplay, setClass } from './dom.js';
 
 const hudEl = $('hud'), crossEl = $('cross'), hitEl = $('hitm'), vigEl = $('vig'), dirEl = $('dmgdir');
@@ -41,6 +41,8 @@ function updateSkillHud() {
       case 'adrenaline': wait = sk.cd[n] > 0; on = sk.adrenT > 0; text = on ? `사용 중 ${sk.adrenT.toFixed(1)}` : wait ? `${Math.ceil(sk.cd[n])}초` : '준비'; fill = on ? sk.adrenT / skill.dur : wait ? 1 - sk.cd[n] / skill.cd : 1; break;
       case 'dash': wait = me.dashCd > 0; text = wait ? `${Math.ceil(me.dashCd)}초` : '준비'; fill = wait ? 1 - me.dashCd / skill.cd : 1; break;
       case 'grenade': { on = grenadeMode(); text = `${on ? '유탄 모드 · ' : ''}${sk.gl.ammo}/${skill.ammo}발`; fill = sk.gl.ammo >= skill.ammo ? 1 : sk.gl.t / skill.recharge; wait = !sk.gl.ammo; break; }
+      case 'shove': wait = sk.cd[n] > 0; on = sk.shoveArmed; text = on ? '다음 사격에 밀어냄' : wait ? `${Math.ceil(sk.cd[n])}초` : '준비'; fill = wait ? 1 - sk.cd[n] / skill.cd : 1; break;
+      case 'charge': { const ready = chargeReady(wi, skill), left = skill.wait - (sk.clock - (sk.lastShot[wi] ?? -Infinity)); on = ready && wp.cur === wi; text = ready ? '충전됨' : `충전 ${Math.ceil(left)}초`; fill = ready ? 1 : 1 - left / skill.wait; wait = !ready; break; }
       case 'overheat': { const h = heatOf(wi); hot = h.over; on = wp.cur === wi; text = h.over ? '과열 — 식는 중' : on ? `열 ${Math.round(h.heat * 100)}%` : '늘 켜짐 (들면)'; fill = h.heat; break; }
       default: on = wp.cur === wi; text = on ? '적용 중' : '늘 켜짐 (들면)'; fill = on ? 1 : 0;
     }

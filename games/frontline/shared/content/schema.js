@@ -193,21 +193,26 @@ export function checkLooks(list) {
 //   overheat:   (늘 켜짐) 쏠 때마다 열 +heat, 쏘지 않으면 coolDelay 초 뒤부터 초당 cool 씩 식는다. 피해 ×(1 + bonus × 열). 열이 1 이 되면 0 까지 식을 때까지 못 쏜다
 //   grenade:    누르면 그 총을 꺼내며 유탄 모드. 유탄 ammo 발, recharge 초마다 한 발 채움. 맞은 곳에서 radius m 안에 최대 dmg (멀수록 줄어든다), 속도 speed m/s
 //   dash:       누르면 dur 초 동안 dist m 를 빠르게 이동 · cd 초마다
-export const SKILL_EFFECTS = { adrenaline: '누르면 발동', sprint: '늘 켜짐', overheat: '늘 켜짐', grenade: '유탄 모드', dash: '누르면 발동' };
+//   charge:     (늘 켜짐) 그 무기로 wait 초 동안 쏘지 않았다면 다음 한 발의 피해 +bonus
+//   shove:      누르면 다음 한 발이 맞은 상대를 force(m/s)로 밀어내며 stun 초 동안 넘어뜨린다 (이동·사격 불가) · cd 초마다
+//   kickback:   (늘 켜짐) 쏠 때마다 조준과 반대 방향으로 force(m/s) 만큼 밀려난다 (공중에서도, 아래로 쏘면 뜬다)
+export const SKILL_EFFECTS = { adrenaline: '누르면 발동', sprint: '늘 켜짐', overheat: '늘 켜짐', grenade: '유탄 모드', dash: '누르면 발동', charge: '늘 켜짐', shove: '누르면 발동', kickback: '늘 켜짐' };
 export const SKILL_SCHEMA = obj('스킬', {
   id: str('id', { pattern: '^[a-z][a-z0-9_]*$' }), name: str('이름'),
-  effect: oneOf('효과 (코드에 있는 것)', Object.keys(SKILL_EFFECTS), { hint: 'adrenaline = 공격 속도, sprint = 달리며 사격, overheat = 과열, grenade = 유탄, dash = 대쉬' }),
+  effect: oneOf('효과 (코드에 있는 것)', Object.keys(SKILL_EFFECTS), { hint: 'adrenaline = 공격 속도, sprint = 달리며 사격, overheat = 과열, grenade = 유탄, dash = 대쉬, charge = 차지 샷, shove = 밀어내기, kickback = 밀려나기' }),
   desc: str('설명 (무기고에 보인다)'),
   cd: num('쿨타임 (초)', opt({ min: 0.5, max: 120, step: 0.5 })), dur: num('지속 시간 (초)', opt({ min: 0.05, max: 30, step: 0.05 })),
   rate: num('공격 속도 증가 (0.4 = +40%)', opt({ min: 0, max: 3, step: 0.05 })),
   heat: num('한 발에 오르는 열 (0~1)', opt({ min: 0.001, max: 1, step: 0.005 })), cool: num('초당 식는 열', opt({ min: 0.05, max: 5, step: 0.05 })),
-  coolDelay: num('쏘기를 멈추고 식기 시작할 때까지 (초)', opt({ min: 0, max: 5, step: 0.05 })), bonus: num('열이 가득일 때 피해 증가 (0.4 = +40%)', opt({ min: 0, max: 3, step: 0.05 })),
+  coolDelay: num('쏘기를 멈추고 식기 시작할 때까지 (초)', opt({ min: 0, max: 5, step: 0.05 })), bonus: num('피해 증가 (0.4 = +40%) — 과열: 열이 가득일 때, 차지 샷: 충전된 한 발', opt({ min: 0, max: 3, step: 0.05 })),
   ammo: int('유탄 수', opt({ min: 1, max: 10 })), recharge: num('유탄 한 발 채우는 시간 (초)', opt({ min: 0.5, max: 120, step: 0.5 })),
   dmg: num('유탄 최대 피해', opt({ min: 1, max: 300, step: 1 })), radius: num('유탄 폭발 반경 (m)', opt({ min: 0.5, max: 20, step: 0.5 })), speed: num('유탄 속도 (m/s)', opt({ min: 5, max: 120, step: 1 })),
   dist: num('대쉬 거리 (m)', opt({ min: 0.5, max: 30, step: 0.5 })),
+  wait: num('차지: 쏘지 않고 기다리는 시간 (초)', opt({ min: 0.5, max: 60, step: 0.5 })),
+  force: num('밀어내는 / 밀려나는 세기 (m/s)', opt({ min: 0.5, max: 40, step: 0.5 })), stun: num('넘어지는 시간 (초)', opt({ min: 0.05, max: 5, step: 0.05 })),
 });
 // 효과마다 꼭 있어야 하는 수치
-const SKILL_NEEDS = { adrenaline: ['cd', 'dur', 'rate'], sprint: [], overheat: ['heat', 'cool', 'coolDelay', 'bonus'], grenade: ['ammo', 'recharge', 'dmg', 'radius', 'speed'], dash: ['cd', 'dist', 'dur'] };
+const SKILL_NEEDS = { adrenaline: ['cd', 'dur', 'rate'], sprint: [], overheat: ['heat', 'cool', 'coolDelay', 'bonus'], grenade: ['ammo', 'recharge', 'dmg', 'radius', 'speed'], dash: ['cd', 'dist', 'dur'], charge: ['wait', 'bonus'], shove: ['cd', 'force', 'stun'], kickback: ['force'] };
 export function checkSkills(list) {
   const errors = check(list, F('list', '스킬 목록', { of: SKILL_SCHEMA }));
   const arr = Array.isArray(list) ? list : [];

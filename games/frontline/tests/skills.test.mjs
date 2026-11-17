@@ -84,6 +84,50 @@ try {
   h.send({ t: 'shot', w: M9, o: [30, 1.5, 30], e: [] });
   check(!!(await t.waitFor('shot', m => m.id === h.me && m.w === M9, 1000)), '과열 스킬이 없는 무기(M9)는 그대로 쏠 수 있다');
   h.ws.close(); t.ws.close();
+
+  console.log('\n[기본 산탄총: 차지 샷 · 밀어내기 · 밀려나기]');
+  const SG = W('m870'), charge = getSkill('charge'), shove = getSkill('shove');
+  const c1 = connect(srv.port, 'charger', { loadout: [{ id: 'm870', skill: 'charge' }, { id: 'ar', skill: 'shove' }] }); await c1.open; await c1.waitFor('welcome');
+  const tg = connect(srv.port, 'target2'); await tg.open; await tg.waitFor('welcome');
+  c1.send({ t: 'tp', p: [30, 0, 30] }); tg.send({ t: 'tp', p: [30, 0, 26] });
+  await sleep(3400);
+  const plain = Math.round(calcDamage(WEAPONS[SG], 'body', 4));
+  const fire = async (w, part = 'body') => { tg.msgs.length = 0; c1.send({ t: 'shot', w, o: [30, 1.5, 30], e: [] }); c1.send({ t: 'hit', w, hits: [[part, 4, tg.me]] }); return tg.waitFor('dmg', m => m.to === tg.me, 1500); };
+  const d1 = await fire(SG);
+  check(d1 && d1.dmg === Math.round(plain * (1 + charge.bonus)), `차지 샷: 오래 쏘지 않은 뒤 첫 발은 피해 +${Math.round(charge.bonus * 100)}% (${Math.round(plain * (1 + charge.bonus))})`, JSON.stringify(d1 && d1.dmg));
+  const d2 = await fire(SG);
+  check(d2 && d2.dmg === plain, `바로 이어 쏜 발은 기본 피해 (${plain})`, JSON.stringify(d2 && d2.dmg));
+  c1.ws.close();
+  // 밀어내기 (보조무기 자리 E 에 고름) → 다음 사격에 맞은 상대가 밀려나고 넘어진다. 맞는 쪽은 쏜 사람 쪽(+z)으로 걸어오려 한다
+  const c2 = connect(srv.port, 'shover', { loadout: [{ id: 'ar' }, { id: 'm870', skill: 'shove' }] }); await c2.open; await c2.waitFor('welcome');
+  c2.send({ t: 'tp', p: [30, 0, 30] }); tg.send({ t: 'tp', p: [30, 0, 26], y: Math.PI }); await sleep(3400);
+  let tseq = 0; const hold = setInterval(() => { tg.send({ t: 'in', s: tseq, i: [0, 1, 2].map(() => [1, 0, 0, Math.PI, 0, W('awm'), 0]) }); tseq += 3; }, 50);
+  await sleep(150); tg.send({ t: 'tp', p: [30, 0, 26], y: Math.PI }); await sleep(250);
+  c2.send({ t: 'sk', n: 1 });
+  check(!!(await tg.waitFor('sk', m => m.id === c2.me && m.e === 'shove', 1500)), '밀어내기를 쓰면 서버가 준비하고 알린다');
+  const before = lastMe(tg).st.p;
+  tg.msgs.length = 0;
+  c2.send({ t: 'shot', w: SG, o: [30, 1.5, 30], e: [] }); c2.send({ t: 'hit', w: SG, hits: [['body', 4, tg.me]] });
+  const sh = await tg.waitFor('shove', m => m.id === tg.me, 1500);
+  await sleep(150);
+  const st = lastMe(tg).st;
+  check(!!sh && st.su > 0, `맞은 상대는 ${shove.stun}초 동안 넘어진다 (서버 이동 상태)`, JSON.stringify(st.su));
+  check(st.p[2] < before[2] - 0.5, '쏜 사람 반대쪽으로 밀려난다 (앞으로 걸으려 해도)', `${before[2].toFixed(2)} → ${st.p[2].toFixed(2)}`);
+  tg.msgs.length = 0; c2.send({ t: 'shot', w: SG, o: [30, 1.5, 30], e: [] }); c2.send({ t: 'hit', w: SG, hits: [['body', 4, tg.me]] }); await sleep(400);
+  check(!tg.find('shove'), '밀어내기는 준비한 뒤 한 발만');
+  clearInterval(hold); c2.ws.close(); tg.ws.close(); seq = 0;
+
+  const kb = connect(srv.port, 'kicker', { loadout: [{ id: 'm870', skill: 'kickback' }, { id: 'm9' }] }); await kb.open; await kb.waitFor('welcome');
+  kb.send({ t: 'tp', p: [30, 0, 30], y: Math.PI }); await sleep(200);
+  await inputs(kb, idle(SG, 6)); await sleep(150);
+  const kz = lastMe(kb).st.p[2];
+  await inputs(kb, [[0, 0, 16, Math.PI, 0, SG, 0], ...idle(SG, 20)]); await sleep(200); // 플래그 16 = 밀려나기 무기를 쐈다
+  check(lastMe(kb).st.p[2] < kz - 0.5, '밀려나기: 쏜 입력이 오면 서버가 조준 반대 방향(뒤)으로 민다', `${kz.toFixed(2)} → ${lastMe(kb).st.p[2].toFixed(2)}`);
+  await inputs(kb, idle(SG, 60)); await sleep(150); // 미끄러지기가 끝날 때까지
+  const kz2 = lastMe(kb).st.p[2];
+  await inputs(kb, [[0, 0, 16, Math.PI, 0, W('m9'), 0], ...idle(W('m9'), 20)]); await sleep(200);
+  check(Math.abs(lastMe(kb).st.p[2] - kz2) < 0.2, '밀려나기가 없는 무기(M9)를 들고 보낸 플래그는 무시한다');
+  kb.ws.close();
 } catch (e) {
   console.error('테스트 중 오류:', e);
   exitCode = 1;

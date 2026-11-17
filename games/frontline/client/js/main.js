@@ -35,6 +35,7 @@ function frame(now) {
 
     let eye = me.h - 0.13, roll = dashView.roll;
     if (!me.alive) { me.deadT = Math.min(1, me.deadT + dt * 2.2); const e = smooth(0, 1, me.deadT); eye = lerp(eye, 0.3, e); roll = e * 0.6; }
+    if (me.stunT > 0) { eye -= 0.35 * Math.min(1, me.stunT / 0.15); roll += 0.3 * Math.min(1, me.stunT / 0.15); } // 넘어짐 (밀어내기에 맞음)
     camera.position.set(rpos.x, rpos.y + eye + me.stepOff, rpos.z); // rpos: 1/60초 계산 사이를 부드럽게 이은 위치
     camera.rotation.set(clamp(me.pitch + wp.kickP, -PITCH_MAX, PITCH_MAX), me.yaw + wp.kickY, roll);
     camera.updateMatrixWorld();
