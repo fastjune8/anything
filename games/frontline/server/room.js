@@ -12,6 +12,7 @@ import { resolveHits } from './combat.js';
 import { createRules } from './modes/index.js';
 import { resetMotion, selfState, publicState } from './motion.js';
 import { recordHistory, verifyHit } from './lagcomp.js';
+import { initSkills, resetSkills, damageMul, tickSkills } from './skills.js';
 import { PORT, TICK_MS, MATCH_MS, RESTART_MS, HIT_CHECK, goalFor, botFillFor, lanAddresses } from './config.js';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -82,6 +83,7 @@ export class Room {
     p.loadout = sanitizeLoadout(loadout);
     p.wstats = {};                       // 무기번호 → 파츠가 반영된 성능. 여기 없는 무기로는 쏘거나 맞힐 수 없다
     for (const l of p.loadout) p.wstats[l.wi] = applyParts(WEAPONS[l.wi], l.parts);
+    initSkills(p);                       // 자리별 스킬 (Q = 주무기, E = 보조무기)
     this.players.set(p.id, p);
     this.sendTo(p, {
       t: 'welcome', id: p.id, mode: this.mode, map: this.mapId, ...this.rules.snapshot(), room: this.custom ? { code: this.custom.code, name: this.custom.name, minutes: Math.round(this.matchMs / 60000) } : null, team: p.team, ts: this.teamScores, goal: this.goal, left: Math.max(0, this.endsAt - Date.now()), state: this.state,
@@ -157,7 +159,7 @@ export class Room {
     p.invulnUntil = Date.now() + SPAWN_PROTECT_MS;
     clearTimeout(p.respawnTimer);
     if (p.bot) p.bot.reset(p.pos);
-    else resetMotion(p, p.pos); // 사람: 서버가 이동을 계산한다
+    else { resetMotion(p, p.pos); resetSkills(p); } // 사람: 서버가 이동을 계산한다
     this.broadcast({ t: 'spawn', id: p.id, p: p.pos, inv: SPAWN_PROTECT_MS });
   }
 
@@ -195,7 +197,7 @@ export class Room {
   onHit(p, m) {
     if (this.state !== 'playing' || !p.alive) return;
     const verify = HIT_CHECK ? (victim, h, claimed) => verifyHit(this, p, victim, m.o, [h[3], h[4], h[5]], h[6], claimed) : null;
-    const result = resolveHits(this.players, p, m, verify);
+    const result = resolveHits(this.players, p, m, verify, damageMul(p, m.w | 0)); // 과열 스킬: 열만큼 피해 배율
     if (!result) return;
     for (const { victim, dmg, head } of result.damages) this.applyDamage(p, victim, result.wi, dmg, head);
   }
@@ -225,7 +227,7 @@ export class Room {
     this.state = 'playing';
     this.endsAt = Date.now() + this.matchMs;
     for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.alive = false; }
-    this.teamScores = [0, 0];
+    this.teamScores = [0, 0]; this.grenades = [];
     this.rules.reset();
     this.broadcast({ t: 'start', goal: this.goal, ts: this.teamScores, left: this.matchMs, ...this.rules.snapshot(), players: [...this.players.values()].map(p => this.info(p)) });
     for (const p of this.players.values()) this.spawn(p);
@@ -253,6 +255,8 @@ export class Room {
       this.sendTo(p, selfState(p));
       if (p.alive) this.broadcast({ ...publicState(p), n: this.tickN }, p);
     }
+    if (this.state !== 'playing') return;
+    tickSkills(this, dt); // 유탄이 날아가고 터진다, 유탄 채우기
     if (this.state !== 'playing') return;
     if (this.rules.tick(dt)) { this.endMatch(); return; } // 모드 규칙 (예: 점령전 거점 점수)
 

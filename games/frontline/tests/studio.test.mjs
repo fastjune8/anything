@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { startServer, connect, check, failed, ROOT } from './helpers.mjs';
+import { startServer, connect, check, failed, ROOT, W } from './helpers.mjs';
 import { checkMap } from '../shared/content/schema.js';
 
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
@@ -347,14 +347,14 @@ try {
   const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
   await gp.goto(`http://localhost:${srv.port}/?auto=Tester&nolock&mode=ffa`);
   await gp.waitForFunction(() => window.__g && window.__g.joined, null, { timeout: 60000 });
-  const gm = await gp.evaluate(() => ({ cur: window.__g.cur, models: window.__g.vmGuns.map(g => g.model || null), sightY: window.__g.vmGuns[2].sightY }));
-  check(gm.models[2] === 'zz_gun_test' && Math.abs(gm.sightY - 0.064) < 1e-3, '게임을 열면 MP5 가 등록된 모델로 그려진다 (정조준 높이도 모델의 부착 지점대로)', JSON.stringify(gm));
-  check(gm.models.filter(Boolean).length >= 1 && gm.models[6] === null, '모델이 없는 무기는 코드로 만든 총 그대로', JSON.stringify(gm.models));
+  const gm = await gp.evaluate(i => ({ cur: window.__g.cur, models: window.__g.vmGuns.map(g => g.model || null), sightY: window.__g.vmGuns[i].sightY }), W('mp5'));
+  check(gm.models[W('mp5')] === 'zz_gun_test' && Math.abs(gm.sightY - 0.064) < 1e-3, '게임을 열면 MP5 가 등록된 모델로 그려진다 (정조준 높이도 모델의 부착 지점대로)', JSON.stringify(gm));
+  check(gm.models.filter(Boolean).length >= 1 && gm.models[W('m9')] === null, '모델이 없는 무기는 코드로 만든 총 그대로', JSON.stringify(gm.models));
   check(gerr.length === 0, '게임 화면 오류가 없다', gerr.join(' | '));
   await gctx.close();
 
   console.log('\n[창 크기 조절]');
-  await page.dblclick(`[data-asset="weapon:m4"]`);
+  await page.dblclick(`[data-asset="weapon:ar"]`);
   await page.waitForFunction(() => window.__studio.active && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
   const tb0 = (await page.locator('#toolbox').boundingBox()).width;
   const sp = await page.locator('#edBody > .split').first().boundingBox();
@@ -368,13 +368,13 @@ try {
   check(lay.side && lay.stageW > 400, '경계선을 클릭·더블클릭만 해도 레이아웃이 깨지지 않는다 (도구 상자 | 화면 | 속성 이 나란히)', JSON.stringify(lay));
 
   console.log('\n[게임 데이터]');
-  await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:ak"]');
+  await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.dblclick('[data-asset="weapon:m870"]');
   await page.waitForFunction(() => window.__dd && window.__studio.active.key === 'data:weapons', null, { timeout: 10000 });
-  check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'ak' && (await page.textContent('#edKind')).includes('데이터 에디터'), '홈에서 무기 카드를 두 번 누르면 데이터 에디터가 그 무기를 고른 채 열린다');
-  const mp5Row = await page.textContent('#overlays > div:not([hidden]) table.cmp tbody tr:nth-child(3)');
+  check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'm870' && (await page.textContent('#edKind')).includes('데이터 에디터'), '홈에서 무기 카드를 두 번 누르면 데이터 에디터가 그 무기를 고른 채 열린다');
+  const mp5Row = await page.textContent(`#overlays > div:not([hidden]) table.cmp tbody tr:nth-child(${W('mp5') + 1})`);
   const regList = await page.textContent(`${ACT.tools}`);
   check(mp5Row.includes('시험 소총') && regList.includes('시험 소총') && regList.includes('MP5'), '데이터 에디터에 등록된 모델이 보인다 (무기 표의 모델 열, 도구 상자의 "등록된 모델" 과 연결된 무기)', mp5Row);
-  await page.evaluate(() => window.__dd.select(2));
+  await page.evaluate(i => window.__dd.select(i), W('mp5'));
   const opts = await page.evaluate(() => [...document.querySelectorAll('#inspector > div:not([hidden]) select')].flatMap(s => [...s.options].map(o => o.value)));
   check(opts.includes('zz_gun_test'), '무기의 "모델" 은 등록된 모델 중에서 고르는 목록이다');
   await page.evaluate(() => window.__dd.select(0));
@@ -384,14 +384,31 @@ try {
   check(ttk0 !== ttk1 && await page.evaluate(() => window.__dd.isDirty()), '무기 피해를 고치면 비교 표(TTK)가 바로 다시 계산된다', `${ttk0} → ${ttk1}`);
   await page.fill(`${ACT.insp} .row:has(.lbl:text-is("피해")) input`, '0');
   check(await page.evaluate(a => window.__dd.errors.length > 0 && document.querySelector(`${a.bar} [data-r="save"]`).disabled, ACT), '범위를 벗어나면 (피해 0) 오류가 보이고 저장이 잠긴다');
-  await page.evaluate(() => { window.__dd.data[0].dmg = 22; window.__dd.render(); });
+  await page.evaluate(() => { window.__dd.data[0].dmg = 24; window.__dd.render(); });
+
+  console.log('\n[스킬 데이터]');
+  await page.evaluate(() => window.__dd.select(0)); // 기본 돌격소총
+  const skillOpts = await page.evaluate(() => [...document.querySelectorAll('#inspector > div:not([hidden]) .list select')].map(s => [...s.options].map(o => o.value).join(',')));
+  check(skillOpts.length === 10 && skillOpts.every(o => o.includes('dash') && o.includes('grenade')), '무기의 "스킬" 칸은 스킬 목록에서 고른다 (기본 돌격소총: 주무기 5 + 보조무기 5)', JSON.stringify(skillOpts.length));
+  await page.click('.tab.home'); await page.click('[data-cat="skills"]');
+  check(await page.locator('#homeCards [data-asset="skill:dash"]').count() === 1, '홈에 스킬 카드가 보인다');
+  await page.dblclick('#homeCards [data-asset="skill:dash"]');
+  await page.waitForFunction(() => window.__studio.active && window.__studio.active.key === 'data:skills', null, { timeout: 10000 });
+  check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'dash', '스킬 카드를 두 번 누르면 데이터 에디터의 스킬 탭이 그 스킬을 고른 채 열린다');
+  await page.fill(`${ACT.insp} .row:has(.lbl:text-is("쿨타임 (초)")) input`, '4');
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(() => !window.__dd.isDirty(), null, { timeout: 8000 }).catch(() => {});
+  check(JSON.parse(fs.readFileSync(C('skills.json'), 'utf8')).find(x => x.id === 'dash').cd === 4, '스킬 수치를 고치고 저장하면 content/skills.json 에 들어간다');
+  await page.evaluate(() => { window.__dd.data[window.__dd.cur].id = 'dash_x'; window.__dd.render(); });
+  check(await page.evaluate(a => window.__dd.errors.some(e => e.includes('없는 스킬')) && document.querySelector(`${a.bar} [data-r="save"]`).disabled, ACT), '무기가 쓰고 있는 스킬의 id 를 바꾸면 오류로 알리고 저장이 잠긴다');
+  await page.evaluate(() => { window.__dd.data[window.__dd.cur].id = 'dash'; window.__dd.render(); });
 
   console.log('\n[새 무기 만들기 (양식)]');
   await page.click('.tab.home'); await page.click('[data-cat="weapons"]'); await page.click('#newDataBtn');
   await page.waitForSelector('.modal [data-f="id"]', { timeout: 10000 });
   const go = () => page.locator('.modal [data-f="go"]').isDisabled();
   check(await go(), '빈 양식으로는 만들 수 없다');
-  await page.fill('.modal [data-f="id"]', 'm4'); await page.fill('.modal [data-f="name"]', '시험총'); await page.fill('.modal [data-f="cls"]', '돌격소총');
+  await page.fill('.modal [data-f="id"]', 'ar'); await page.fill('.modal [data-f="name"]', '시험총'); await page.fill('.modal [data-f="cls"]', '돌격소총');
   check(await go() && (await page.textContent('.modal:not(#help)')).includes('이미 있습니다'), '이미 있는 id 는 안 된다');
   await page.fill('.modal [data-f="id"]', 'zz_new_gun');
   check(await go(), '새 무기는 모델을 고르기 전에는 만들 수 없다');

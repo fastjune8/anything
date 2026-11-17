@@ -27,7 +27,7 @@ games/frontline/
 ├── shared/                 서버와 브라우저가 같이 쓰는 규칙 (THREE·DOM 에 의존하지 않는다)
 │   ├── constants.js        체력·시간 등 공통 상수
 │   ├── modes.js            게임 모드 목록 (수치는 content/modes.json)
-│   ├── movement.js         캐릭터 이동 물리 (걷기·점프·충돌·넘어가기·기울이기) — 순수 함수, 나중에 서버도 같이 씀 (M1)
+│   ├── movement.js         캐릭터 이동 물리 (걷기·점프·충돌·넘어가기·대쉬) — 순수 함수, 나중에 서버도 같이 씀 (M1)
 │   ├── weapons.js          무기 데이터(content/weapons.json)와 피해 계산
 │   ├── parts.js            총기 파츠(content/parts.json)와 출전 무기 2개 규칙: 성능 계산, 입력값 정리
 │   ├── content/
@@ -123,6 +123,6 @@ games/frontline/
 | 미니맵 크기·표시 범위·적 표시 시간 | `client/js/minimap.js` 맨 위 상수 (`VIEW_M`), 적 표시 시간은 `minimath.js` |
 | 이름표 크기·표시 거리 | `client/js/remotes.js` (`TAG_RANGE`, 크기 계산) |
 | 넘어가기 판정(거리·높이·두께·속도) | `shared/vault.js` 맨 위 `VAULT` |
-| 기울이기 거리·각도 | `shared/constants.js` 의 `LEAN_DIST`, `LEAN_ANGLE` (속도는 `shared/movement.js`, 화면 기울기는 `client/js/main.js`) |
+| 무기 스킬 | 수치·종류는 `content/skills.json` (스튜디오 데이터 에디터 → 스킬), 무기마다 고를 수 있는 것은 `content/weapons.json` 의 `skills`. 규칙은 `shared/skills.js`, 서버 `server/skills.js`, 브라우저 `client/js/skills.js` |
 | 조작키 | `client/js/input.js` (메뉴의 조작 안내는 `client/index.html`) |
 | 새 메시지 추가 | `docs/PROTOCOL.md` 맨 아래 순서대로 |

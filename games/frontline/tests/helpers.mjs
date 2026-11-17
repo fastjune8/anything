@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
+import { WEAPONS } from '../shared/weapons.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -41,6 +42,8 @@ export async function startServer(extraEnv = {}) {
 }
 
 // 테스트 클라이언트가 들고 들어가는 무기 (명중 테스트가 AWM 과 M9 을 쓴다)
+// 무기 번호 (데이터 순서라 id 로 찾는다)
+export const W = id => WEAPONS.findIndex(w => w.id === id);
 export const TEST_LOADOUT = [{ id: 'awm', parts: {} }, { id: 'm9', parts: {} }];
 
 // 메시지를 모아 두고 조건을 기다릴 수 있는 클라이언트. 기본은 개인전. extra: join 메시지에 더할 값 (예: { loadout }, { mode })

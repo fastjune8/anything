@@ -6,6 +6,7 @@ import { me, wp, inp, game, net, loadout, PITCH_MAX } from './state.js';
 import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
 import { setDisplay } from './dom.js';
 import { startReload, switchTo } from './weapon.js';
+import { pressSkill } from './skills.js';
 
 // 게임 입력을 받아도 되는 상태인가 (접속 중 + 채팅 안 열림 + 마우스 잠금됨)
 // 죽어 있을 때: 자동 부활은 없다. 최소 대기 시간이 지난 뒤 "새로 한" 입력(키/클릭)이 부활 요청이 된다.
@@ -42,6 +43,7 @@ addEventListener('keydown', e => {
   inp.keys.add(e.code);
   if (e.code === 'KeyR') startReload();
   else if (e.code === 'Digit1' || e.code === 'Digit2') switchTo(loadout.slots[Number(e.code.slice(5)) - 1]);
+  else if (e.code === 'KeyQ' || e.code === 'KeyE') pressSkill(e.code === 'KeyQ' ? 0 : 1, switchTo); // 스킬: Q = 주무기, E = 보조무기
 });
 addEventListener('keyup', e => inp.keys.delete(e.code));
 addEventListener('blur', () => { inp.keys.clear(); inp.fireHeld = inp.adsHeld = false; });

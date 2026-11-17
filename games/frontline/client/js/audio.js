@@ -97,5 +97,10 @@ export class Sfx {
     this._tone({ f: 110, f2: 55, dur: 0.18, vol: 0.55 });
     this._burst({ dur: 0.09, f: 700, f2: 200, vol: 0.3 });
   }
+  boom(dist = 0, pan = 0) { // 유탄 폭발
+    const k = 1 / (1 + dist / 18);
+    this._burst({ dur: 0.9, f: 900, f2: 60, vol: 0.9 * k, pan });
+    this._tone({ f: 70, f2: 30, dur: 0.6, vol: 0.7 * k, pan });
+  }
   whoosh(pan) { this._burst({ dur: 0.12, type: 'bandpass', f: 3500, f2: 900, q: 3, vol: 0.2, pan }); }
 }

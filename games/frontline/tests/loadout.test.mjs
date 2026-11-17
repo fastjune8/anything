@@ -4,13 +4,13 @@ import { WEAPONS, calcDamage } from '../shared/weapons.js';
 import { applyParts } from '../shared/parts.js';
 
 const idx = id => WEAPONS.findIndex(w => w.id === id);
-const M4 = idx('m4'), MP5 = idx('mp5'), AWM = idx('awm'), M9 = idx('m9');
+const M4 = idx('ar'), MP5 = idx('mp5'), AWM = idx('awm'), M9 = idx('m9');
 
 const srv = await startServer({ MATCH_SECONDS: '60', GOAL: '999', BOT_FILL: '0' });
 let exitCode = 0;
 try {
   console.log('[입장: 출전 무기 전달과 정리]');
-  const a = connect(srv.port, 'loader', { loadout: [{ id: 'm4', parts: { barrel: 'suppressor', optic: 'scope_hi', junk: 1 } }, { id: 'mp5', parts: {} }, { id: 'awm' }] });
+  const a = connect(srv.port, 'loader', { loadout: [{ id: 'ar', parts: { barrel: 'suppressor', optic: 'scope_hi', junk: 1 } }, { id: 'mp5', parts: {} }, { id: 'awm' }] });
   await a.open; await a.waitFor('welcome');
   const b = connect(srv.port, 'watcher'); await b.open;
   const wb = await b.waitFor('welcome');
@@ -20,7 +20,7 @@ try {
   check(JSON.stringify(pj.player.lo) === JSON.stringify([[AWM, {}], [M9, {}]]), '나중에 들어온 사람의 출전 무기도 알려진다');
   const c = connect(srv.port, 'broken', { loadout: { id: 'awm' } }); await c.open;
   const wc = await c.waitFor('welcome');
-  check(JSON.stringify(wc.players.find(p => p.id === c.me).lo) === JSON.stringify([[M4, {}], [M9, {}]]), '형식이 깨진 출전 무기는 기본 무기(M4A1, M9)로 입장한다');
+  check(JSON.stringify(wc.players.find(p => p.id === c.me).lo) === JSON.stringify([[M4, {}], [M9, {}]]), '형식이 깨진 출전 무기는 기본 무기(기본 돌격소총, M9)로 입장한다');
   c.ws.close();
 
   console.log('\n[명중: 들고 온 무기와 파츠 성능]');
@@ -34,7 +34,7 @@ try {
   a.send({ t: 'hit', w: M4, hits: [['body', 60, b.me]] });
   const d = await a.waitFor('dmg', m => m.to === b.me && m.from === a.me, 2000);
   const withPart = Math.round(calcDamage(applyParts(WEAPONS[M4], { barrel: 'suppressor' }), 'body', 60)), plain = Math.round(calcDamage(M4, 'body', 60));
-  check(!!d && d.dmg === withPart && withPart < plain, `소음기를 단 M4A1 의 60m 피해는 파츠가 반영된 값이다 (${withPart}, 기본 ${plain})`, JSON.stringify(d));
+  check(!!d && d.dmg === withPart && withPart < plain, `소음기를 단 기본 돌격소총의 60m 피해는 파츠가 반영된 값이다 (${withPart}, 기본 ${plain})`, JSON.stringify(d));
 
   console.log('\n[사격 전달: 소음기 표시]');
   const o = [0, 1.5, 0];

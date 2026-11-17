@@ -5,6 +5,10 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 import { startServer, connect, check, failed, sleep } from './helpers.mjs';
+import { WEAPONS } from '../shared/weapons.js';
+
+const idx = id => WEAPONS.findIndex(w => w.id === id);
+const M9 = idx('m9'), AWM = idx('awm'), MP5 = idx('mp5');
 
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 if (!fs.existsSync(CHROME)) {
@@ -67,10 +71,10 @@ try {
     const dummy = connect(srv.port, 'dummy'); await dummy.open;
     await dummy.waitFor('welcome');
     const dummyPos = [10, 0, 10];
-    let dummyLean = 0, dummySeq = 0;
+    let dummySeq = 0;
     dummy.send({ t: 'tp', p: dummyPos, y: 0 }); // 위치는 서버가 정한다 (M1) → 개발·테스트용 순간이동으로 세워 둔다
     // 0.05초마다 1/60초 입력 3개 (기울이기만 바꾼다: 16 = 오른쪽)
-    const hold = setInterval(() => { dummy.send({ t: 'in', s: dummySeq, i: [0, 1, 2].map(() => [0, 0, dummyLean > 0 ? 16 : 0, 0, 0, 0, 0]) }); dummySeq += 3; }, 50);
+    const hold = setInterval(() => { dummy.send({ t: 'in', s: dummySeq, i: [0, 1, 2].map(() => [0, 0, 0, 0, 0, 0, 0]) }); dummySeq += 3; }, 50);
     await page.waitForFunction(() => window.__g.me.alive && [...window.__g.remotes.values()].some(r => r.hasPos), null, { timeout: 10000 });
     await sleep(500);
 
@@ -99,20 +103,20 @@ try {
 
     await page.evaluate(() => window.__g.startReload());
     await page.waitForFunction(() => window.__g.inv[window.__g.cur].ammo === 30, null, { timeout: 6000 }).catch(() => {});
-    check(await page.evaluate(() => window.__g.inv[window.__g.cur].ammo) === 30, '재장전하면 탄창이 가득 찬다 (M4A1 30발)');
+    check(await page.evaluate(() => window.__g.inv[window.__g.cur].ammo) === 30, '재장전하면 탄창이 가득 찬다 (기본 돌격소총 30발)');
     check((await page.evaluate(() => window.__sent.rl || 0)) >= 1, '재장전 신호(rl)가 서버로 간다');
 
-    await page.evaluate(() => window.__g.switchTo(4));
+    await page.evaluate(a => window.__g.switchTo(a), AWM);
     await sleep(300);
     check(await page.evaluate(() => window.__g.cur) === 0, '들고 오지 않은 무기(AWM)로는 바꿀 수 없다');
     check(await page.evaluate(() => document.querySelectorAll('#slots > div').length) === 2, '무기 칸은 들고 온 두 자루만 보인다');
     await page.keyboard.press('Digit2');
-    await page.waitForFunction(() => window.__g.cur === 6, null, { timeout: 3000 }).catch(() => {});
-    check(await page.evaluate(() => window.__g.cur) === 6, '무기를 교체한다 (2번 M9)');
+    await page.waitForFunction(m => window.__g.cur === m, M9, { timeout: 3000 }).catch(() => {});
+    check(await page.evaluate(() => window.__g.cur) === M9, '무기를 교체한다 (2번 M9)');
     await sleep(600); // 꺼내는 시간
     await page.evaluate(() => window.__g.switchTo(0));
     await page.waitForFunction(() => window.__g.cur === 0, null, { timeout: 3000 }).catch(() => {});
-    check(await page.evaluate(() => window.__g.cur) === 0, '다시 1번 M4A1 으로 교체한다');
+    check(await page.evaluate(() => window.__g.cur) === 0, '다시 1번 기본 돌격소총으로 교체한다');
 
 
     const home = await page.evaluate(() => ({ p: window.__g.me.pos.toArray(), yaw: window.__g.me.yaw })); // 시험이 끝나면 원래 자리로
@@ -135,30 +139,15 @@ try {
     await page.waitForFunction(() => window.__g.me.onGround && !window.__g.me.vault, null, { timeout: 10000 }).catch(() => {});
     check(!wallJump.v && wallJump.air, '높은 벽 앞에서는 넘지 않고 그냥 점프한다', JSON.stringify(wallJump));
 
-    // 기울이기: E 로 오른쪽, 벽 쪽으로는 벽에 막힌 만큼만, 상대에게 전달
-    await page.evaluate(() => { const g = window.__g; g.teleport(20, 0, 20); });
+    // 스킬: Q = 주무기(기본 돌격소총)에 고른 스킬 (처음엔 첫 번째 = 아드레날린), E = 보조무기(M9, 스킬 없음). 기울이기는 없어졌다
     dummy.msgs.length = 0;
-    await page.evaluate(() => window.__g.input({ key: 'KeyE' }));
-    await page.waitForFunction(() => window.__g.me.leanOff > 0.35, null, { timeout: 4000 }).catch(() => {}); // 느린 환경에서는 다 기울 때까지 시간이 더 걸린다
-    const leanR = await page.evaluate(() => window.__g.me.leanOff);
-    // 위치·기울기는 서버가 계산해서 다른 사람에게 보낸다 (M1) → 서버도 다 기울 때까지 잠깐 기다린다
-    const sentLean = await dummy.waitFor('s', m => m.id !== dummy.me && m.l > 0.85, 3000) || dummy.msgs.filter(m => m.t === 's' && m.id !== dummy.me).pop();
-    await page.evaluate(() => window.__g.input({ keyUp: 'KeyE' })); await sleep(500);
-    check(leanR > 0.35 && (await page.evaluate(() => Math.abs(window.__g.me.leanOff))) < 0.05, 'E 를 누르면 오른쪽으로 기울고, 떼면 돌아온다', `${leanR.toFixed(2)}`);
-    check(sentLean && sentLean.l > 0.85, '기울이기가 다른 플레이어에게 전달된다 (l)', JSON.stringify(sentLean));
-    await page.evaluate(() => { const g = window.__g; g.teleport(0, 0, -6.5, Math.PI / 2); }); // 왼쪽 0.5m 에 벽
-    await page.evaluate(() => window.__g.input({ key: 'KeyQ' })); await sleep(600);
-    const leanWall = await page.evaluate(() => window.__g.me.leanOff);
-    await page.evaluate(() => window.__g.input({ keyUp: 'KeyQ' })); await sleep(400);
-    check(leanWall < -0.1 && leanWall > -0.25, '벽 쪽으로는 벽을 뚫지 않을 만큼만 기운다', leanWall.toFixed(2));
-
-    // 상대가 기울이면 내민 머리에 맞는다 (명중 판정도 같이 기운다)
-    const headRay = () => page.evaluate(id => { const g = window.__g, r = g.remotes.get(id); const h = g.remoteHit({ x: r.pos.x + 0.36, y: r.pos.y + 1.53, z: r.pos.z + 8 }, { x: 0, y: 0, z: -1 }, 20); return h ? h.part : null; }, dummy.me);
-    const noLean = await headRay();
-    dummyLean = 1; await sleep(700);
-    const withLean = await headRay();
-    dummyLean = 0;
-    check(noLean === null && withLean === 'head', '상대가 오른쪽으로 기울이면 옆으로 나온 머리가 맞는다', `${noLean} → ${withLean}`);
+    await page.keyboard.press('KeyQ');
+    const adr = await page.evaluate(() => ({ t: window.__g.skills.adrenT, cd: window.__g.skills.cd[0], lean: window.__g.me.leanOff || 0 }));
+    const sentSk = await dummy.waitFor('sk', m => m.e === 'adrenaline', 2000);
+    check(adr.t > 2 && adr.cd > 10 && !adr.lean, 'Q 를 누르면 주무기 스킬(아드레날린)이 발동하고 쿨타임이 걸린다 (기울이지 않는다)', JSON.stringify(adr));
+    check(!!sentSk, '아드레날린을 쓰면 서버가 확인하고 다른 사람에게 알린다');
+    await page.keyboard.press('KeyE');
+    check((await page.textContent('#skills .sk[data-n="1"]')).includes('스킬 없음'), 'E(보조무기 M9)는 스킬이 없다고 보인다');
     await page.evaluate(h => { const g = window.__g; g.teleport(h.p[0], h.p[1], h.p[2], h.yaw); }, home);
     await sleep(200);
 
@@ -228,7 +217,7 @@ try {
       { // 실제로 몸을 겨눈 명중 신고 두 발 (서버가 랙 보정으로 확인한다)
         const ds = [...hitter.msgs].reverse().find(m => m.t === 's' && m.id === dummy.me), eye = [16, 1.62, 10], tgt = [dummyPos[0], 1.2, dummyPos[2]];
         const len = Math.hypot(tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]), d = [(tgt[0] - eye[0]) / len, (tgt[1] - eye[1]) / len, (tgt[2] - eye[2]) / len];
-        for (let k = 0; k < 2; k++) hitter.send({ t: 'hit', w: 6, o: eye, hits: [['body', len, dummy.me, ...d, ds ? ds.n : 0]] });
+        for (let k = 0; k < 2; k++) hitter.send({ t: 'hit', w: M9, o: eye, hits: [['body', len, dummy.me, ...d, ds ? ds.n : 0]] });
         const got = await dummy.waitFor('dmg', m => m.to === dummy.me && m.from === hitter.me, 2000);
         check(!!got, '(준비) 다른 사람이 가짜 플레이어를 맞혔다 (서버가 명중을 인정)');
       }
@@ -246,7 +235,7 @@ try {
       const mine = [...dummy.msgs].reverse().find(m => m.t === 's' && m.id === myId);
       const eye = [dummyPos[0], 1.62, dummyPos[2]], head = [mine.p[0], mine.p[1] + 1.61, mine.p[2]];
       const len = Math.hypot(head[0] - eye[0], head[1] - eye[1], head[2] - eye[2]);
-      dummy.send({ t: 'hit', w: 4, o: eye, hits: [['head', len, myId, (head[0] - eye[0]) / len, (head[1] - eye[1]) / len, (head[2] - eye[2]) / len, mine.n]] });
+      dummy.send({ t: 'hit', w: AWM, o: eye, hits: [['head', len, myId, (head[0] - eye[0]) / len, (head[1] - eye[1]) / len, (head[2] - eye[2]) / len, mine.n]] });
     }
     await page.waitForFunction(() => !window.__g.me.alive, null, { timeout: 4000 }).catch(() => {});
     check(!(await page.evaluate(() => window.__g.me.alive)), '(준비) 내가 죽었다');
@@ -277,18 +266,18 @@ try {
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(`http://localhost:${srv.port}/?nolock&mode=ffa`); // 확인용 클라이언트(개인전)와 같은 방에 들어가도록
     await page.waitForFunction(() => window.__g, null, { timeout: 15000 });
-    check((await page.textContent('#loadoutSum')).includes('M4A1') && (await page.textContent('#loadoutSum')).includes('M9'), '로비에 지금 출전 무기(M4A1, M9)가 보인다');
+    check((await page.textContent('#loadoutSum')).includes('기본 돌격소총') && (await page.textContent('#loadoutSum')).includes('M9'), '로비에 지금 출전 무기(기본 돌격소총, M9)가 보인다');
 
     await page.click('#armoryBtn'); await sleep(600);
     const opened = await page.evaluate(() => ({ open: window.__g.armory.open, menu: getComputedStyle(document.getElementById('menu')).display, labels: [...document.querySelectorAll('.ar-label .nm')].map(e => e.firstChild.textContent), badges: document.querySelectorAll('.ar-label em').length }));
     check(opened.open && opened.menu === 'none', '무기고 버튼을 누르면 로비 대신 무기고가 열린다');
-    check(opened.labels.length === 8 && ['M4A1', 'AK-47', 'MP5', 'M870', 'AWM', 'M249', 'M9'].every(n => opened.labels.includes(n)), '벽에 가진 무기 7자루와 빈 거치대 한 칸이 걸려 있다', opened.labels.join(','));
+    check(opened.labels.length === 8 && ['기본 돌격소총', 'MP5', 'M870', 'AWM', 'M249', 'M9'].every(n => opened.labels.includes(n)) && !opened.labels.includes('M4A1') && !opened.labels.includes('AK-47'), '벽에 가진 무기 6자루와 빈 거치대가 걸려 있다 (M4A1·AK-47 은 기본 돌격소총으로 합쳐짐)', opened.labels.join(','));
     check(opened.badges === 2, '출전 무기 두 자루에 표시가 붙는다');
 
-    // 벽에 걸린 AK-47 을 클릭해 고른다 (이름표 바로 위가 그 무기의 거치대)
-    const at = await page.evaluate(() => { const b = [...document.querySelectorAll('.ar-label')].find(e => e.textContent.includes('AK-47')).getBoundingClientRect(); return [b.x + b.width / 2, b.y - 30]; });
+    // 벽에 걸린 MP5 를 클릭해 고른다 (이름표 바로 위가 그 무기의 거치대)
+    const at = await page.evaluate(() => { const b = [...document.querySelectorAll('.ar-label')].find(e => e.textContent.includes('MP5')).getBoundingClientRect(); return [b.x + b.width / 2, b.y - 30]; });
     await page.mouse.move(at[0], at[1]); await page.mouse.click(at[0], at[1]); await sleep(200);
-    check(await page.textContent('#arName') === 'AK-47', '벽의 무기를 클릭하면 그 무기가 선택된다');
+    check(await page.textContent('#arName') === 'MP5', '벽의 무기를 클릭하면 그 무기가 선택된다');
 
     await page.hover('#arParts [data-slot="mag"][data-part="ext"]'); await sleep(100);
     const pre = await page.evaluate(() => ({ row: [...document.querySelectorAll('#arStats .st')].find(e => e.textContent.includes('탄창')).textContent, mag: window.__g.eff[1].mag, desc: document.querySelector('[data-desc="mag"]').textContent }));
@@ -297,29 +286,29 @@ try {
     await page.click('#arParts [data-slot="mag"][data-part="ext"]');
     await page.click('#arParts [data-slot="barrel"][data-part="suppressor"]');
     const eq = await page.evaluate(() => ({ mag: window.__g.eff[1].mag, quiet: window.__g.eff[1].quiet, base: window.__g.eff[0].mag, on: [...document.querySelectorAll('#arParts .chip.on')].map(e => e.textContent).join(',') }));
-    check(eq.mag === 40 && eq.quiet === true && eq.base === 30, '파츠를 달면 그 무기의 성능만 바뀐다 (AK-47 탄창 40발 + 소음기)', JSON.stringify(eq));
+    check(eq.mag === 40 && eq.quiet === true && eq.base === 30, '파츠를 달면 그 무기의 성능만 바뀐다 (MP5 탄창 40발 + 소음기)', JSON.stringify(eq));
     check(eq.on.includes('확장 탄창') && eq.on.includes('소음기'), '단 파츠가 선택된 것으로 표시된다', eq.on);
 
     await page.click('#arEquip [data-slot="0"]');
-    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === '1,6', '1번 무기로 장착하면 출전 무기가 바뀐다 (AK-47, M9)');
+    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === `${MP5},${M9}`, '1번 무기로 장착하면 출전 무기가 바뀐다 (MP5, M9)');
     await page.click('#arEquip [data-slot="1"]');
-    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === '6,1', '이미 든 무기를 다른 자리에 넣으면 두 자리가 맞바뀐다 (항상 서로 다른 2개)');
+    check(await page.evaluate(() => window.__g.loadout.slots.join(',')) === `${M9},${MP5}`, '이미 든 무기를 다른 자리에 넣으면 두 자리가 맞바뀐다 (항상 서로 다른 2개)');
     await page.click('#arEquip [data-slot="0"]');
     await page.keyboard.press('Escape'); await sleep(200);
-    check(await page.evaluate(() => !window.__g.armory.open && getComputedStyle(document.getElementById('menu')).display !== 'none') && (await page.textContent('#loadoutSum')).includes('AK-47'), 'Esc 로 닫으면 로비로 돌아오고 바뀐 출전 무기가 보인다');
+    check(await page.evaluate(() => !window.__g.armory.open && getComputedStyle(document.getElementById('menu')).display !== 'none') && (await page.textContent('#loadoutSum')).includes('MP5'), 'Esc 로 닫으면 로비로 돌아오고 바뀐 출전 무기가 보인다');
 
     await page.reload();
     await page.waitForFunction(() => window.__g, null, { timeout: 15000 });
-    check(await page.evaluate(() => window.__g.loadout.slots.join(',') === '1,6' && window.__g.eff[1].mag === 40), '새로고침해도 출전 무기와 파츠가 유지된다');
+    check(await page.evaluate(s => window.__g.loadout.slots.join(',') === s && window.__g.eff[1].mag === 40, `${MP5},${M9}`), '새로고침해도 출전 무기와 파츠가 유지된다');
 
     await page.fill('#name', 'Armorer'); await page.click('#join');
     await page.waitForFunction(() => window.__g.joined && window.__g.me.alive, null, { timeout: 10000 });
     const peer = connect(srv.port, 'peer'); await peer.open;
     const w = await peer.waitFor('welcome');
     const seen = w && w.players.find(p => p.name === 'Armorer');
-    check(seen && JSON.stringify(seen.lo) === '[[1,{"barrel":"suppressor","mag":"ext"}],[6,{}]]', '입장하면 서버가 내 출전 무기와 파츠를 알고, 다른 사람에게도 전달된다', JSON.stringify(seen && seen.lo));
+    check(seen && JSON.stringify(seen.lo) === `[[${MP5},{"barrel":"suppressor","mag":"ext"}],[${M9},{}]]`, '입장하면 서버가 내 출전 무기와 파츠를 알고, 다른 사람에게도 전달된다', JSON.stringify(seen && seen.lo));
     const inGame = await page.evaluate(() => ({ cur: window.__g.cur, ammo: window.__g.inv[1].ammo, slots: document.getElementById('slots').textContent }));
-    check(inGame.cur === 1 && inGame.ammo === 40 && inGame.slots.includes('AK-47') && !inGame.slots.includes('M4A1'), '전장에 고른 무기(AK-47 확장 탄창 40발)를 들고 들어간다', JSON.stringify(inGame));
+    check(inGame.cur === 1 && inGame.ammo === 40 && inGame.slots.includes('MP5') && !inGame.slots.includes('기본 돌격소총'), '전장에 고른 무기(MP5 확장 탄창 40발)를 들고 들어간다', JSON.stringify(inGame));
     await page.evaluate(() => window.__g.input({ fire: true })); // 총을 다 꺼내면 발사된다 (프레임이 느린 환경에서도 되도록 탄이 줄 때까지 기다린다)
     await page.waitForFunction(() => window.__g.inv[1].ammo < 40, null, { timeout: 8000 }).catch(() => {});
     await page.evaluate(() => window.__g.input({ fire: false }));

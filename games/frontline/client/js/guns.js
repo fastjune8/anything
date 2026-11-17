@@ -39,7 +39,7 @@ function limb(g, from, to, thick) {
 }
 
 const BUILD = {
-  m4(g) {
+  ar(g) { // 기본 돌격소총 (모델을 못 불러왔을 때의 코드 모양)
     bx(g, 0.045, 0.075, 0.2, 0, -0.01, 0, M.steel);
     bx(g, 0.05, 0.055, 0.24, 0, 0, -0.22, M.polymer);
     cy(g, 0.009, 0.2, 0, 0, -0.43, M.steel); cy(g, 0.012, 0.045, 0, 0, -0.545, M.steel);
@@ -227,7 +227,7 @@ export function buildGun(id, withArms, parts) {
   const src = modelFor(id);
   if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts); if (g) return g; }
   const group = new THREE.Group();
-  const spec = (BUILD[id] || BUILD.m4)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
+  const spec = (BUILD[id] || BUILD.ar)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
   if (withArms) attachArms(group, spec);
   return wrapGun(group, spec, parts);
 }

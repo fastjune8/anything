@@ -2,6 +2,7 @@
 import { WebSocketServer } from 'ws';
 import { resolveRoom } from './rooms.js';
 import { applyInputs, teleport } from './motion.js';
+import { onShotHeat, useSkill, fireGrenade } from './skills.js';
 import { APP_ENV } from './config.js';
 
 // join 이후에 받는 메시지별 처리. me = 보낸 플레이어, room = 그 플레이어의 방
@@ -18,11 +19,15 @@ const HANDLERS = {
     m.w |= 0;
     const w = me.wstats[m.w];
     if (!me.alive || !w) return;                 // 들고 있지 않은 무기의 사격은 무시
+    if (!onShotHeat(me, m.w)) return;            // 과열 스킬: 과열 중에는 쏠 수 없다
     me.invulnUntil = 0;                          // 쏘면 스폰 무적 해제
     m.id = me.id; delete m.q;
     if (w.quiet) m.q = 1;                        // 소음기: 받는 쪽에서 소리를 줄이고 미니맵에 표시하지 않는다
     room.broadcast(m, me);
   },
+  // 스킬: 누르는 스킬(아드레날린) / 유탄 발사 (server/skills.js)
+  sk: (me, m, room) => useSkill(room, me, m),
+  gl: (me, m, room) => fireGrenade(room, me, m),
   rl(me, m, room) { if (me.alive) { m.id = me.id; room.broadcast(m, me); } },
   hit: (me, m, room) => room.onHit(me, m),
   chat: (me, m, room) => room.onChat(me, m),

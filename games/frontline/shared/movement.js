@@ -1,8 +1,7 @@
-// 캐릭터 이동 물리 (순수 함수, THREE·DOM 의존 없음): 걷기·달리기·앉기·점프·계단·충돌, 넘어가기/오르기, 기울이기.
+// 캐릭터 이동 물리 (순수 함수, THREE·DOM 의존 없음): 걷기·달리기·앉기·점프·계단·충돌, 넘어가기/오르기, 대쉬(스킬).
 // 지금은 브라우저(client/js/player.js)가 쓰고, 나중에 서버가 같은 함수로 이동을 계산한다 (서버 권한 이동, M1).
 //   stepMovement(상태, 입력, 충돌 박스, dt) → 상태를 바꾸고, 소리·연출용 사건(events)을 돌려준다.
-import { LEAN_DIST } from './constants.js';
-import { rayWorld, rampTop } from './collision.js';
+import { rampTop } from './collision.js';
 import { findVault } from './vault.js';
 
 export const BODY = { STAND_H: 1.75, CROUCH_H: 1.2, RADIUS: 0.35, STEP: 0.45, GRAVITY: 19, JUMP_V: 6.4 };
@@ -16,10 +15,11 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 
 // 새 상태. pos/vel 은 {x,y,z} 를 가진 객체면 된다 (브라우저는 THREE.Vector3 를 넘긴다)
 export function newMoveState(pos = { x: 0, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 0 }) {
-  return { pos, vel, yaw: 0, onGround: true, crouch: false, h: STAND_H, stepOff: 0, lean: 0, leanOff: 0, vault: null, vaultLock: false, airT: 0 };
+  return { pos, vel, yaw: 0, onGround: true, crouch: false, h: STAND_H, stepOff: 0, vault: null, vaultLock: false, airT: 0, dashT: 0, dashCd: 0, dashV: null };
 }
 // 입력. fwd/side: -1~1, speedMul: 무기 무게·정조준 등으로 줄어드는 배율, sprint: 달리기를 원함(정조준·사격·재장전 중이 아님)
-export const NO_INPUT = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: false, sprint: false, leanL: false, leanR: false, speedMul: 1 });
+// 스킬: airSprint = 공중에서도 달리는 속도 유지(질주), dash = 대쉬 키를 이번에 눌렀음 + dashSkill = { cd, dist, dur } (서버는 고른 스킬의 값을 넣는다)
+export const NO_INPUT = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: false, sprint: false, speedMul: 1, airSprint: false, dash: false, dashSkill: null });
 
 // (x, z, 높이 h) 몸통이 겹치는 물체 중 가장 높은 윗면. 겹침이 없으면 -Infinity
 // 경사로는 발밑 윗면 높이로 본다 → 걸어 들어가면 그만큼 "턱" 으로 올라선다 (조금씩이라 미끄럽게 오른다)
@@ -91,45 +91,48 @@ function updateVault(s, cs, dt, ev) {
   }
 }
 
-// 기울이기: 입력은 부드럽게 따라가고, 옆이 벽이면 머리가 벽을 뚫지 않도록 그만큼만 나간다
-const _eye = { x: 0, y: 0, z: 0 }, _side = { x: 0, y: 0, z: 0 };
-function updateLean(s, i, cs, dt) {
-  const want = !s.vault ? (i.leanR ? 1 : 0) - (i.leanL ? 1 : 0) : 0;
-  const step = dt * 6;
-  s.lean = clamp(s.lean + clamp(want - s.lean, -step, step), -1, 1);
-  let target = 0;
-  if (Math.abs(s.lean) > 0.001) {
-    const sg = Math.sign(s.lean);
-    _eye.x = s.pos.x; _eye.y = s.pos.y + s.h - 0.13; _eye.z = s.pos.z;
-    _side.x = Math.cos(s.yaw) * sg; _side.z = -Math.sin(s.yaw) * sg;
-    const room = clamp(rayWorld(_eye, _side, cs, LEAN_DIST + 0.3).t - 0.3, 0, LEAN_DIST);
-    target = s.lean * room;
-  }
-  s.leanOff = lerp(s.leanOff, target, 1 - Math.exp(-dt * 16));
+// 대쉬: 누른 순간 움직이는 방향(없으면 앞)으로 정해진 시간 동안 빠르게. 끝나면 달리는 속도로 이어 간다
+function startDash(s, i, ev) {
+  const sk = i.dashSkill;
+  if (!sk || s.dashCd > 0 || s.vault) return;
+  const sy = Math.sin(s.yaw), cy = Math.cos(s.yaw);
+  let dx = -sy * i.fwd + cy * i.side, dz = -cy * i.fwd - sy * i.side;
+  const l = Math.hypot(dx, dz);
+  if (l < 1e-6) { dx = -sy; dz = -cy; } else { dx /= l; dz /= l; }
+  const sp = sk.dist / sk.dur;
+  s.dashV = { x: dx * sp, z: dz * sp }; s.dashT = sk.dur; s.dashCd = sk.cd;
+  ev.dash = true;
 }
 
 // 한 단계 진행. 반환 사건: { sprinting, moved(땅 위에서 움직인 거리), landed(착지 세기 0~1), vaultStart, vaultDone }
 export function stepMovement(s, i, cs, dt) {
-  const ev = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false };
+  const ev = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false };
   if (!i.jump) s.vaultLock = false;
-  updateLean(s, i, cs, dt);
+  s.dashCd = Math.max(0, (s.dashCd || 0) - dt);
   if (s.vault) { updateVault(s, cs, dt, ev); return ev; }
+  if (i.dash) startDash(s, i, ev);
   const fwd = i.fwd, side = i.side;
   // 앉기
   if (i.crouch) s.crouch = true;
   else if (s.crouch && overlapTop(cs, s.pos.x, s.pos.y, s.pos.z, STAND_H) === -Infinity) s.crouch = false;
   s.h = lerp(s.h, s.crouch ? CROUCH_H : STAND_H, 1 - Math.exp(-dt * 14));
 
-  ev.sprinting = i.sprint && fwd > 0 && s.onGround && !s.crouch && !i.leanL && !i.leanR;
+  ev.sprinting = i.sprint && fwd > 0 && !s.crouch && (s.onGround || i.airSprint); // 질주 스킬: 공중에서도 달리는 속도
   let speed = s.crouch ? SPEED.crouch : ev.sprinting ? SPEED.sprint : SPEED.walk;
-  speed *= i.speedMul * (1 - 0.3 * Math.abs(s.lean)); // 기울인 채로는 천천히
+  speed *= i.speedMul;
 
   const sy = Math.sin(s.yaw), cy = Math.cos(s.yaw);
   let wx = -sy * fwd + cy * side, wz = -cy * fwd - sy * side;
   const wl = Math.hypot(wx, wz);
   if (wl > 0) { wx *= speed / wl; wz *= speed / wl; }
-  const acc = 1 - Math.exp(-dt * (s.onGround ? 13 : 2.2));
-  s.vel.x = lerp(s.vel.x, wx, acc); s.vel.z = lerp(s.vel.z, wz, acc);
+  if (s.dashT > 0) { // 대쉬 중: 정해진 속도로 곧게
+    const k = Math.min(dt, s.dashT); s.dashT -= dt;
+    s.vel.x = s.dashV.x * (k / dt); s.vel.z = s.dashV.z * (k / dt);
+    if (s.dashT <= 0) { const l = Math.hypot(s.dashV.x, s.dashV.z) || 1; s.vel.x = s.dashV.x / l * SPEED.sprint; s.vel.z = s.dashV.z / l * SPEED.sprint; s.dashT = 0; } // 끝나면 달리는 속도로
+  } else {
+    const acc = 1 - Math.exp(-dt * (s.onGround ? 13 : 2.2));
+    s.vel.x = lerp(s.vel.x, wx, acc); s.vel.z = lerp(s.vel.z, wz, acc);
+  }
 
   const wasGround = s.onGround;
   // 점프 키: 앞에 낮은 구조물(창문·모래주머니·방벽·상자)이 있으면 넘어가거나 올라서고, 없으면 점프.
@@ -165,11 +168,11 @@ export function stepMovement(s, i, cs, dt) {
 // 프레임 시간이 길면 MAX_STEP_DT 이하로 나눠 여러 번 진행한다. 사건은 합쳐서 돌려준다
 export function advanceMovement(s, i, cs, dt) {
   const n = Math.max(1, Math.ceil(dt / MAX_STEP_DT - 1e-9)), h = dt / n;
-  const out = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false };
+  const out = { sprinting: false, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false };
   for (let k = 0; k < n; k++) {
     const ev = stepMovement(s, i, cs, h);
     out.sprinting = ev.sprinting; out.moved += ev.moved; out.landed = Math.max(out.landed, ev.landed);
-    out.vaultStart ||= ev.vaultStart; out.vaultDone ||= ev.vaultDone;
+    out.vaultStart ||= ev.vaultStart; out.vaultDone ||= ev.vaultDone; out.dash ||= ev.dash;
   }
   return out;
 }

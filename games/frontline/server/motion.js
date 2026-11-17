@@ -4,24 +4,28 @@
 //   브라우저는 자기 입력으로 먼저 움직여 보이고(예측), `me` 를 받으면 서버 상태로 맞춘 뒤 아직 처리 안 된 입력을 다시 적용한다(보정).
 // 속도 핵 방지: 실제로 흐른 시간만큼의 입력만 받는다 (1초에 60개 + 잠깐 몰리는 것을 위한 여유).
 import { newMoveState, stepMovement, MAX_STEP_DT } from '../shared/movement.js';
-import { LEAN_DIST } from '../shared/constants.js';
 import { WEAPONS } from '../shared/weapons.js';
 
 export const STEP = MAX_STEP_DT;     // 입력 하나 = 1/60초
-export const FLAG = { jump: 1, crouch: 2, sprint: 4, leanL: 8, leanR: 16 };
+export const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8 }; // dash: 대쉬 스킬 키를 이 입력에서 눌렀음
 const BURST = 30;                    // 한꺼번에 몰려와도 받아 주는 입력 수 (0.5초 분량)
 const MAX_PER_MSG = 120;             // 메시지 하나에 들어올 수 있는 입력 수
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
 
 // 입력 하나: [앞뒤, 좌우, 플래그, yaw, pitch, 무기번호, 정조준 정도 0~1]
-export function decodeInput(a, wstats) {
+// p.skills = 출전 자리별 [{ wi, skill }] (room.join 이 만든다). 스킬 수치는 서버가 아는 값만 쓴다 (브라우저는 "눌렀다" 만 알린다)
+export function decodeInput(a, wstats, skills = null) {
   const flags = a[2] | 0, wi = a[5] | 0;
   const w = (wstats && wstats[wi]) || WEAPONS[wi] || WEAPONS[0];
+  const dashSk = skills ? skills.find(s => s.skill && s.skill.effect === 'dash') : null;
+  const held = skills ? skills.find(s => s.wi === wi) : null;
   return {
     move: { fwd: clamp(Math.round(num(a[0])), -1, 1), side: clamp(Math.round(num(a[1])), -1, 1),
-      jump: !!(flags & FLAG.jump), crouch: !!(flags & FLAG.crouch), sprint: !!(flags & FLAG.sprint), leanL: !!(flags & FLAG.leanL), leanR: !!(flags & FLAG.leanR),
-      speedMul: w.move * (1 - 0.4 * clamp(num(a[6]), 0, 1)) },
+      jump: !!(flags & FLAG.jump), crouch: !!(flags & FLAG.crouch), sprint: !!(flags & FLAG.sprint),
+      speedMul: w.move * (1 - 0.4 * clamp(num(a[6]), 0, 1)),
+      airSprint: !!(held && held.skill && held.skill.effect === 'sprint'),
+      dash: !!(flags & FLAG.dash) && !!dashSk, dashSkill: dashSk ? dashSk.skill : null },
     yaw: num(a[3]), pitch: clamp(num(a[4]), -1.6, 1.6), wi,
   };
 }
@@ -40,7 +44,7 @@ function syncPublic(p) {
   const s = p.ms;
   p.pos = [s.pos.x, s.pos.y, s.pos.z];
   p.crouch = s.crouch || !!s.vault ? 1 : 0;
-  p.yaw = s.yaw; p.lean = s.leanOff / LEAN_DIST;
+  p.yaw = s.yaw;
 }
 
 // `in` 메시지 처리. m = { s: 첫 입력 번호, i: [입력, …] }. 반환: 실제로 계산한 입력 수
@@ -55,7 +59,7 @@ export function applyInputs(p, m, colliders, now = Date.now()) {
     p.lastSeq = seq;                                           // 버린 입력도 "처리함" 으로 친다 → 브라우저는 서버 상태로 돌아간다
     if (p.budget < 1) continue;                                // 시간보다 많이 보냄 (속도 핵) → 버린다
     p.budget -= 1;
-    const inp = decodeInput(list[k], p.wstats);
+    const inp = decodeInput(list[k], p.wstats, p.skills);
     p.ms.yaw = inp.yaw; p.pitch = inp.pitch; p.wcur = inp.wi;
     if (p.alive) stepMovement(p.ms, inp.move, colliders, STEP);
     done++;
@@ -69,13 +73,13 @@ export function selfState(p) {
   const s = p.ms;
   return {
     t: 'me', q: p.lastSeq, k: p.tpn | 0, // k: 지금까지 받은 순간이동 수 (브라우저가 순간이동 전에 계산된 결과를 버리는 데 쓴다)
-    st: { p: [s.pos.x, s.pos.y, s.pos.z], v: [s.vel.x, s.vel.y, s.vel.z], g: s.onGround, c: s.crouch, h: s.h, so: s.stepOff, ln: s.lean, lo: s.leanOff, va: s.vault, vl: s.vaultLock, at: s.airT },
+    st: { p: [s.pos.x, s.pos.y, s.pos.z], v: [s.vel.x, s.vel.y, s.vel.z], g: s.onGround, c: s.crouch, h: s.h, so: s.stepOff, va: s.vault, vl: s.vaultLock, at: s.airT, dt: s.dashT, dc: s.dashCd, dv: s.dashV },
   };
 }
 // 다른 사람에게: 위치·시선 (예전 `s` 와 같은 모양)
-const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
+const r3 = v => Math.round(v * 1000) / 1000;
 export function publicState(p) {
-  return { t: 's', id: p.id, p: p.pos.map(r3), y: r3(p.ms.yaw), x: r3(p.pitch || 0), c: p.crouch, w: p.wcur | 0, l: r2(p.lean) };
+  return { t: 's', id: p.id, p: p.pos.map(r3), y: r3(p.ms.yaw), x: r3(p.pitch || 0), c: p.crouch, w: p.wcur | 0 };
 }
 
 // 개발·테스트용 순간이동 (라이브에서는 꺼져 있다)

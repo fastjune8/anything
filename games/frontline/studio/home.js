@@ -22,6 +22,7 @@ export const CATS = [
   { group: '콘텐츠', id: 'models', label: '모델', icon: '⌐', editor: 'model', desc: 'Blender 로 만든 총·물체 모델 (.glb). 규칙 검사·1인칭·파츠·스킨 미리 보기' },
   { group: '게임 데이터', id: 'weapons', label: '무기', icon: '✦', editor: 'data', desc: '총의 성능 수치 — 피해·연사·탄창·반동 …' },
   { group: '게임 데이터', id: 'parts', label: '파츠', icon: '⚙', editor: 'data', desc: '총에 다는 부품 — 자리별 파츠와 장단점' },
+  { group: '게임 데이터', id: 'skills', label: '스킬', icon: '⚡', editor: 'data', desc: '무기 스킬 — Q(주무기)·E(보조무기)로 쓰는 스킬의 효과와 수치' },
   { group: '게임 데이터', id: 'modes', label: '모드', icon: '⚑', editor: 'data', desc: '게임 방식 — 인원·목표 점수·점령전 수치' },
   { group: '준비 중', id: 'effects', label: '효과', icon: '✺', editor: 'effect', soon: true, desc: '스킬·총구 화염·피격 효과. 스킬 시스템과 함께 추가됩니다' },
 ];
@@ -63,12 +64,12 @@ export function drawLookThumb(l, w = 400, h = 300) {
 
 export function createHome(ctx) {
   let cat = 'maps', sel = null, query = '', modelKind = 'gun';
-  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
+  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [], skills: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
 
   async function load() {
     const get = u => fetch(u, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    const [mapIds, gunIds, weapons, parts, modes, registry, looks] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json')]);
-    data.looks = looks || [];
+    const [mapIds, gunIds, weapons, parts, modes, registry, looks, skills] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json'), get('/content/skills.json')]);
+    data.looks = looks || []; data.skills = skills || [];
     data.maps = (await Promise.all((mapIds || []).map(id => get(`/content/maps/${id}.json`)))).filter(Boolean);
     data.models = await Promise.all((gunIds || []).map(async id => {
       const head = await fetch(`/content/guns/${id}.glb`, { method: 'HEAD', cache: 'no-store' }).catch(() => null);
@@ -81,7 +82,7 @@ export function createHome(ctx) {
 
   // ───────── 종류별 카드 ─────────
   const usersOf = lookId => data.maps.filter(m => (m.look || (data.looks[0] && data.looks[0].id)) === lookId); // 이 분위기를 쓰는 맵
-  const count = id => ({ looks: data.looks.length, maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: 0 }[id]);
+  const count = id => ({ skills: data.skills.length, looks: data.looks.length, maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: 0 }[id]);
   const docOf = key => ctx.docs().get(key);
   const statePill = key => { const d = docOf(key); return d ? (d.isDirty() ? ['저장 안 됨', 'warn'] : ['열림', 'good']) : null; };
 
@@ -100,6 +101,7 @@ export function createHome(ctx) {
           bars: [['피해', w.dmg * w.pellets / maxDmg], ['연사', w.rpm / maxRpm], ['사거리', w.falloff ? Math.min(1, w.falloff[1] / 100) : 1], ['이동', (w.move - 0.75) / 0.35]] }));
       }
       case 'parts': return data.parts ? data.parts.slots.flatMap(s => (data.parts.parts[s.id] || []).map(p => ({ key: `part:${s.id}:${p.id}`, title: p.name, sub: `${s.name} · ${p.id}`, icon: '⚙', def: p, slot: s }))) : [];
+      case 'skills': return data.skills.map(s => ({ key: `skill:${s.id}`, title: s.name, sub: `${s.effect} · ${s.id}${s.cd ? ` · 쿨타임 ${s.cd}초` : ''}`, icon: '⚡', def: s }));
       case 'modes': return data.modes.map(m => ({ key: `mode:${m.id}`, title: m.name, sub: `${m.teams ? `${m.max / 2} 대 ${m.max / 2}` : `최대 ${m.max}명`} · 맵 ${m.map}`, icon: '⚑', def: m }));
       // 효과 에디터가 생기면 모델처럼 "검증 → 데이터로 등록" 으로 content/effects.json 에 올라간다
       case 'effects': return [['총구 화염', '쏠 때 총구의 불꽃'], ['피격', '맞았을 때 튀는 것'], ['스킬 효과', '스킬 발동·명중 연출']].map(([t, s]) => ({ key: `effect:${t}`, title: t, sub: s, icon: '✺', soon: true }));
@@ -141,7 +143,7 @@ export function createHome(ctx) {
       for (const [k, label] of [['gun', '총'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
       acts.append(seg, btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'), btn('+ 새 모델 (.glb)', () => $('fileIn').click(), 'primary', 'openGlbBtn'));
     }
-    if (['weapons', 'parts', 'modes'].includes(cat)) {
+    if (['weapons', 'parts', 'modes', 'skills'].includes(cat)) {
       acts.appendChild(btn('데이터 에디터로 열기', () => ctx.openAsset(`data:${cat}`)));
       acts.appendChild(btn(`+ 새 ${c.label}`, () => ctx.openAsset(`data:${cat}`, { create: true }), 'primary', 'newDataBtn'));
     }
@@ -183,6 +185,7 @@ export function createHome(ctx) {
     else if (kind === 'weapon') ctx.openAsset('data:weapons', { select: id });
     else if (kind === 'part') ctx.openAsset('data:parts', { slot: id, select: id2 });
     else if (kind === 'mode') ctx.openAsset('data:modes', { select: id });
+    else if (kind === 'skill') ctx.openAsset('data:skills', { select: id });
   }
 
   // ───────── 오른쪽: 자세히 ─────────
@@ -231,6 +234,8 @@ export function createHome(ctx) {
       const reg = w.model && data.registry.find(x => x.id === w.model);
       row('탄창', `${w.mag} / 예비 ${w.reserve}`); row('재장전', `${w.reload}초`); row('이동 속도', `${Math.round(w.move * 100)}%`);
       row('모델', reg ? `${reg.name} (등록된 모델)` : '코드로 만든 총');
+      const skName = id => (data.skills.find(s => s.id === id) || { name: id }).name;
+      row('스킬', w.skills ? `Q(주무기): ${(w.skills.primary || []).map(skName).join(', ') || '없음'} · E(보조무기): ${(w.skills.secondary || []).map(skName).join(', ') || '없음'}` : '없음');
       box.appendChild(dl);
       if (reg) rel('모델', [[reg.name, go('models', `gun:${reg.id}`)]]);
       const usable = data.parts ? data.parts.slots.flatMap(s => (data.parts.parts[s.id] || []).filter(p => (!p.only || p.only.includes(w.id)) && !(p.not || []).includes(w.id)).map(p => [p.name, go('parts', `part:${s.id}:${p.id}`)])) : [];
@@ -242,6 +247,12 @@ export function createHome(ctx) {
       const ws = data.weapons.filter(w => (!p.only || p.only.includes(w.id)) && !(p.not || []).includes(w.id));
       if (ws[0]) { const d = describePart(ws[0], p); box.appendChild(el('h4', '', `장단점 (${ws[0].name} 기준)`)); box.appendChild(el('p', 'note pc p', d.pros.join(' · ') || '—')); box.appendChild(el('p', 'note pc c', d.cons.join(' · ') || '—')); }
       rel(`달 수 있는 무기 (${ws.length})`, ws.map(w => [w.name, go('weapons', `weapon:${w.id}`)]));
+    } else if (cat === 'skills') {
+      const s = it.def;
+      row('효과', s.effect); row('설명', s.desc); if (s.cd) row('쿨타임', `${s.cd}초`); if (s.dur) row('지속', `${s.dur}초`);
+      box.appendChild(dl);
+      const ws = data.weapons.filter(w => ['primary', 'secondary'].some(k => ((w.skills && w.skills[k]) || []).includes(s.id)));
+      rel('이 스킬을 고를 수 있는 무기', ws.map(w => [w.name, go('weapons', `weapon:${w.id}`)]));
     } else if (cat === 'modes') {
       const m = it.def;
       row('규칙', m.rules === 'zone' ? '점령전 (거점 점수)' : '데스매치 (킬 = 점수)'); row('인원', `최대 ${m.max} · 봇으로 ${m.fill}까지`); row('팀', m.teams ? `${m.teams}팀` : '개인전'); row('목표', `${m.goal}${m.rules === 'zone' ? '점' : '킬'}`);

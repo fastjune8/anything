@@ -5,6 +5,8 @@ import { camera, canvas } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, inv, wp, game, roster, loadout, eff, currentSpread, isAlly } from './state.js';
 import { $, DEG, NOLOCK, MODE_CFG, clamp, esc } from './util.js';
+import { SKILL_KEYS } from '/shared/skills.js';
+import { sk, slotSkill, heatOf, grenadeMode, glSkill } from './skills.js';
 import { cache, setText, setDisplay, setClass } from './dom.js';
 
 const hudEl = $('hud'), crossEl = $('cross'), hitEl = $('hitm'), vigEl = $('vig'), dirEl = $('dmgdir');
@@ -21,6 +23,32 @@ function renderSlots() {
 }
 renderSlots();
 onLoadoutChange(wi => { if (wi < 0) renderSlots(); });
+
+// 스킬 칸 (Q·E): 이름 + 상태(쿨타임 · 늘 켜짐 · 유탄 수 · 열) + 아래 막대
+const skillsEl = $('skills');
+const skillEls = [0, 1].map(n => {
+  const d = document.createElement('div'); d.className = 'sk'; d.dataset.n = n;
+  d.innerHTML = `<span class="k">${SKILL_KEYS[n]}</span><div class="n"></div><div class="s"></div><i class="cd"></i>`;
+  skillsEl.appendChild(d); return d;
+});
+function updateSkillHud() {
+  skillEls.forEach((el, n) => {
+    const { wi, skill } = slotSkill(n);
+    const nEl = el.children[1], sEl = el.children[2], bar = el.children[3];
+    setText(nEl, skill ? skill.name : '스킬 없음');
+    let text = '', fill = 0, wait = false, on = false, hot = false;
+    if (skill) switch (skill.effect) {
+      case 'adrenaline': wait = sk.cd[n] > 0; on = sk.adrenT > 0; text = on ? `사용 중 ${sk.adrenT.toFixed(1)}` : wait ? `${Math.ceil(sk.cd[n])}초` : '준비'; fill = on ? sk.adrenT / skill.dur : wait ? 1 - sk.cd[n] / skill.cd : 1; break;
+      case 'dash': wait = me.dashCd > 0; text = wait ? `${Math.ceil(me.dashCd)}초` : '준비'; fill = wait ? 1 - me.dashCd / skill.cd : 1; break;
+      case 'grenade': { on = grenadeMode(); text = `${on ? '유탄 모드 · ' : ''}${sk.gl.ammo}/${skill.ammo}발`; fill = sk.gl.ammo >= skill.ammo ? 1 : sk.gl.t / skill.recharge; wait = !sk.gl.ammo; break; }
+      case 'overheat': { const h = heatOf(wi); hot = h.over; on = wp.cur === wi; text = h.over ? '과열 — 식는 중' : on ? `열 ${Math.round(h.heat * 100)}%` : '늘 켜짐 (들면)'; fill = h.heat; break; }
+      default: on = wp.cur === wi; text = on ? '적용 중' : '늘 켜짐 (들면)'; fill = on ? 1 : 0;
+    }
+    if (sk.flashT[n] > 0) text = sk.flash[n];
+    setText(sEl, text); bar.style.width = `${clamp(fill, 0, 1) * 100}%`;
+    setClass(el, 'none', !skill); setClass(el, 'wait', wait); setClass(el, 'on', on); setClass(el, 'hot', hot);
+  });
+}
 
 // ───── 피격/명중 표시 ─────
 let hitT = 0, vigT = 0, dirT = 0, dirFrom = null;
@@ -99,10 +127,12 @@ export function updateHud(dt) {
   const hb = $('hpB'); hb.style.width = `${clamp(me.hp, 0, 100)}%`;
   hb.style.background = me.hp <= 30 ? 'var(--danger)' : me.hp <= 60 ? 'var(--accent)' : 'var(--ui)';
 
-  setText($('amC'), String(st.ammo)); setText($('amR'), `/ ${st.reserve}`);
-  setClass($('amC'), 'low', st.ammo <= Math.ceil(w.mag * 0.25));
+  const gl = grenadeMode() ? glSkill() : null; // 유탄 모드: 탄약 칸에 유탄 수
+  setText($('amC'), String(gl ? sk.gl.ammo : st.ammo)); setText($('amR'), gl ? `/ ${gl.skill.ammo}` : `/ ${st.reserve}`);
+  setClass($('amC'), 'low', gl ? sk.gl.ammo === 0 : st.ammo <= Math.ceil(w.mag * 0.25));
   setText($('wN'), w.name);
-  setText($('wC'), `${w.cls} · ${w.auto ? '연사' : w.bolt ? '볼트액션' : w.shell ? '펌프액션' : '단발'}`);
+  setText($('wC'), gl ? `유탄 모드 · [${SKILL_KEYS[loadout.slots.indexOf(gl.wi)]}] 총으로` : `${w.cls} · ${w.auto ? '연사' : w.bolt ? '볼트액션' : w.shell ? '펌프액션' : '단발'}`);
+  updateSkillHud();
   slotEls.forEach((el, n) => { const i = loadout.slots[n]; setClass(el, 'on', i === wp.cur); setClass(el, 'empty', inv[i].ammo + inv[i].reserve === 0); });
 
   let hint = '';

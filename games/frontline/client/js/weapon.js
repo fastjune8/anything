@@ -9,6 +9,7 @@ import { showHit } from './hud.js';
 import { sfx } from './sfx.js';
 import { me, inv, wp, inp, game, net, loadout, eff, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
 import { V3, UP, DEG, lerp, clamp } from './util.js';
+import { rpmMul, heldSkill, heatShot, heatOf, grenadeMode, sk, resetSkills } from './skills.js';
 
 const _o = new V3(), _d = new V3(), _f = new V3(), _r = new V3(), _u = new V3(), _mz = new V3();
 
@@ -21,7 +22,7 @@ function muzzleWorld(out) {
 // 한 발 쏘기: 탄 소모 → 탄도(퍼짐) 계산 → 벽/사람 맞힘 판정 → 서버에 알림 → 반동/이펙트/소리
 function fire() {
   const w = eff[wp.cur], st = inv[wp.cur];
-  st.ammo--; wp.cooldown = 60 / w.rpm; inp.fireFresh = false;
+  st.ammo--; wp.cooldown = 60 / (w.rpm * rpmMul()); inp.fireFresh = false; // 아드레날린: 공격 속도 증가
   camera.getWorldDirection(_f);
   _r.crossVectors(_f, UP).normalize(); _u.crossVectors(_r, _f);
   _o.copy(camera.position);
@@ -69,7 +70,21 @@ function fire() {
   if (w.shell) sfx.mech('pump', 1, 0, 0.28);
 }
 
+// 유탄 한 발: 서버가 날아가는 길과 폭발을 계산하고, 모두에게 알려 준다 (net.js 의 gl · boom)
+function fireGrenade() {
+  inp.fireFresh = false;
+  if (sk.gl.ammo <= 0) { sfx.mech('dry'); return; }
+  sk.gl.ammo--; wp.cooldown = 0.6;
+  camera.getWorldDirection(_f);
+  _o.copy(camera.position);
+  net.send({ t: 'gl', o: [+_o.x.toFixed(3), +_o.y.toFixed(3), +_o.z.toFixed(3)], d: [+_f.x.toFixed(4), +_f.y.toFixed(4), +_f.z.toFixed(4)] });
+  game.invUntil = 0;
+  me.pitch = Math.min(PITCH_MAX, me.pitch + 2.2 * DEG); wp.kickP += 1.8 * DEG; wp.vmKick = 1.4; wp.flashT = 0.06;
+  sfx.mech('pump', 1, 0, 0.5); sfx.impact(4, 0);
+}
+
 export function startReload() {
+  if (grenadeMode()) return; // 유탄 모드에서는 재장전하지 않는다
   const w = eff[wp.cur], st = inv[wp.cur];
   if (wp.reload || wp.drawT > 0 || st.ammo >= w.mag || st.reserve <= 0 || !me.alive) return;
   wp.reload = { t: 0, total: w.shell ? 0.45 : w.reload, shell: !!w.shell, ev: 0, first: true };
@@ -116,12 +131,16 @@ export function updateWeapon(dt, active) {
 
   const wantAds = can && adsInput() && !wp.reload && wp.drawT <= 0 && !wp.sprinting;
   wp.adsT = clamp(wp.adsT + (wantAds ? dt : -dt) / w.adsTime, 0, 1);
-  wp.sprintT = lerp(wp.sprintT, wp.sprinting || me.vault ? 1 : 0, 1 - Math.exp(-dt * 12)); // 넘어갈 때는 달릴 때처럼 총을 내린다
+  const lowered = (wp.sprinting && !(heldSkill('sprint') && (inp.fireHeld || wp.sinceShot < 0.4))) || me.vault; // 질주 스킬: 쏘는 동안은 총을 든다
+  wp.sprintT = lerp(wp.sprintT, lowered ? 1 : 0, 1 - Math.exp(-dt * 12)); // 넘어갈 때는 달릴 때처럼 총을 내린다
 
-  if (can && (w.auto ? inp.fireHeld : inp.fireFresh) && wp.drawT <= 0 && wp.cooldown <= 0) {
+  const glMode = grenadeMode(), oh = heldSkill('overheat');
+  if (glMode) { if (can && inp.fireFresh && wp.drawT <= 0 && wp.cooldown <= 0 && !wp.reload) fireGrenade(); }
+  else if (can && (w.auto ? inp.fireHeld : inp.fireFresh) && wp.drawT <= 0 && wp.cooldown <= 0) {
     if (wp.reload && wp.reload.shell && st.ammo > 0) { wp.reload = null; wp.cooldown = 0.25; } // 산탄총은 장전 중 사격으로 끊을 수 있다
+    else if (oh && heatOf(wp.cur).over) { if (inp.fireFresh) sfx.mech('dry'); inp.fireFresh = false; } // 과열: 다 식을 때까지 못 쏜다
     else if (!wp.reload) {
-      if (st.ammo > 0) fire();
+      if (st.ammo > 0) { if (oh) heatShot(oh); fire(); }
       else {
         if (inp.fireFresh) sfx.mech('dry');
         inp.fireFresh = false;
@@ -148,6 +167,6 @@ export function placeMe(p) {
   me.pos.set(p[0], p[1], p[2]); me.vel.set(0, 0, 0);
   me.yaw = Math.atan2(p[0], p[2]) || 0; me.pitch = 0; wp.kickP = wp.kickY = 0;
   me.hp = MAX_HP; me.alive = true; me.crouch = false; me.onGround = true; me.stepOff = 0; me.deadT = 0;
-  me.vault = null; me.lean = 0; me.leanOff = 0;
-  resetLoadout(); wp.drawT = eff[wp.cur].draw; showGun();
+  me.vault = null; me.dashT = 0; me.dashCd = 0; me.dashV = null;
+  resetLoadout(); resetSkills(); wp.drawT = eff[wp.cur].draw; showGun();
 }

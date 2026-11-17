@@ -62,7 +62,7 @@ console.log('\n[총기 파츠: 성능과 트레이드오프]');
 {
   const { SLOTS, PARTS, partsFor, applyParts, describePart, sanitizeParts, sanitizeLoadout } = await import('../shared/parts.js');
   const byId = id => WEAPONS.find(w => w.id === id);
-  const m4 = byId('m4'), awmW = byId('awm');
+  const m4 = byId('ar'), awmW = byId('awm'); // m4 = 기본 돌격소총 (예전 M4A1 자리)
 
   // 규칙: 어떤 파츠도 장점만 있거나 단점만 있으면 안 된다 (달 수 있는 모든 무기에서)
   const oneSided = [];
@@ -89,11 +89,16 @@ console.log('\n[총기 파츠: 성능과 트레이드오프]');
 
   check(JSON.stringify(sanitizeParts('m9', { optic: 'acog', barrel: 'suppressor', stock: 'heavy', grip: 5, hack: 'x' })) === '{"barrel":"suppressor"}', 'sanitizeParts: 그 무기에 달 수 없는 것, 형식이 틀린 것은 버린다');
   const ids = lo => lo.map(l => l.id).join(',');
-  check(ids(sanitizeLoadout(undefined)) === 'm4,m9' && ids(sanitizeLoadout('x')) === 'm4,m9' && ids(sanitizeLoadout([null, 7])) === 'm4,m9', 'sanitizeLoadout: 값이 없거나 깨졌으면 기본 무기(M4A1, M9)');
-  check(ids(sanitizeLoadout([{ id: 'awm' }, { id: 'awm' }])) === 'awm,m4', '같은 무기를 두 번 넣으면 하나만 인정하고 기본 무기로 채운다');
-  check(ids(sanitizeLoadout([{ id: 'ak' }, { id: 'mp5' }, { id: 'awm' }])) === 'ak,mp5', '무기는 2개까지만 들고 갈 수 있다');
-  const lo = sanitizeLoadout([{ id: 'ak', parts: { mag: 'ext', optic: 'scope_hi' } }, { id: 'nothing' }]);
-  check(lo[0].wi === WEAPONS.indexOf(byId('ak')) && JSON.stringify(lo[0].parts) === '{"mag":"ext"}' && lo[1].id === 'm4', '무기 번호(wi)와 정리된 파츠를 돌려주고, 없는 무기는 기본 무기로 바꾼다');
+  check(ids(sanitizeLoadout(undefined)) === 'ar,m9' && ids(sanitizeLoadout('x')) === 'ar,m9' && ids(sanitizeLoadout([null, 7])) === 'ar,m9', 'sanitizeLoadout: 값이 없거나 깨졌으면 기본 무기(기본 돌격소총, M9)');
+  check(ids(sanitizeLoadout([{ id: 'awm' }, { id: 'awm' }])) === 'awm,ar', '같은 무기를 두 번 넣으면 하나만 인정하고 기본 무기로 채운다');
+  check(ids(sanitizeLoadout([{ id: 'm249' }, { id: 'mp5' }, { id: 'awm' }])) === 'm249,mp5', '무기는 2개까지만 들고 갈 수 있다');
+  const lo = sanitizeLoadout([{ id: 'm249', parts: { mag: 'ext', optic: 'scope_hi' } }, { id: 'nothing' }]);
+  check(lo[0].wi === WEAPONS.indexOf(byId('m249')) && JSON.stringify(lo[0].parts) === '{"mag":"ext"}' && lo[1].id === 'ar', '무기 번호(wi)와 정리된 파츠를 돌려주고, 없는 무기는 기본 무기로 바꾼다', JSON.stringify(lo));
+  check(ids(sanitizeLoadout([{ id: 'm4' }, { id: 'ak' }])) === 'ar,m9' && !WEAPONS.some(w => w.id === 'm4' || w.id === 'ak'), 'M4A1·AK-47 은 기본 돌격소총으로 합쳐졌다 (예전에 저장한 출전 무기는 기본 돌격소총으로)');
+  const sk = sanitizeLoadout([{ id: 'ar', skill: 'dash' }, { id: 'awm', skill: 'dash' }]);
+  check(sk[0].skill === 'dash' && sk[1].skill === null, '스킬: 그 자리에서 고를 수 있는 것만 (돌격소총 1번 = 대쉬 OK, 스킬이 없는 무기는 null)', JSON.stringify(sk.map(l => l.skill)));
+  const sk2 = sanitizeLoadout([{ id: 'm9' }, { id: 'ar', skill: 'nope' }]);
+  check(sk2[1].skill === byId('ar').skills.secondary[0], '없는 스킬을 고르면 그 자리의 첫 번째 스킬로', sk2[1].skill);
 
   // 서버 명중 검증: 들고 온 무기로만 맞힐 수 있고, 파츠가 반영된 성능으로 계산한다
   const mi = WEAPONS.indexOf(m4), ai = WEAPONS.indexOf(awmW);
@@ -101,6 +106,44 @@ console.log('\n[총기 파츠: 성능과 트레이드오프]');
   const players = new Map([[0, shooter], [1, foe]]);
   check(resolveHits(players, shooter, { w: ai, hits: [['head', 5, 1]] }) === null, '들고 오지 않은 무기의 명중 신고는 무효(null)');
   check(resolveHits(players, shooter, { w: mi, hits: [['body', 60, 1]] }).damages[0].dmg === Math.round(calcDamage(sup, 'body', 60)), '피해는 파츠가 반영된 성능으로 계산한다');
+}
+
+console.log('\n[무기 스킬: 대쉬 · 질주 · 과열 · 유탄]');
+{
+  const { advanceMovement, newMoveState, NO_INPUT, SPEED } = await import('../shared/movement.js');
+  const { getSkill, skillsFor, newHeat, addHeat, coolHeat, heatMul, stepGrenade, splashDamage, blastReaches } = await import('../shared/skills.js');
+  const { buildLayout } = await import('../shared/maps/build.js');
+  const ar = WEAPONS.find(w => w.id === 'ar');
+  check(['adrenaline', 'sprint', 'overheat', 'grenade', 'dash'].every(id => skillsFor(ar, 0).some(s => s.id === id) && skillsFor(ar, 1).some(s => s.id === id)), '기본 돌격소총은 주무기·보조무기 모두에서 스킬 5개를 고를 수 있다');
+  const dash = getSkill('dash'), run = (s, i, sec) => { for (let t = 0; t < sec - 1e-9; t += 1 / 60) advanceMovement(s, i, [], 1 / 60); return s; };
+  const d1 = newMoveState(); d1.yaw = Math.PI; // 앞 = +z
+  run(d1, { ...NO_INPUT, dash: true, dashSkill: dash }, 1 / 60); run(d1, NO_INPUT, dash.dur + 0.02);
+  check(Math.abs(d1.pos.z - dash.dist) < 0.6 && d1.dashCd > dash.cd - 0.5, `대쉬: 가만히 있으면 앞으로 약 ${dash.dist}m, 쿨타임이 걸린다`, `z ${d1.pos.z.toFixed(2)} cd ${d1.dashCd.toFixed(2)}`);
+  const z0 = d1.pos.z; run(d1, { ...NO_INPUT, dash: true, dashSkill: dash }, 0.3);
+  check(d1.pos.z - z0 < 1, '쿨타임 중에는 대쉬가 나가지 않는다');
+  const d2 = newMoveState(); d2.yaw = Math.PI; run(d2, { ...NO_INPUT, side: 1, dash: true, dashSkill: dash }, 1 / 60); run(d2, NO_INPUT, dash.dur);
+  check(Math.abs(d2.pos.x) > dash.dist * 0.8 && Math.abs(d2.pos.z) < 0.5, '움직이는 방향(옆)으로 대쉬한다', `x ${d2.pos.x.toFixed(2)}`);
+  const air = (airSprint) => { const s = newMoveState(); s.yaw = Math.PI; run(s, { ...NO_INPUT, fwd: 1, sprint: true, speedMul: 1 }, 1); run(s, { ...NO_INPUT, fwd: 1, sprint: true, jump: true, speedMul: 1, airSprint }, 0.1); run(s, { ...NO_INPUT, fwd: 1, sprint: true, speedMul: 1, airSprint }, 0.3); return Math.hypot(s.vel.x, s.vel.z); };
+  check(air(true) > SPEED.sprint - 0.1 && air(false) < air(true) - 0.3, '질주: 뛰어올라도 달리는 속도가 유지된다 (없으면 줄어든다)', `${air(true).toFixed(2)} / ${air(false).toFixed(2)}`);
+  const oh = getSkill('overheat'), h = newHeat();
+  let shots = 0; while (!h.over && shots < 200) { addHeat(h, oh); shots++; }
+  check(shots === Math.ceil(1 / oh.heat) && heatMul(h, oh) === 1 + oh.bonus, `과열: ${shots}발 연사하면 과열, 그때 피해 +${Math.round(oh.bonus * 100)}%`);
+  coolHeat(h, oh, 0.5);
+  check(h.over && h.heat < 1, '과열되면 바로 다시 쏠 수 없다 (식는 중)');
+  coolHeat(h, oh, 1 / oh.cool + 0.1);
+  check(!h.over && h.heat === 0, '다 식으면 다시 쏠 수 있다');
+  const h2 = newHeat(); addHeat(h2, oh); coolHeat(h2, oh, oh.coolDelay * 0.5);
+  check(h2.heat === oh.heat, '쏘기를 멈추고 잠깐은 식지 않는다 (연사를 이어 가면 열이 쌓인다)');
+  const gl = getSkill('grenade');
+  const wall = buildLayout({ objects: [{ type: 'box', x: 0, y: 0, z: 10, w: 6, h: 4, d: 1, mat: 'concrete' }] }).colliders;
+  const g = { p: { x: 0, y: 1.5, z: 0 }, v: { x: 0, y: 0, z: gl.speed }, t: 0 };
+  while (!g.done) stepGrenade(g, 1 / 80, wall);
+  check(Math.abs(g.p.z - 9.5) < 0.2, '유탄은 벽에 닿으면 그 자리에서 터진다', g.p.z.toFixed(2));
+  const g2 = { p: { x: 0, y: 1.5, z: 0 }, v: { x: 0, y: 4, z: -gl.speed }, t: 0 };
+  while (!g2.done) stepGrenade(g2, 1 / 80, wall);
+  check(g2.p.y < 0.1 && g2.p.z < -10, '포물선으로 날아가 땅에 떨어지면 터진다', `z ${g2.p.z.toFixed(1)}`);
+  check(splashDamage(gl, 0) === gl.dmg && splashDamage(gl, gl.radius * 0.5) < gl.dmg && splashDamage(gl, gl.radius + 0.1) === 0, '폭발 피해: 가운데가 가장 크고, 반경 밖은 0');
+  check(!blastReaches({ x: 0, y: 1, z: 8 }, { x: 0, y: 1, z: 12 }, wall) && blastReaches({ x: 0, y: 1, z: 8 }, { x: 2, y: 1, z: 6 }, wall), '벽 너머에는 폭발 피해가 닿지 않는다');
 }
 
 console.log('\n[넘어가기 / 오르기: findVault]');
@@ -218,11 +261,6 @@ console.log('\n[이동 물리: shared/movement.js]');
   check(ev.vaultStart && v.vault && v.vault.type === 'vault', '창문 앞에서 점프 키를 누르면 넘어가기가 시작된다');
   run(v, NO_INPUT, win, 1.2, 60);
   check(!v.vault && v.pos.z < -1.3, '넘어가기가 끝나면 창문 건너편에 있다', v.pos.z.toFixed(2));
-
-  const l = newMoveState(); l.yaw = 0;
-  run(l, { ...NO_INPUT, leanR: true }, [box(0.2, 0.4, 0, 3, -1, 1)], 1, 60);
-  const free = run(newMoveState(), { ...NO_INPUT, leanR: true }, [], 1, 60);
-  check(free.leanOff > 0.38 && l.leanOff < 0.1, '기울이기: 빈 곳은 끝까지, 옆이 벽이면 벽을 뚫지 않을 만큼만', `${free.leanOff.toFixed(2)} / ${l.leanOff.toFixed(2)}`);
 }
 
 console.log('\n[높이 요소: 경사로 · 계단 · 발판]');

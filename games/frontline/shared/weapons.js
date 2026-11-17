@@ -3,11 +3,12 @@
 import data from '../content/weapons.json' with { type: 'json' };
 import { checkWeapons } from './content/schema.js';
 import models from '../content/models.json' with { type: 'json' };
+import skills from '../content/skills.json' with { type: 'json' };
 
 // 무기 데이터는 content/weapons.json (칸 설명은 shared/content/schema.js 의 WEAPON_SCHEMA)
 export const WEAPONS = data;
 {
-  const errors = checkWeapons(WEAPONS, models.map(m => m.id)); // 무기의 model 은 데이터로 등록된 모델이어야 한다
+  const errors = checkWeapons(WEAPONS, models.map(m => m.id), skills.map(s => s.id)); // 무기의 model 은 데이터로 등록된 모델, skills 는 있는 스킬이어야 한다
   if (errors.length) throw new Error('무기 데이터 오류 (content/weapons.json):\n  ' + errors.join('\n  '));
 }
 

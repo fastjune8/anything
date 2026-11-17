@@ -4,7 +4,8 @@ import { WEAPONS, calcDamage } from '../shared/weapons.js';
 // m = { w: 무기번호, o: [쏜 눈 위치], hits: [[부위, 거리, 대상id, 방향x, 방향y, 방향z, 시각번호], ...] }
 // verify(victim, hit) → { part, dist } 또는 null: 랙 보정 확인 (server/lagcomp.js). 없으면(단위 테스트) 신고를 그대로 쓴다
 // 반환: { wi, damages: [{ victim, dmg, head }] } 또는 잘못된 신호(없는 무기, 들고 있지 않은 무기)면 null
-export function resolveHits(players, attacker, m, verify = null) {
+// mul: 피해 배율 (과열 스킬)
+export function resolveHits(players, attacker, m, verify = null, mul = 1) {
   const wi = m.w | 0;
   // 사람은 들고 들어온 무기(파츠 반영)로만 맞힐 수 있다. wstats 가 없는 경우(단위 테스트의 단순 객체)는 기본 성능.
   const weapon = attacker.wstats ? attacker.wstats[wi] : WEAPONS[wi];
@@ -26,7 +27,7 @@ export function resolveHits(players, attacker, m, verify = null) {
         : Math.min(400, Math.max(0, Number(h[1]) || 0));
     }
     const acc = byVictim.get(victim) || { dmg: 0, head: false };
-    acc.dmg += calcDamage(weapon, part, dist);
+    acc.dmg += calcDamage(weapon, part, dist) * mul;
     if (part === 'head') acc.head = true;
     byVictim.set(victim, acc);
   }

@@ -120,18 +120,29 @@ async function closeDoc(doc, force) {
 }
 
 // 위쪽 탭: 홈 + 열린 편집기
+// 탭 목록이 그대로면 다시 만들지 않고 상태만 바꾼다: 입력 칸을 고친 뒤 탭을 누르면 (입력 칸이 포커스를 잃으며 다시 그리기가 일어나)
+// 누르는 중인 탭이 사라져 클릭이 무시되던 문제
+let tabSig = '';
 function renderTabs() {
-  const bar = $('tabs'); bar.replaceChildren();
-  const h = el('div', `tab home${active ? '' : ' active'}`); h.append(el('span', '', '⌂ 홈')); h.addEventListener('click', () => activate(null)); bar.appendChild(h);
-  for (const d of docs.values()) {
-    const t = el('div', `tab${d === active ? ' active' : ''}`); t.dataset.key = d.key;
-    t.append(el('span', 'k', EDITORS[d.editor].icon), el('span', '', d.title));
-    if (d.isDirty()) t.append(el('span', 'dot', '●'));
-    const x = el('button', 'x', '×'); x.type = 'button'; x.title = '닫기 (⌘W)'; x.addEventListener('click', e => { e.stopPropagation(); closeDoc(d); });
-    t.append(x);
-    t.addEventListener('click', () => activate(d));
-    t.addEventListener('auxclick', e => { if (e.button === 1) closeDoc(d); });
-    bar.appendChild(t);
+  const bar = $('tabs'), sig = [...docs.values()].map(d => `${d.key}\u0001${d.title}`).join('\u0002');
+  if (sig !== tabSig || !bar.children.length) {
+    tabSig = sig; bar.replaceChildren();
+    const h = el('div', 'tab home'); h.append(el('span', '', '⌂ 홈')); h.addEventListener('click', () => activate(null)); bar.appendChild(h);
+    for (const d of docs.values()) {
+      const t = el('div', 'tab'); t.dataset.key = d.key;
+      t.append(el('span', 'k', EDITORS[d.editor].icon), el('span', '', d.title), el('span', 'dot', '●'));
+      const x = el('button', 'x', '×'); x.type = 'button'; x.title = '닫기 (⌘W)'; x.addEventListener('click', e => { e.stopPropagation(); closeDoc(d); });
+      t.append(x);
+      t.addEventListener('click', () => activate(d));
+      t.addEventListener('auxclick', e => { if (e.button === 1) closeDoc(d); });
+      bar.appendChild(t);
+    }
+  }
+  bar.firstChild.classList.toggle('active', !active);
+  for (const t of bar.querySelectorAll('.tab[data-key]')) {
+    const d = docs.get(t.dataset.key);
+    t.classList.toggle('active', d === active);
+    t.querySelector('.dot').style.display = d && d.isDirty() ? '' : 'none';
   }
   const n = [...docs.values()].filter(d => d.isDirty()).length;
   $('unsaved').hidden = !n; $('unsaved').textContent = `저장 안 됨 ${n}`;

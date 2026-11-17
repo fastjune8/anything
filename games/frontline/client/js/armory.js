@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { WEAPONS } from '/shared/weapons.js';
 import { SLOTS, partsFor, getPart, applyParts, describePart } from '/shared/parts.js';
 import { buildGun, setGunParts } from './guns.js';
-import { owned, equip, setPart, onLoadoutChange } from './loadout.js';
+import { owned, equip, setPart, setSkill, onLoadoutChange } from './loadout.js';
+import { skillsFor, getSkill, SKILL_KEYS } from '/shared/skills.js';
 import { canvas, scene as worldScene } from './scene.js';
 import { loadout, eff, game } from './state.js';
 import { $, lerp, esc } from './util.js';
@@ -149,6 +150,15 @@ function renderParts() {
     return `<div class="pslot"><div class="pt">${s.name}</div>${list.length ? `<div class="chips">${chips}</div><div class="pd" data-desc="${s.id}">${describe(s.id)}</div>` : '<div class="pd"><span>이 무기에는 달 수 있는 파츠가 없습니다</span></div>'}</div>`;
   }).join('');
 }
+// 스킬: 이 무기를 1번(주무기) / 2번(보조무기)으로 들고 갈 때 쓸 스킬을 하나씩 고른다
+function renderSkills() {
+  const wi = armory.selected, base = WEAPONS[wi], has = owned.has(base.id);
+  $('arSkills').innerHTML = [0, 1].map(n => {
+    const list = skillsFor(base, n), cur = loadout.skills[wi][n], sel = getSkill(cur);
+    const chips = list.map(s => `<button type="button" class="chip${s.id === cur ? ' on' : ''}" data-skill-slot="${n}" data-skill="${s.id}"${has ? '' : ' disabled'}>${esc(s.name)}</button>`).join('');
+    return `<div class="pslot"><div class="pt">${n + 1}번 무기로 들 때 · [${SKILL_KEYS[n]}]</div>${list.length ? `<div class="chips">${chips}</div><div class="pd">${esc(sel ? sel.desc : '')}</div>` : '<div class="pd"><span>이 자리에서 쓸 수 있는 스킬이 없습니다</span></div>'}</div>`;
+  }).join('');
+}
 function renderPanel() {
   const wi = armory.selected, w = WEAPONS[wi], has = owned.has(w.id);
   $('arName').textContent = w.name;
@@ -158,14 +168,15 @@ function renderPanel() {
     b.textContent = !has ? '아직 얻지 못한 무기' : on ? `${n + 1}번 무기로 장착 중` : `${n + 1}번 무기로 장착`;
     b.disabled = !has || on; b.classList.toggle('on', on);
   }
-  $('arSum').innerHTML = loadout.slots.map((i, n) => `<span><em>${n + 1}</em>${esc(WEAPONS[i].name)}</span>`).join('');
+  const skName = (i, n) => { const k = getSkill(loadout.skills[i][n]); return k ? ` · ${SKILL_KEYS[n]} ${k.name}` : ''; };
+  $('arSum').innerHTML = loadout.slots.map((i, n) => `<span><em>${n + 1}</em>${esc(WEAPONS[i].name + skName(i, n))}</span>`).join('');
   preview = null;
-  renderStats(); renderParts(); renderLabels();
+  renderStats(); renderSkills(); renderParts(); renderLabels();
 }
 function select(wi) { armory.selected = wi; renderPanel(); }
 
 // 로비 카드의 "무기고" 버튼에 지금 출전 무기를 보여 준다
-function renderLobbySummary() { $('loadoutSum').textContent = loadout.slots.map((i, n) => `${n + 1} ${WEAPONS[i].name}`).join('  ·  '); }
+function renderLobbySummary() { $('loadoutSum').textContent = loadout.slots.map((i, n) => { const k = getSkill(loadout.skills[i][n]); return `${n + 1} ${WEAPONS[i].name}${k ? ` (${SKILL_KEYS[n]} ${k.name})` : ''}`; }).join('  ·  '); }
 renderLobbySummary();
 onLoadoutChange(wi => { if (wi >= 0) dress(slots[wi]); renderLobbySummary(); renderPanel(); });
 
@@ -184,6 +195,7 @@ $('arEquip').addEventListener('click', e => { const b = e.target.closest('button
 
 const chipOf = e => (e.target instanceof Element ? e.target.closest('.chip') : null);
 $('arParts').addEventListener('click', e => { const c = chipOf(e); if (c && !c.disabled) setPart(armory.selected, c.dataset.slot, c.dataset.part || null); });
+$('arSkills').addEventListener('click', e => { const c = chipOf(e); if (c && !c.disabled) setSkill(armory.selected, Number(c.dataset.skillSlot), c.dataset.skill); });
 function setPreview(p) {
   const old = preview; preview = p;
   renderStats();

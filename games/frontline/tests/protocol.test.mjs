@@ -1,5 +1,5 @@
 // 서버 규칙 테스트: 방 / 봇 / 명중 / 경기 종료·재시작 (브라우저 없이 WebSocket 만으로)
-import { startServer, connect, getStatus, check, failed, sleep } from './helpers.mjs';
+import { startServer, connect, getStatus, check, failed, sleep, W } from './helpers.mjs';
 
 const srv = await startServer({ MATCH_SECONDS: '12', RESTART_SECONDS: '2', GOAL: '999' });
 console.log(`임시 서버 포트 ${srv.port}`);
@@ -32,7 +32,7 @@ try {
   for (let i = 0; i < 12 && !dmg; i++) {
     target = bots.find(p => isAlive(p.id));
     if (target && isAlive(a.me)) {
-      a.send({ t: 'hit', w: 4, hits: [['head', 20, target.id]] });
+      a.send({ t: 'hit', w: W('awm'), hits: [['head', 20, target.id]] });
       dmg = await a.waitFor('dmg', m => m.from === a.me && m.to === target.id, 800);
     } else await sleep(400);
   }
@@ -40,8 +40,8 @@ try {
   const kill = await a.waitFor('kill', m => m.killer === a.me && m.victim === target?.id, 3000);
   check(!!kill && kill.head === true, 'AWM 헤드샷 한 발로 킬 + 헤드샷 표시');
   check(kill && kill.sc.some(([id, k]) => id === a.me && k >= 1), '킬 수가 순위표에 반영된다');
-  a.send({ t: 'hit', w: 4, hits: [['body', 5, 99]] });
-  a.send({ t: 'hit', w: 4, hits: [['body', 5, a.me]] });
+  a.send({ t: 'hit', w: W('awm'), hits: [['body', 5, 99]] });
+  a.send({ t: 'hit', w: W('awm'), hits: [['body', 5, a.me]] });
   await sleep(300);
   check(true, '존재하지 않는 대상/자기 자신에 대한 명중 신호를 무시한다 (서버 유지)');
 

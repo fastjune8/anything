@@ -1,5 +1,5 @@
 // 서버 규칙 테스트 2: 스폰 무적 (봇 없는 서버에서 사람 둘로 확인)
-import { startServer, connect, check, failed, sleep } from './helpers.mjs';
+import { startServer, connect, check, failed, sleep, W } from './helpers.mjs';
 
 const srv = await startServer({ MATCH_SECONDS: '120', GOAL: '999', BOT_FILL: '0' });
 let exitCode = 0;
@@ -11,7 +11,7 @@ try {
   const spawnedAt = Date.now();
   check(bSpawn && bSpawn.inv === 3000, '스폰 메시지에 무적 시간(3000ms)이 들어 있다', JSON.stringify(bSpawn));
 
-  const M9 = 6;
+  const M9 = W('m9');
   a.send({ t: 'hit', w: M9, hits: [['body', 5, b.me]] });
   await sleep(700);
   check(!a.find('dmg', m => m.to === b.me), '스폰 직후에는 맞아도 피해를 받지 않는다');
@@ -30,7 +30,7 @@ try {
 
   console.log('\n[부활: 자동 부활 없음, 입력하면 부활]');
   b.autoRespawn = false;
-  const AWM = 4;
+  const AWM = W('awm');
   a.send({ t: 'hit', w: AWM, hits: [['head', 5, b.me]] });
   const killed = await a.waitFor('kill', m => m.victim === b.me, 2000);
   check(!!killed, '(준비) 상대를 죽였다');

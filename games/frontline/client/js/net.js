@@ -4,7 +4,7 @@ import { WEAPONS } from '/shared/weapons.js';
 import { applyParts } from '/shared/parts.js';
 import { loadoutMessage } from './loadout.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
-import { impact, addTracer } from './fx.js';
+import { impact, addTracer, spawnGrenade, explode, clearGrenades } from './fx.js';
 import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
 import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
 import { loadMap } from './scene.js';
@@ -57,7 +57,7 @@ function onMessage(m) {
       setMode(m.mode); loadMap(m.map || MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이). 친선전은 맵을 따로 고를 수 있다
       game.zone = m.zone || null;
       resetSession(); // 서버에서 나는 새 플레이어 → 이동 예측 기록도 처음부터
-      clearRemotes(); roster.clear(); clearChat();
+      clearRemotes(); roster.clear(); clearChat(); clearGrenades();
       setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
       setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
       game.goalKills = m.goal; game.matchState = m.state; game.matchEndsAt = performance.now() + m.left; game.endAt = performance.now() + 10000;
@@ -102,7 +102,6 @@ function onMessage(m) {
       const r = remotes.get(m.id);
       if (!r) break;
       r.tpos.fromArray(m.p); r.tyaw = m.y; r.tpitch = m.x; r.crouchT = m.c ? 1 : 0; r.weapon = m.w | 0; r.n = m.n | 0; // n: 서버 시각 번호 (명중 신고에 붙여 보낸다 → 랙 보정)
-      r.tlean = Math.max(-1, Math.min(1, Number(m.l) || 0));
       if (!r.hasPos) { r.hasPos = true; r.pos.copy(r.tpos); }
       break;
     }
@@ -118,6 +117,20 @@ function onMessage(m) {
         addTracer(o, end);
         if (e[3] !== 6) { impact(end, e[3]); const ia = audioAt(end); if (ia.dist < 12) sfx.impact(ia.dist, ia.pan); }
       }
+      break;
+    }
+    case 'gl': // 유탄이 날아간다 (누가 쐈든 서버가 알려 준다)
+      if (Array.isArray(m.o) && Array.isArray(m.v)) spawnGrenade(m.id, m.o, m.v);
+      if (m.by !== me.id) { const a = audioAt(new V3().fromArray(m.o)); sfx.mech('pump', a.att, a.pan); }
+      break;
+    case 'boom': { // 유탄이 터졌다
+      explode(m.id, m.p, m.r);
+      const a = audioAt(new V3().fromArray(m.p)); sfx.boom(a.dist, a.pan);
+      break;
+    }
+    case 'sk': { // 다른 사람이 누르는 스킬을 썼다 (지금은 아드레날린: 소리만)
+      const r = remotes.get(m.id);
+      if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); }
       break;
     }
     case 'rl': {

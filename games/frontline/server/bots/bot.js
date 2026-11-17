@@ -8,8 +8,9 @@ const EYE = 1.55;
 const SPEED = 4.6;          // m/s
 const VIEW = 70;            // 시야 거리
 const FOV_HALF = (75 * Math.PI) / 180; // 정면 ±75° (6m 이내는 소리로 감지)
-const WEAPON_POOL = [0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6];
-const PREF_RANGE = { m4: 22, ak: 22, mp5: 14, m870: 8, awm: 40, m249: 26, m9: 12 };
+// 봇이 드는 무기 (많이 나올수록 여러 번). 무기 번호는 데이터 순서라 id 로 적는다
+const WEAPON_POOL = ['ar', 'ar', 'ar', 'ar', 'ar', 'ar', 'mp5', 'mp5', 'm870', 'm870', 'awm', 'm249', 'm249', 'm9'].map(id => WEAPONS.findIndex(w => w.id === id)).filter(i => i >= 0);
+const PREF_RANGE = { ar: 22, mp5: 14, m870: 8, awm: 40, m249: 26, m9: 12 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };

@@ -1,5 +1,5 @@
 // 서버 규칙 테스트 3: 팀 데스매치 (모드 선택, 팀 배정, 아군 사격 무효, 팀 점수, 팀 승패)
-import { startServer, getStatus, check, failed, sleep, TEST_LOADOUT } from './helpers.mjs';
+import { startServer, getStatus, check, failed, sleep, TEST_LOADOUT, W } from './helpers.mjs';
 import { WebSocket } from 'ws';
 
 // 모드를 지정해서 접속하는 클라이언트 (helpers 의 connect 는 기본 모드로만 접속)
@@ -46,7 +46,7 @@ try {
   f.ws.close();
 
   console.log('\n[아군 사격 무효 / 팀 점수]');
-  const AWM = 4;
+  const AWM = W('awm');
   const sameTeam = a.team === b.team;
   check(sameTeam, '(준비) 두 사람이 같은 팀이다');
   await sleep(3200); // 스폰 무적이 끝날 때까지

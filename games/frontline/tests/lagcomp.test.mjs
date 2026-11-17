@@ -1,8 +1,8 @@
 // 랙 보정 테스트: 서버가 쏜 사람이 보던 순간으로 상대를 되돌려 명중 신고를 확인한다
-import { startServer, connect, check, failed, sleep } from './helpers.mjs';
+import { startServer, connect, check, failed, sleep, W } from './helpers.mjs';
 import { calcDamage } from '../shared/weapons.js';
 
-const M9 = 6;
+const M9 = W('m9');
 const norm = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
 const lastS = (c, id) => [...c.msgs].reverse().find(m => m.t === 's' && m.id === id);
 // a 가 eye 에서 target 지점을 쏜 명중 신고 (n = 보고 있던 상대 위치의 tick 번호)
@@ -17,7 +17,7 @@ try {
   const a = connect(srv.port, 'shooter'); await a.open; await a.waitFor('welcome');
   const b = connect(srv.port, 'target'); await b.open; await b.waitFor('welcome');
   // b 가 계속 입력을 보내서 서버가 위치를 계속 알린다 (가만히 서 있기)
-  let bs = 0; const hold = setInterval(() => { b.send({ t: 'in', s: bs, i: [0, 1, 2].map(() => [0, 0, 0, 0, 0, 6, 0]) }); bs += 3; }, 50);
+  let bs = 0; const hold = setInterval(() => { b.send({ t: 'in', s: bs, i: [0, 1, 2].map(() => [0, 0, 0, 0, 0, M9, 0]) }); bs += 3; }, 50);
   a.send({ t: 'tp', p: [30, 0, 30], y: Math.PI / 2 }); b.send({ t: 'tp', p: [20, 0, 30], y: 0 });
   await sleep(3400); // 스폰 무적이 끝날 때까지
   const eye = [30, 1.62, 30], body = [20, 1.2, 30];

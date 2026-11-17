@@ -1,8 +1,10 @@
 // 서버 권한 이동 테스트 (M1): 입력으로만 움직이고, 위치는 서버가 정한다
 import { startServer, connect, check, failed, sleep } from './helpers.mjs';
+import { WEAPONS } from '../shared/weapons.js';
 
-const FWD = yaw => [1, 0, 0, yaw, 0, 6, 0]; // 앞으로 (무기 6 = M9), [앞뒤, 좌우, 플래그, yaw, pitch, 무기, 정조준]
-const IDLE = [0, 0, 0, 0, 0, 6, 0];
+const M9 = WEAPONS.findIndex(w => w.id === 'm9');
+const FWD = yaw => [1, 0, 0, yaw, 0, M9, 0]; // 앞으로 (M9 를 들고), [앞뒤, 좌우, 플래그, yaw, pitch, 무기, 정조준]
+const IDLE = [0, 0, 0, 0, 0, M9, 0];
 const lastMe = c => [...c.msgs].reverse().find(m => m.t === 'me');
 const dist2 = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 // 입력을 실제 시간에 맞춰 보낸다 (0.05초마다 3개 = 1초에 60개)
@@ -46,7 +48,7 @@ try {
   console.log('\n[명중 거리는 서버가 잰다]');
   await sleep(3200); // 스폰 무적이 끝날 때까지
   a.msgs.length = 0;
-  a.send({ t: 'hit', w: 6, hits: [['body', 1, b.me]] }); // M9: 15m 부터 약해진다. 실제 거리는 70m 이상인데 1m 라고 거짓말
+  a.send({ t: 'hit', w: M9, hits: [['body', 1, b.me]] }); // M9: 15m 부터 약해진다. 실제 거리는 70m 이상인데 1m 라고 거짓말
   const dmg = await a.waitFor('dmg', m => m.to === b.me, 2000);
   check(dmg && dmg.dmg < 20, '브라우저가 보낸 거리 대신 서버 위치로 거리를 재서 피해를 계산한다 (먼 거리 = 약한 피해)', JSON.stringify(dmg && dmg.dmg));
   a.ws.close(); b.ws.close();

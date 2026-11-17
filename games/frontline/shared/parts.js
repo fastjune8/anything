@@ -3,6 +3,7 @@
 //  - 서버는 입장할 때 받은 출전 무기를 sanitizeLoadout 으로 정리하고, 피해 계산에 applyParts 결과를 쓴다.
 import data from '../content/parts.json' with { type: 'json' };
 import { WEAPONS } from './weapons.js';
+import { pickSkill } from './skills.js';
 import { checkParts } from './content/schema.js';
 
 // 자리와 파츠 데이터는 content/parts.json. mul 의 키는 shared/weapons.js 의 성능 이름. 예외: range = 피해가 줄기 시작하는/끝나는 거리(falloff) 둘 다.
@@ -84,21 +85,26 @@ export function describePart(base, part) {
 
 // ───── 출전 무기 ─────
 export const LOADOUT_SIZE = 2;
-export const DEFAULT_LOADOUT = ['m4', 'm9'];
-const indexOfWeapon = id => WEAPONS.findIndex(w => w.id === id);
+export const DEFAULT_LOADOUT = ['ar', 'm9'];
+// 없어진 무기 → 대신 쓰는 무기 (브라우저에 저장된 예전 출전 무기)
+export const WEAPON_ALIASES = { m4: 'ar', ak: 'ar' };
+export const weaponId = id => WEAPON_ALIASES[id] || id;
+const indexOfWeapon = id => WEAPONS.findIndex(w => w.id === weaponId(id));
 
-// 받은 값(입장 메시지 / 브라우저 저장값)을 "서로 다른 무기 2개 + 달 수 있는 파츠"로 정리한다.
-// raw = [{ id, parts }, { id, parts }].  반환: [{ wi(WEAPONS 번호), id, parts }, …] (항상 2개)
+// 받은 값(입장 메시지 / 브라우저 저장값)을 "서로 다른 무기 2개 + 달 수 있는 파츠 + 고를 수 있는 스킬"로 정리한다.
+// raw = [{ id, parts, skill }, …].  반환: [{ wi(WEAPONS 번호), id, parts, skill(스킬 id 또는 null) }, …] (항상 2개, 0 = 주무기, 1 = 보조무기)
 export function sanitizeLoadout(raw) {
   const out = [];
   for (const e of Array.isArray(raw) ? raw.slice(0, LOADOUT_SIZE) : []) {
-    const id = e && typeof e === 'object' ? e.id : null, wi = indexOfWeapon(id);
+    const wi = indexOfWeapon(e && typeof e === 'object' ? e.id : null);
     if (wi < 0 || out.some(o => o.wi === wi)) continue;
-    out.push({ wi, id, parts: sanitizeParts(id, e.parts) });
+    const id = WEAPONS[wi].id;
+    out.push({ wi, id, parts: sanitizeParts(id, e.parts), skill: e.skill });
   }
   for (const id of [...DEFAULT_LOADOUT, ...WEAPONS.map(w => w.id)]) { // 모자라면 기본 무기로 채운다
     if (out.length >= LOADOUT_SIZE) break;
     if (!out.some(o => o.id === id)) out.push({ wi: indexOfWeapon(id), id, parts: {} });
   }
+  out.forEach((o, slot) => { const s = pickSkill(WEAPONS[o.wi], slot, o.skill); o.skill = s ? s.id : null; }); // 자리마다 고를 수 있는 스킬만
   return out;
 }

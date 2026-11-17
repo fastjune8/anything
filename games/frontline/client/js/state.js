@@ -13,7 +13,7 @@ export const me = {
   id: -1, name: '', pos: new V3(0, 0, -54), vel: new V3(), yaw: Math.PI, pitch: 0,
   onGround: true, crouch: false, h: STAND_H, hp: MAX_HP, alive: true, stepOff: 0, deadT: 0,
   team: -1, // 팀전에서 내 팀 (0/1), 개인전은 -1
-  lean: 0, leanOff: 0,          // 기울이기: 입력(-1 왼쪽 ~ 1 오른쪽) / 실제로 머리가 옆으로 나간 거리(m, 벽에 막히면 줄어든다)
+  dashT: 0, dashCd: 0, dashV: null, // 대쉬(스킬): 남은 시간 / 다시 쓸 수 있을 때까지 / 속도
   vault: null, vaultLock: false, // 넘어가는 중이면 진행 정보 / 넘은 뒤 Space 를 뗄 때까지 다시 넘지 않음
   airT: 0,                      // 땅을 떠난 뒤 지난 시간 (점프 직후 공중에서도 넘을 수 있게)
 };
@@ -21,13 +21,14 @@ export const inv = WEAPONS.map(w => ({ ammo: w.mag, reserve: w.reserve })); // �
 
 // ───── 출전 무기 (무기고에서 고른다. 저장/변경은 loadout.js) ─────
 // slots: 들고 들어가는 무기 2개 (WEAPONS 번호), parts: 무기별로 달아 둔 파츠 { 자리: 파츠id }
-export const loadout = { slots: [0, 6], parts: WEAPONS.map(() => ({})) };
+// skills: 무기별로 고른 스킬 [1번 자리일 때, 2번 자리일 때] (스킬 id)
+export const loadout = { slots: [0, WEAPONS.length - 1], parts: WEAPONS.map(() => ({})), skills: WEAPONS.map(() => [null, null]) };
 // 파츠가 반영된 무기 성능. 게임 중 성능은 WEAPONS[i] 대신 eff[i] 를 읽는다. (loadout.js 가 내용을 채운다)
 export const eff = WEAPONS.map(w => ({ ...w }));
 
 // ───── 무기/뷰모델 상태 (wp = weapon) ─────
 export const wp = {
-  cur: 0, prev: 6,                       // 현재/이전 무기
+  cur: 0, prev: WEAPONS.length - 1,                       // 현재/이전 무기
   drawT: 0, cooldown: 0, bloom: 0,       // 꺼내는 시간 / 연사 간격 / 탄퍼짐
   adsT: 0, sprintT: 0,                   // 정조준 / 달리기 정도 (0~1)
   reload: null,                          // 재장전 중이면 진행 정보

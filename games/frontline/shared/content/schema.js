@@ -89,7 +89,7 @@ export const MAP_SCHEMA = obj('맵', {
 
 // ───────── 무기 ─────────
 // 코드로 모양을 만들어 둔 기본 총 (client/js/guns.js 의 BUILD). 이 밖의 새 무기는 등록된 모델이 있어야 한다
-export const BUILTIN_GUNS = ['m4', 'ak', 'mp5', 'm870', 'awm', 'm249', 'm9'];
+export const BUILTIN_GUNS = ['ar', 'mp5', 'm870', 'awm', 'm249', 'm9']; // ar = 기본 돌격소총 (코드 모양은 예전 M4A1)
 export const WEAPON_SCHEMA = obj('무기', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'), cls: str('분류'),
   auto: bool('연사'), rpm: num('분당 발사 수', { min: 10, max: 2000 }),
@@ -104,6 +104,9 @@ export const WEAPON_SCHEMA = obj('무기', {
   move: num('이동 속도 배율', { min: 0.5, max: 1.5, step: 0.01 }), draw: num('꺼내는 시간 (초)', { min: 0.05, max: 3, step: 0.05 }),
   snd: obj('총소리', { f: num('주파수'), dur: num('길이'), vol: num('크기'), thump: num('저음') }),
   model: str('모델 (등록된 총 모델 id, 없으면 코드로 만든 총)', opt({ pattern: '^[a-z0-9_]+$' })),
+  skills: obj('스킬 (고를 수 있는 것)', {
+    primary: list('주무기(1번)일 때', str('스킬 id'), opt()), secondary: list('보조무기(2번)일 때', str('스킬 id'), opt()),
+  }, opt()),
 });
 
 // ───────── 파츠 ─────────
@@ -179,6 +182,37 @@ export function checkLooks(list) {
   const arr = Array.isArray(list) ? list : [];
   arr.map(l => l && l.id).forEach((id, i, ids) => { if (ids.indexOf(id) !== i) errors.push(`분위기 id 중복: ${id}`); });
   for (const l of arr) if (l && l.materials) for (const k of LOOK_MATERIALS) if (!l.materials[k]) errors.push(`분위기 ${l.id}: 재질 ${k} 가 없음`);
+  return errors;
+}
+
+// ───────── 스킬 (content/skills.json) ─────────
+// 무기마다 주무기일 때·보조무기일 때 고를 수 있는 스킬 목록이 있고(무기의 skills), 그중 하나를 골라 Q(주무기) · E(보조무기)로 쓴다.
+// effect = 코드에 있는 효과 (아래 5가지). 같은 효과로 수치만 다른 스킬을 여러 개 만들 수 있다 (예: 강한 대쉬)
+//   adrenaline: 누르면 dur 초 동안 공격 속도 +rate · cd 초마다
+//   sprint:     (늘 켜짐) 이 무기를 든 동안 달리면서 쏠 수 있고, 공중에서도 달리는 속도 유지
+//   overheat:   (늘 켜짐) 쏠 때마다 열 +heat, 쏘지 않으면 coolDelay 초 뒤부터 초당 cool 씩 식는다. 피해 ×(1 + bonus × 열). 열이 1 이 되면 0 까지 식을 때까지 못 쏜다
+//   grenade:    누르면 그 총을 꺼내며 유탄 모드. 유탄 ammo 발, recharge 초마다 한 발 채움. 맞은 곳에서 radius m 안에 최대 dmg (멀수록 줄어든다), 속도 speed m/s
+//   dash:       누르면 dur 초 동안 dist m 를 빠르게 이동 · cd 초마다
+export const SKILL_EFFECTS = { adrenaline: '누르면 발동', sprint: '늘 켜짐', overheat: '늘 켜짐', grenade: '유탄 모드', dash: '누르면 발동' };
+export const SKILL_SCHEMA = obj('스킬', {
+  id: str('id', { pattern: '^[a-z][a-z0-9_]*$' }), name: str('이름'),
+  effect: oneOf('효과 (코드에 있는 것)', Object.keys(SKILL_EFFECTS), { hint: 'adrenaline = 공격 속도, sprint = 달리며 사격, overheat = 과열, grenade = 유탄, dash = 대쉬' }),
+  desc: str('설명 (무기고에 보인다)'),
+  cd: num('쿨타임 (초)', opt({ min: 0.5, max: 120, step: 0.5 })), dur: num('지속 시간 (초)', opt({ min: 0.05, max: 30, step: 0.05 })),
+  rate: num('공격 속도 증가 (0.4 = +40%)', opt({ min: 0, max: 3, step: 0.05 })),
+  heat: num('한 발에 오르는 열 (0~1)', opt({ min: 0.001, max: 1, step: 0.005 })), cool: num('초당 식는 열', opt({ min: 0.05, max: 5, step: 0.05 })),
+  coolDelay: num('쏘기를 멈추고 식기 시작할 때까지 (초)', opt({ min: 0, max: 5, step: 0.05 })), bonus: num('열이 가득일 때 피해 증가 (0.4 = +40%)', opt({ min: 0, max: 3, step: 0.05 })),
+  ammo: int('유탄 수', opt({ min: 1, max: 10 })), recharge: num('유탄 한 발 채우는 시간 (초)', opt({ min: 0.5, max: 120, step: 0.5 })),
+  dmg: num('유탄 최대 피해', opt({ min: 1, max: 300, step: 1 })), radius: num('유탄 폭발 반경 (m)', opt({ min: 0.5, max: 20, step: 0.5 })), speed: num('유탄 속도 (m/s)', opt({ min: 5, max: 120, step: 1 })),
+  dist: num('대쉬 거리 (m)', opt({ min: 0.5, max: 30, step: 0.5 })),
+});
+// 효과마다 꼭 있어야 하는 수치
+const SKILL_NEEDS = { adrenaline: ['cd', 'dur', 'rate'], sprint: [], overheat: ['heat', 'cool', 'coolDelay', 'bonus'], grenade: ['ammo', 'recharge', 'dmg', 'radius', 'speed'], dash: ['cd', 'dist', 'dur'] };
+export function checkSkills(list) {
+  const errors = check(list, F('list', '스킬 목록', { of: SKILL_SCHEMA }));
+  const arr = Array.isArray(list) ? list : [];
+  arr.map(s => s && s.id).forEach((id, i, ids) => { if (ids.indexOf(id) !== i) errors.push(`스킬 id 중복: ${id}`); });
+  for (const s of arr) if (s && SKILL_NEEDS[s.effect]) for (const k of SKILL_NEEDS[s.effect]) if (s[k] === undefined) errors.push(`스킬 ${s.id}: ${s.effect} 효과에는 "${SKILL_SCHEMA.fields[k].label}" 가 있어야 한다`);
   return errors;
 }
 
@@ -273,7 +307,13 @@ export function checkMap(m) {
 }
 
 // modelIds: 등록된 모델 id 목록 (주면 무기의 model 이 등록된 것인지도 본다)
-export function checkWeapons(list, modelIds = null) {
+// skillIds: 스킬 id 목록 (주면 무기의 skills 가 있는 스킬인지도 본다)
+export function checkWeapons(list, modelIds = null, skillIds = null) {
+  const errors = checkWeaponsBase(list, modelIds);
+  if (skillIds && Array.isArray(list)) for (const w of list) for (const k of ['primary', 'secondary']) for (const id of (w && w.skills && w.skills[k]) || []) if (!skillIds.includes(id)) errors.push(`무기 ${w.id}: 없는 스킬 "${id}" (${k})`);
+  return errors;
+}
+function checkWeaponsBase(list, modelIds) {
   const errors = check(list, F('list', '무기 목록', { of: WEAPON_SCHEMA, minLen: 2 }));
   const ids = list.map(w => w && w.id);
   ids.forEach((id, i) => { if (ids.indexOf(id) !== i) errors.push(`무기 id 중복: ${id}`); });

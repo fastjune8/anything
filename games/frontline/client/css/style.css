@@ -113,6 +113,17 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #slots div.on { color: #fff; border-right-color: var(--accent); background: linear-gradient(90deg, transparent, rgba(0,0,0,.45)); }
 #slots div.empty { opacity: .45; }
 #slots span { margin-right: 8px; opacity: .7; }
+/* 스킬 (Q = 주무기, E = 보조무기) */
+#skills { position: absolute; right: 200px; bottom: 22px; display: flex; gap: 8px; }
+#skills .sk { position: relative; width: 104px; padding: 6px 7px 7px; background: rgba(8,10,12,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; text-shadow: 0 1px 2px #000; overflow: hidden; }
+#skills .sk .k { position: absolute; top: 4px; right: 6px; font-size: 11px; font-weight: 700; color: var(--accent); }
+#skills .sk .n { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+#skills .sk .s { font-size: 11px; color: var(--dim); margin-top: 3px; white-space: nowrap; }
+#skills .sk .cd { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); }
+#skills .sk.wait { opacity: .6; }
+#skills .sk.on { border-color: var(--accent); box-shadow: 0 0 10px rgba(255,180,58,.35); }
+#skills .sk.none { opacity: .35; }
+#skills .sk.hot .cd { background: var(--danger); }
 
 #hint { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); font-size: 14px; font-weight: 600;
   text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity .15s; }
@@ -247,7 +258,8 @@ button:hover { filter: brightness(1.1); } button:disabled { opacity: .5; cursor:
 #arStats .down b { color: #ff8a7d; } #arStats .down .bar i { background: #ff8a7d; }
 .ar-sec { margin-top: 4px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; font-weight: 700; }
 .ar-sec small { font-weight: 400; color: var(--dim); margin-left: 8px; }
-#arParts { display: flex; flex-direction: column; gap: 10px; }
+#arParts, #arSkills { display: flex; flex-direction: column; gap: 10px; }
+#arSkills .pd { color: var(--ui); opacity: .8; }
 .pslot .pt { font-size: 11px; color: var(--dim); letter-spacing: .08em; margin-bottom: 5px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 6px 11px; font-size: 12px; font-weight: 600; border-radius: 5px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color: var(--ui); }

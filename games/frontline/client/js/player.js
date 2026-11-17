@@ -8,9 +8,11 @@ import { stepMovement, NO_INPUT, MAX_STEP_DT } from '/shared/movement.js';
 import { colliders } from './scene.js';
 import { sfx } from './sfx.js';
 import { me, wp, inp, game, eff, adsInput, net } from './state.js';
+import { heldSkill, dashSkill, takeDash } from './skills.js';
+import { startDashFx } from './dashfx.js';
 
 const STEP = MAX_STEP_DT;
-const FLAG = { jump: 1, crouch: 2, sprint: 4, leanL: 8, leanR: 16 }; // server/motion.js 와 같다
+const FLAG = { jump: 1, crouch: 2, sprint: 4, dash: 8 }; // server/motion.js 와 같다
 let acc = 0, seq = 0, tpWant = 0; // tpWant: 내가 보낸 순간이동 수 (서버가 그만큼 받기 전의 결과는 버린다)
 const pending = []; // 서버가 아직 처리하지 않은 입력 { seq, move, yaw }
 const outbox = [];  // 아직 보내지 않은 입력 (net.js 가 0.05초마다 보낸다)
@@ -22,15 +24,17 @@ function readInput(can) {
   const w = eff[wp.cur], ads = wp.adsT;
   if (!can) return [[0, 0, 0, me.yaw, me.pitch, wp.cur, ads], NO_INPUT];
   const k = inp.keys;
+  const sprintFire = !!heldSkill('sprint'); // 질주 스킬: 쏘면서도 달린다
+  const dash = takeDash();
   const move = {
     fwd: (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0),
     side: (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0),
     jump: k.has('Space'), crouch: k.has('KeyC'),
-    sprint: k.has('ShiftLeft') && !adsInput() && !inp.fireHeld && !wp.reload,
-    leanL: k.has('KeyQ'), leanR: k.has('KeyE'),
+    sprint: k.has('ShiftLeft') && !adsInput() && (sprintFire || !inp.fireHeld) && !wp.reload,
     speedMul: w.move * (1 - 0.4 * ads), // 무거운 총·정조준 중에는 느리게 (서버도 같은 식)
+    airSprint: sprintFire, dash, dashSkill: dash ? dashSkill() : null, // 서버도 같은 값 (고른 스킬에서)
   };
-  const flags = (move.jump ? FLAG.jump : 0) | (move.crouch ? FLAG.crouch : 0) | (move.sprint ? FLAG.sprint : 0) | (move.leanL ? FLAG.leanL : 0) | (move.leanR ? FLAG.leanR : 0);
+  const flags = (move.jump ? FLAG.jump : 0) | (move.crouch ? FLAG.crouch : 0) | (move.sprint ? FLAG.sprint : 0) | (move.dash ? FLAG.dash : 0);
   return [[move.fwd, move.side, flags, me.yaw, me.pitch, wp.cur, ads], move];
 }
 
@@ -38,19 +42,20 @@ function readInput(can) {
 export function updateMovement(dt, active) {
   const can = active && me.alive && game.matchState !== 'ended';
   acc = Math.min(acc + dt, 0.25);
-  const ev = { sprinting: wp.sprinting, moved: 0, landed: 0, vaultStart: false, vaultDone: false };
+  const ev = { sprinting: wp.sprinting, moved: 0, landed: 0, vaultStart: false, vaultDone: false, dash: false };
   while (acc >= STEP) {
     acc -= STEP;
     prev.copy(me.pos);
     const [a, move] = readInput(can);
     const e = stepMovement(me, move, colliders, STEP);
-    ev.sprinting = e.sprinting; ev.moved += e.moved; ev.landed = Math.max(ev.landed, e.landed); ev.vaultStart ||= e.vaultStart; ev.vaultDone ||= e.vaultDone;
+    ev.sprinting = e.sprinting; ev.moved += e.moved; ev.landed = Math.max(ev.landed, e.landed); ev.vaultStart ||= e.vaultStart; ev.vaultDone ||= e.vaultDone; ev.dash ||= e.dash;
     if (game.joined) { pending.push({ seq, move, yaw: me.yaw }); outbox.push(a); seq++; }
   }
   rpos.lerpVectors(prev, me.pos, acc / STEP);
   wp.sprinting = ev.sprinting;
   if (ev.vaultStart) { wp.reload = null; sfx.step(0.8); } // 손을 짚어야 하므로 재장전은 끊긴다
   if (ev.vaultDone) sfx.land(0.45);
+  if (ev.dash) { sfx.step(1); sfx.mech('draw', 0.7); startDashFx(); }
   if (ev.landed) sfx.land(ev.landed);
   if (ev.moved > 0.0005) { // 걸음: 화면 흔들림과 발소리
     wp.stepDist += ev.moved; wp.bobPhase += ev.moved * (wp.sprinting ? 2.6 : 3.1);
@@ -76,7 +81,8 @@ export function reconcile(q, st, k = 0) {
   while (pending.length && pending[0].seq <= q) pending.shift();
   me.pos.set(st.p[0], st.p[1], st.p[2]); me.vel.set(st.v[0], st.v[1], st.v[2]);
   me.onGround = st.g; me.crouch = st.c; me.h = st.h; me.stepOff = st.so;
-  me.lean = st.ln; me.leanOff = st.lo; me.vault = st.va ? { ...st.va } : null; me.vaultLock = st.vl; me.airT = st.at;
+  me.vault = st.va ? { ...st.va } : null; me.vaultLock = st.vl; me.airT = st.at;
+  me.dashT = st.dt || 0; me.dashCd = st.dc || 0; me.dashV = st.dv ? { ...st.dv } : null;
   const yaw = me.yaw;
   for (const p of pending) { me.yaw = p.yaw; stepMovement(me, p.move, colliders, STEP); }
   me.yaw = yaw;

@@ -1,7 +1,8 @@
 // 이펙트: 총알 궤적, 탄흔, 파편/피, 총구 불빛 (풀링해서 매번 새로 만들지 않는다)
 import * as THREE from 'three';
 import { normalOf } from '/shared/collision.js';
-import { scene } from './scene.js';
+import { scene, colliders } from './scene.js';
+import { stepGrenade } from '/shared/skills.js';
 import { softTex } from './textures.js';
 import { V3 } from './util.js';
 
@@ -95,3 +96,33 @@ export function impact(point, n) {
     puff(point, _v, ground ? 0x8a7c62 : 0xa39e94, 0.07, 0.5 + Math.random() * 0.4, 0.5 + Math.random() * 0.35, 1.5, 0.55);
   }
 }
+
+// ───── 유탄 (스킬) ─────
+// 서버가 알려 준 시작점·속도로 같은 계산(shared/skills.js)을 해서 그린다. 터지는 순간은 서버의 boom 이 정한다
+const grenades = new Map();
+const glGeo = new THREE.SphereGeometry(0.07, 10, 8), glMat = new THREE.MeshStandardMaterial({ color: 0x2b2f2a, roughness: 0.6, metalness: 0.4 });
+export function spawnGrenade(id, o, v) {
+  const m = new THREE.Mesh(glGeo, glMat); m.position.fromArray(o); scene.add(m);
+  grenades.set(id, { m, g: { p: { x: o[0], y: o[1], z: o[2] }, v: { x: v[0], y: v[1], z: v[2] }, t: 0 } });
+}
+const boomLight = new THREE.PointLight(0xffa040, 0, 30, 2); scene.add(boomLight);
+export function explode(id, p, r = 4) {
+  const gr = grenades.get(id);
+  if (gr) { scene.remove(gr.m); grenades.delete(id); }
+  _v.set(0, 0, 0); const at = new V3().fromArray(p);
+  puff(at, _v, 0xffc070, 0.4, r * 1.3, 0.22, 0, 1); // 섬광
+  for (let i = 0; i < 18; i++) {
+    _v.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(2 + Math.random() * r);
+    puff(at, _v, i < 6 ? 0xff9a3a : 0x4a4640, 0.3, 1.2 + Math.random() * r * 0.4, 0.6 + Math.random() * 0.8, i < 6 ? 0 : -0.6, i < 6 ? 0.9 : 0.6);
+  }
+  boomLight.position.copy(at); boomLight.intensity = 400;
+}
+export function updateGrenades(dt) {
+  for (const [id, gr] of grenades) {
+    if (!gr.g.done) stepGrenade(gr.g, dt, colliders);
+    gr.m.position.set(gr.g.p.x, gr.g.p.y, gr.g.p.z);
+    if (gr.g.t > 6) { scene.remove(gr.m); grenades.delete(id); } // 서버 소식이 끊겼을 때 정리
+  }
+  boomLight.intensity *= Math.exp(-dt * 10);
+}
+export function clearGrenades() { for (const gr of grenades.values()) scene.remove(gr.m); grenades.clear(); }

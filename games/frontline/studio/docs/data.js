@@ -1,7 +1,7 @@
-// 게임 데이터 문서: content/weapons.json · parts.json · modes.json 을 표와 입력 칸으로 고친다.
+// 게임 데이터 문서: content/weapons.json · parts.json · modes.json · skills.json 을 표와 입력 칸으로 고친다.
 // 가운데 = 목록과 비교 표 (고치는 대로 바로 다시 계산), 오른쪽 = 고른 항목의 입력 칸 (스키마로 자동 생성).
 // 저장하면 개발 서버가 다시 시작되어 게임에 반영된다.
-import { WEAPON_SCHEMA, PART_SCHEMA, MODE_SCHEMA, RULES, checkWeapons, checkParts, checkModes } from '/shared/content/schema.js';
+import { WEAPON_SCHEMA, PART_SCHEMA, MODE_SCHEMA, SKILL_SCHEMA, SKILL_EFFECTS, RULES, checkWeapons, checkParts, checkModes, checkSkills } from '/shared/content/schema.js';
 import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
 import { buildForm } from '../form.js';
@@ -12,7 +12,9 @@ export const DATA_DOCS = [
   { id: 'weapons', title: '무기', file: 'weapons.json' },
   { id: 'parts', title: '파츠', file: 'parts.json' },
   { id: 'modes', title: '모드', file: 'modes.json' },
+  { id: 'skills', title: '스킬', file: 'skills.json' },
 ];
+const ICONS = { weapons: '✦', parts: '⚙', modes: '⚑', skills: '⚡' };
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const fmt = (v, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 
@@ -31,6 +33,9 @@ export async function createDataDoc(ctx, id) {
   let data = await res.json(), saved = JSON.stringify(data), snap = saved;
   const undoStack = [], redoStack = [];
   let cur = 0, slot = 'optic', errors = [];
+  // 스킬 목록 (무기의 "고를 수 있는 스킬" 칸과 검사에 쓴다). 스킬 문서는 자기 데이터를 쓴다
+  let skillList = id === 'skills' ? data : await fetch('/content/skills.json', { cache: 'no-store' }).then(x => (x.ok ? x.json() : [])).catch(() => []);
+  const skillIds = () => (id === 'skills' ? data : skillList).map(s => s.id);
 
   const overlay = el('div', 'page'); const page = el('div', 'datapage'); overlay.appendChild(page);
   // 도구 상자: 다른 데이터로 바로 가기 + 안내
@@ -39,7 +44,7 @@ export async function createDataDoc(ctx, id) {
   const jump = el('div', 'tiles');
   for (const d of DATA_DOCS) {
     const b = el('button', `tile${d.id === id ? ' on' : ''}`); b.type = 'button';
-    b.append(Object.assign(el('span', 'ic'), { textContent: { weapons: '✦', parts: '⚙', modes: '⚑' }[d.id] }), document.createTextNode(d.title));
+    b.append(Object.assign(el('span', 'ic'), { textContent: ICONS[d.id] }), document.createTextNode(d.title));
     b.addEventListener('click', () => ctx.openAsset(`data:${d.id}`));
     jump.appendChild(b);
   }
@@ -70,9 +75,11 @@ export async function createDataDoc(ctx, id) {
 
   // 지금 고르고 있는 항목과 그 스키마
   const list = () => (id === 'parts' ? data.parts[slot] : data);
-  const schema = () => (id === 'weapons' ? WEAPON_SCHEMA : id === 'parts' ? PART_SCHEMA : MODE_SCHEMA);
+  const schema = () => (id === 'weapons' ? WEAPON_SCHEMA : id === 'parts' ? PART_SCHEMA : id === 'skills' ? SKILL_SCHEMA : MODE_SCHEMA);
   const item = () => list()[cur];
-  const check = () => (id === 'weapons' ? checkWeapons(data, ctx.registry().map(m => m.id)) : id === 'parts' ? checkParts(data, ctx.weaponIds()) : checkModes(data, ctx.assets().maps).concat(data.filter(m => !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙`)));
+  const check = () => (id === 'weapons' ? checkWeapons(data, ctx.registry().map(m => m.id), skillIds()) : id === 'parts' ? checkParts(data, ctx.weaponIds()) : id === 'skills' ? checkSkills(data).concat(skillUsers()) : checkModes(data, ctx.assets().maps).concat(data.filter(m => !RULES.includes(m.rules)).map(m => `모드 ${m.id}: 없는 규칙`)));
+  // 스킬을 지우거나 id 를 바꾸면 그 스킬을 쓰던 무기가 깨진다 → 오류로 알린다
+  const skillUsers = () => ctx.weapons().flatMap(w => ['primary', 'secondary'].flatMap(k => ((w.skills && w.skills[k]) || []).filter(s => !data.some(x => x.id === s)).map(s => `무기 ${w.name}: 없는 스킬 "${s}" 을 쓰고 있다 (무기 데이터에서 빼거나 스킬을 되돌리세요)`)));
 
   const isDirty = () => JSON.stringify(data) !== saved;
   function commit() {
@@ -100,7 +107,7 @@ export async function createDataDoc(ctx, id) {
 
   // ───────── 새로 만들기: 양식을 다 채워야 만들어진다 ─────────
   // 기준 항목의 수치를 그대로 복사해서 시작하고, 만든 뒤 오른쪽 속성에서 고친다 (저장 때 형식 검사)
-  const NOUN = { weapons: '무기', parts: '파츠', modes: '모드' };
+  const NOUN = { weapons: '무기', parts: '파츠', modes: '모드', skills: '스킬' };
   async function createItem() {
     const taken = new Set(id === 'parts' ? Object.values(data.parts).flat().map(p => p.id) : list().map(x => x.id));
     const fields = [
@@ -184,6 +191,12 @@ export async function createDataDoc(ctx, id) {
         })));
         if (!weapons.length) page.append(el('p', 'note', '이 파츠를 달 수 있는 무기가 없습니다 (only / not 확인).'));
       }
+    } else if (id === 'skills') {
+      page.append(el('p', 'lead', '무기마다 주무기(Q)·보조무기(E)로 들 때 고를 수 있는 스킬은 무기 데이터의 "스킬" 에서 정한다. 효과는 코드에 있는 5가지 중 하나이고, 같은 효과로 수치만 다른 스킬을 여러 개 만들 수 있다.'), itemButtons());
+      const users = s => ctx.weapons().filter(w => ['primary', 'secondary'].some(k => ((w.skills && w.skills[k]) || []).includes(s.id))).map(w => w.name).join(', ') || '—';
+      page.append(table(['스킬', 'id', '효과', '쿨타임', '지속', '설명', '쓰는 무기'], data.map((s, i) => ({
+        on: i === cur, cells: [s.name, s.id, `${s.effect} (${SKILL_EFFECTS[s.effect] || '?'})`, s.cd ? `${s.cd}s` : '—', s.dur ? `${s.dur}s` : '—', s.desc, users(s)],
+      })), i => { cur = i; render(); renderInspector(); }));
     } else {
       page.append(el('p', 'lead', '로비에 보이는 순서대로. 모드의 점수·승리 규칙 자체는 server/modes/ 코드에 있고, 여기서는 수치를 고친다.'), itemButtons());
       page.append(table(['모드', '규칙', '맵', '인원', '봇 채움', '팀', '목표', '점령 시간'], data.map((m, i) => ({
@@ -210,7 +223,8 @@ export async function createDataDoc(ctx, id) {
     if (id === 'weapons') {
       const reg = ctx.registry().map(m => m.id);
       if (x.model && !reg.includes(x.model)) reg.push(x.model);
-      spec = { ...spec, fields: { ...spec.fields, model: { kind: 'enum', label: BUILTIN_GUNS.includes(x.id) ? '모델 (데이터로 등록된 모델 · 비우면 코드로 만든 총)' : '모델 (새 무기는 꼭 있어야 함)', options: reg, optional: BUILTIN_GUNS.includes(x.id) } } };
+      const sk = skillIds(), lists = { kind: 'enum', label: '스킬', options: sk };
+      spec = { ...spec, fields: { ...spec.fields, skills: { ...spec.fields.skills, fields: { primary: { ...spec.fields.skills.fields.primary, of: lists }, secondary: { ...spec.fields.skills.fields.secondary, of: lists } } }, model: { kind: 'enum', label: BUILTIN_GUNS.includes(x.id) ? '모델 (데이터로 등록된 모델 · 비우면 코드로 만든 총)' : '모델 (새 무기는 꼭 있어야 함)', options: reg, optional: BUILTIN_GUNS.includes(x.id) } } };
     }
     buildForm(inspector, spec, x, { onInput: () => { render(); renderRegistry(); }, onCommit: () => { commit(); renderInspector(); renderRegistry(); } });
     if (id !== 'weapons' || !BUILTIN_GUNS.includes(x.id)) { // 기본 총 7종은 지우지 않는다
@@ -228,6 +242,7 @@ export async function createDataDoc(ctx, id) {
     saved = JSON.stringify(data); render(); ctx.changed();
     ctx.log(`저장: content/${info.file} — 개발 서버가 다시 시작되어 게임에 반영됩니다`, 'ok'); ctx.flash('저장했습니다');
     if (id === 'weapons') ctx.setWeapons(data);
+    for (const d of ctx.docs().values()) if (d !== doc && d.kind === 'data' && d.setSkills && id === 'skills') d.setSkills(JSON.parse(JSON.stringify(data))); // 열린 무기 문서의 스킬 목록도 새로
     return true;
   }
   // 파일이 다른 곳에서 바뀌었을 때 (예: 모델을 무기에 연결). 고친 게 있으면 덮어쓰지 않고 알린다
@@ -245,7 +260,7 @@ export async function createDataDoc(ctx, id) {
   if (id === 'weapons') ctx.setWeapons(data, true);
 
   render(); renderInspector(); renderRegistry();
-  return {
+  const doc = {
     kind: 'data', id, title: info.title, icon: '≡', is3D: false, overlay, tools, toolbar, inspector,
     activate() { render(); renderInspector(); renderRegistry(); }, // 다른 곳(모델 등록 등)에서 바뀐 것을 반영
     deactivate() {}, resize() {}, frame() {},
@@ -264,6 +279,8 @@ export async function createDataDoc(ctx, id) {
       else if (mod && e.code === 'KeyY') { e.preventDefault(); redo(); }
     },
     dispose() {},
+    setSkills(list) { skillList = list; render(); renderInspector(); },
     api: { createItem, get data() { return data; }, get cur() { return cur; }, select: i => { cur = i; render(); renderInspector(); }, setSlot: s => { slot = s; cur = 0; render(); renderInspector(); }, get errors() { return errors; }, isDirty, save, undo, redo, render },
   };
+  return doc;
 }
