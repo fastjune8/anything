@@ -8,6 +8,8 @@ import { flashTex } from './textures.js';
 import { me, wp, inp, loadout, eff, hSpeed } from './state.js';
 import { $, V3, lerp, clamp, smooth } from './util.js';
 import { setDisplay } from './dom.js';
+import { setGunFx } from './gunmat.js';
+import { sk, heldSkill, heatOf, chargeReady } from './skills.js';
 
 const scopeEl = $('scope');
 
@@ -33,8 +35,19 @@ onLoadoutChange(wi => {
 });
 
 const _hip = new V3(), _ads = new V3(), _q = new THREE.Quaternion();
+// 총 재질 효과: 과열 → 총열(metal 칸)이 달아오름, 차지 샷 충전·아드레날린·밀어내기 준비 → core 가 밝아짐
+let fxT = 0;
+function updateGunFx(dt, g) {
+  fxT += dt;
+  const oh = heldSkill('overheat'), ch = heldSkill('charge');
+  const pulse = 0.65 + 0.35 * Math.sin(fxT * 6);
+  const charge = sk.adrenT > 0 || sk.shoveArmed ? pulse : ch && chargeReady(wp.cur, ch) ? 0.5 + 0.2 * Math.sin(fxT * 3) : 0;
+  setGunFx(g, { heat: oh ? heatOf(wp.cur).heat : 0, charge });
+}
+
 export function updateViewmodel(dt) {
   const w = eff[wp.cur], g = guns[wp.cur];
+  updateGunFx(dt, g);
   const k = smooth(0, 1, wp.adsT);
   _hip.fromArray(g.hip); _ads.set(0, -g.sightY, g.adsZ);
   const p = vm.position.copy(_hip).lerp(_ads, k);

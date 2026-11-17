@@ -175,6 +175,18 @@ function checkMelee(root, scan, bytes, ok, warn, fail) {
   checkCommon(root, scan, bytes, ok, warn, fail);
 }
 
+// 정점 색(COLOR_0)이 있는 메시 수와 평균 밝기
+export function aoInfo(meshes) {
+  let count = 0, sum = 0, n = 0;
+  for (const m of meshes) {
+    const c = m.geometry.attributes.color;
+    if (!c) continue;
+    count++;
+    for (let i = 0; i < c.count; i++) { sum += (c.getX(i) + c.getY(i) + c.getZ(i)) / 3; n++; }
+  }
+  return { count, mean: n ? sum / n : 1 };
+}
+
 // 총·근접 무기 공통: 크기 적용, 삼각형 수, 색 칸, 용량
 function checkCommon(root, scan, bytes, ok, warn, fail) {
   const { meshes, materials } = scan;
@@ -193,6 +205,14 @@ function checkCommon(root, scan, bytes, ok, warn, fail) {
   const bad = names.filter(n => !SLOTS[n]);
   if (bad.length) warn(`색 칸 이름이 아닌 재질: ${bad.join(', ')} — 스킨이 적용되지 않습니다 (${Object.keys(SLOTS).join(' / ')})`);
   else ok(`색 칸: ${names.join(', ')}`);
+  // 정점 색 AO (선택): 틈새 그림자를 정점 색으로 구워 넣었는가. 엔진이 기본 색에 곱한다 → 스킨을 바꿔도 그림자는 남는다
+  const ao = aoInfo(meshes);
+  if (!ao.count) ok('정점 색 AO 없음 — 선택 사항 (넣으면 틈새 그림자가 생긴다, docs/GUN_MODELING.md 5-1)');
+  else {
+    if (ao.count < meshes.length) warn(`정점 색 AO 가 일부 물체(${ao.count}/${meshes.length})에만 있습니다 — 없는 물체는 그림자 없이 밝게 보입니다`);
+    if (ao.mean < 0.35) warn(`정점 색 AO 가 너무 어둡습니다 (평균 밝기 ${Math.round(ao.mean * 100)}%) — 굽기 거리(Distance)를 줄이거나 밝게 조정하세요`);
+    else if (ao.count === meshes.length) ok(`정점 색 AO 있음 (평균 밝기 ${Math.round(ao.mean * 100)}%)`);
+  }
   if (materials.some(m => m.map)) warn('텍스처 이미지를 쓰고 있습니다 — 이 게임의 총은 단색 재질만 씁니다 (용량·스킨 때문)');
   if (bytes > 800 * 1024) fail(`파일 ${(bytes / 1024).toFixed(0)}KB — 최대 800KB`);
   else if (bytes > 300 * 1024) warn(`파일 ${(bytes / 1024).toFixed(0)}KB — 권장 300KB 이하`);

@@ -10,6 +10,8 @@ import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
 import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/gunmodel.js';
 import { sampleGunGlb } from '../samplegun.js';
+import { dressGun, gunMats, setGunMats, setGunFx } from '/js/gunmat.js';
+import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
 
 const VM_FOV = 52; // 게임의 1인칭 총 카메라와 같은 시야각
 const hex = n => '#' + n.toString(16).padStart(6, '0');
@@ -37,6 +39,10 @@ export async function createGunDoc(ctx, id, opts = {}) {
     + sec('크기 비교', '<select data-r="ghostSel" title="지금 게임의 총을 반투명으로 겹쳐 보기"><option value="">없음</option></select>')
     + sec('파츠 달아 보기', '<div data-r="partSels"></div>')
     + sec('스킨 (색 칸)', '<select data-r="skinSel"></select><div class="slots" data-r="slotList"></div>')
+    + sec('질감 (모든 총 공통)', `<label class="tog" title="Blender 에서 정점 색으로 구운 틈새 그림자"><input type="checkbox" data-r="showAo" checked> 정점 색 AO</label>
+      <label class="kv" title="과열 스킬: 총열(metal 칸)이 달아오른다">효과 · 열<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxHeat"></label>
+      <label class="kv" title="차지 샷 충전·아드레날린: core 가 밝아진다">효과 · 충전<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxCharge"></label>
+      <div class="matTable" data-r="matTable"></div><button type="button" data-r="matSave" disabled title="content/gunmaterials.json — 모든 총에 적용">질감 저장</button>`)
     + '<p class="note">만드는 규칙: docs/GUN_MODELING.md · 조작법은 ? (F1)</p>');
   for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
   const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span></span><span class="grow"></span>
@@ -77,6 +83,12 @@ export async function createGunDoc(ctx, id, opts = {}) {
   let parts = {};
   const gun = spec ? wrapGun(root, spec, parts) : null;
   holder.add(root);
+  const fxTarget = gun || dressGun({ group: root }); // 색 칸 재질 값 + 효과용 (총은 wrapGun 이 이미 입혔다, 근접 무기는 여기서)
+  { // 스킨·색 칸 목록은 실제로 그려지는 (총마다 복제된) 재질. 팔은 빼고
+    const inArms = o => { for (let p = o; p; p = p.parent) if (p === arms) return true; return false; };
+    const used = new Set(); root.traverse(o => { if (o.isMesh && !o.userData.socket && !inArms(o)) for (const m of [].concat(o.material)) used.add(m); });
+    scan.materials = [...used];
+  }
   const model = { root, gun, spec, scan, checks, bytes: buffer.byteLength, buffer, name, arms };
   const hasFail = () => checks.some(c => c.level === 'fail');
   if (type === 'melee') { // 근접 무기: 파츠·정조준·총 크기 비교는 해당 없음
@@ -170,6 +182,38 @@ export async function createGunDoc(ctx, id, opts = {}) {
       l.appendChild(c); box.appendChild(l);
     }
   }
+
+  // ───────── 질감: 색 칸별 재질 값 (모든 총 공통, content/gunmaterials.json) · 정점 색 AO 비교 · 효과 미리 보기 ─────────
+  let matSaved = JSON.stringify(gunMats());
+  const fxNow = () => setGunFx(fxTarget, { heat: Number(r('fxHeat').value), charge: Number(r('fxCharge').value) });
+  r('fxHeat').addEventListener('input', fxNow); r('fxCharge').addEventListener('input', fxNow);
+  r('showAo').addEventListener('change', () => root.traverse(o => { if (o.isMesh && o.geometry.attributes.color) for (const m of [].concat(o.material)) { m.vertexColors = r('showAo').checked; m.needsUpdate = true; } }));
+  const openGuns = () => [...ctx.docs().values()].filter(d => d.kind === 'gun' && d.api && d.api.fxTarget).map(d => d.api.fxTarget);
+  function renderMatTable() {
+    const box = r('matTable'), d = gunMats(); box.replaceChildren();
+    const head = html('div', 'mrow mhead', '<span>색 칸</span><span>금속</span><span>거칠기</span><span>반사</span>'); box.appendChild(head);
+    for (const slot of GUN_SLOTS) {
+      const row = html('div', 'mrow'); row.appendChild(html('span', '', slot));
+      for (const k of ['metal', 'rough', 'env']) {
+        const i = document.createElement('input'); i.type = 'number'; i.step = 0.05; i.min = 0; i.max = k === 'env' ? 3 : 1; i.value = d.slots[slot][k]; i.dataset.slot = slot; i.dataset.k = k;
+        i.addEventListener('input', () => {
+          const v = Number(i.value); if (!Number.isFinite(v)) return;
+          const next = JSON.parse(JSON.stringify(gunMats())); next.slots[slot][k] = v;
+          if (checkGunMaterials(next).length) return;
+          setGunMats(next, openGuns()); r('matSave').disabled = JSON.stringify(next) === matSaved;
+        });
+        row.appendChild(i);
+      }
+      box.appendChild(row);
+    }
+  }
+  renderMatTable();
+  r('matSave').addEventListener('click', async () => {
+    const out = await fetch('/api/content/gunmaterials', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gunMats()) }).then(x => x.json()).catch(() => ({ ok: false, errors: ['서버 응답 오류'] }));
+    if (!out.ok) { ctx.log(`질감 저장 실패: ${(out.errors || []).join(' / ')}`, 'error'); ctx.flash('질감 저장 실패'); return; }
+    matSaved = JSON.stringify(gunMats()); r('matSave').disabled = true;
+    ctx.log('질감 저장: content/gunmaterials.json — 모든 총(게임 포함)에 적용됩니다', 'ok'); ctx.flash('질감을 저장했습니다');
+  });
 
   // ───────── 속성: 검사 결과 / 부착 지점 ─────────
   (function renderChecks() {
@@ -298,6 +342,6 @@ export async function createGunDoc(ctx, id, opts = {}) {
     isDirty: () => !savedId && id !== 'sample', // 파일로 연 모델은 프로젝트에 저장하기 전까지 "저장 안 됨"
     save,
     dispose() { controls.dispose(); scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); },
-    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera, openRegister },
+    api: { get model() { return model; }, get view() { return view; }, setView, save, holder, camera, openRegister, fxTarget },
   });
 }

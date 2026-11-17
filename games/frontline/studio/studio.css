@@ -267,3 +267,8 @@ table.cmp .bar { display: inline-block; height: 6px; background: var(--accent); 
 body.resizing { user-select: none; }
 body.resizing iframe, body.resizing canvas { pointer-events: none; }
 body.resizing-h { cursor: col-resize; } body.resizing-v { cursor: row-resize; }
+/* 모델 에디터 · 질감 표 */
+.matTable { display: grid; gap: 3px; margin: 8px 0; }
+.matTable .mrow { display: grid; grid-template-columns: 56px repeat(3, 1fr); gap: 4px; align-items: center; font-size: 11px; }
+.matTable .mhead { color: var(--dim, #8a939c); }
+.matTable input { width: 100%; min-width: 0; }

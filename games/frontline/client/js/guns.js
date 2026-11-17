@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { modelFor, modelIdFor } from './gunmodels.js';
 import { gunSpec } from './gunmodel.js';
+import { dressGun, dressMaterial } from './gunmat.js';
 
 const M = {
   steel: new THREE.MeshStandardMaterial({ color: 0x1d1f22, metalness: 0.85, roughness: 0.42 }),
@@ -14,6 +15,7 @@ const M = {
   sleeve: new THREE.MeshStandardMaterial({ color: 0x4b5338, roughness: 0.95 }),
   glove: new THREE.MeshStandardMaterial({ color: 0x18191a, roughness: 0.85 }),
 };
+for (const [k, m] of Object.entries(M)) { m.name = k; dressMaterial(m); } // 색 칸 재질 값 (steel = metal, polymer = dark …)
 
 function bx(g, w, h, d, x, y, z, mat, rx = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -206,7 +208,7 @@ export function wrapGun(group, spec, parts) {
   const att = new THREE.Group(); group.add(att); // 파츠 모델이 들어가는 곳
   const gun = { group, att, ...spec, base: { muzzleZ: spec.muzzleZ, sightY: spec.sightY, adsZ: spec.adsZ, magPos: spec.mag ? spec.mag.position.clone() : null } };
   setGunParts(gun, parts);
-  return gun;
+  return dressGun(gun); // 색 칸별 재질 값 + 총마다 자기 재질 (효과용)
 }
 
 // 등록된 모델(.glb)로 총 만들기. 부착 지점이 모자라면 null (→ 코드로 만든 총)

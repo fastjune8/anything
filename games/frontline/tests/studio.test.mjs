@@ -294,6 +294,16 @@ try {
   await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.kind === 'gun', null, { timeout: 30000 });
   const sm = await page.evaluate(() => { const m = window.__gv.model; return { levels: m.checks.map(x => x.level), spec: { sightY: m.spec.sightY, adsZ: m.spec.adsZ, muzzleZ: m.spec.muzzleZ, mag: !!m.spec.mag, irons: m.spec.irons.length } }; });
   check(sm.levels.every(l => l === 'ok'), '예시 총은 규칙 검사를 모두 통과한다', JSON.stringify(sm.levels));
+  const mat = await page.evaluate(async () => { // 색 칸별 재질 값을 엔진이 입히고, 효과(열)는 그 총에만
+    const gmat = await import('/js/gunmat.js'), d = gmat.gunMats(), g = window.__gv.model.gun;
+    const metal = g.mats.find(m => m.userData.slot === 'metal'), dark = g.mats.find(m => m.userData.slot === 'dark');
+    gmat.setGunFx(g, { heat: 1 });
+    const glow = metal.emissiveIntensity;
+    gmat.setGunFx(g, { heat: 0 });
+    return { metal: [metal.metalness, metal.roughness], dark: [dark.metalness, dark.roughness], want: [d.slots.metal.metal, d.slots.metal.rough, d.slots.dark.metal, d.slots.dark.rough], glow, cool: metal.emissiveIntensity, own: (() => { const g2 = gmat.dressGun({ group: g.group.clone(true) }); return g2.mats.every(m => !g.mats.includes(m)); })() };
+  });
+  check(mat.metal[0] === mat.want[0] && mat.metal[1] === mat.want[1] && mat.dark[0] === mat.want[2] && mat.dark[1] === mat.want[3], '총 재질: 색 칸 이름으로 금속성·거칠기를 엔진이 정한다 (content/gunmaterials.json)', JSON.stringify(mat));
+  check(mat.glow > 1 && mat.cool === 0 && mat.own, '효과: 열을 올리면 metal 칸이 달아오르고, 총마다 자기 재질이라 다른 총에 번지지 않는다', JSON.stringify(mat));
   const melee = await page.evaluate(async () => { // 근접 무기(칼): socket_hand_r + socket_tip, 날 끝이 앞(-Z)
     const THREE = await import('three'), gm = await import('/js/gunmodel.js');
     const build = flip => {

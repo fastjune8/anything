@@ -221,6 +221,24 @@ export function checkSkills(list) {
   return errors;
 }
 
+// ───────── 총 재질 (content/gunmaterials.json): 색 칸별 재질 성질. 모든 총(Blender 모델·코드 총)에 엔진이 입힌다 ─────────
+// 스킨은 색만 바꾸고 이 값은 그대로 → 어떤 스킨이든 금속은 금속, 폴리머는 폴리머로 보인다
+export const GUN_SLOTS = ['body', 'body2', 'dark', 'metal', 'accent', 'core'];
+const GUN_SLOT_MAT = obj('색 칸 재질', {
+  metal: num('금속성 (0 = 비금속, 1 = 금속)', { min: 0, max: 1, step: 0.01 }), rough: num('거칠기 (0 = 매끈, 1 = 거침)', { min: 0, max: 1, step: 0.01 }),
+  env: num('주변 반사 세기', { min: 0, max: 3, step: 0.05 }), glow: num('스스로 빛나는 세기 (core)', opt({ min: 0, max: 10, step: 0.1 })),
+});
+export const GUNMAT_SCHEMA = obj('총 재질', {
+  slots: dict('색 칸', GUN_SLOT_MAT, { keys: GUN_SLOTS }),
+  heatColor: color('과열 때 달아오르는 색 (metal 칸)'), heatGlow: num('과열 빛 세기', { min: 0, max: 20, step: 0.1 }),
+  chargeGlow: num('충전·스킬 때 core 빛 세기', { min: 0, max: 20, step: 0.1 }),
+});
+export function checkGunMaterials(d) {
+  const errors = check(d, GUNMAT_SCHEMA);
+  if (d && d.slots) for (const k of GUN_SLOTS) if (!d.slots[k]) errors.push(`색 칸 ${k} 의 재질이 없음`);
+  return errors;
+}
+
 // ───────── 모드 ─────────
 export const RULES = ['zone', 'deathmatch']; // server/modes/ 에 있는 규칙
 export const MODE_SCHEMA = obj('모드', {
