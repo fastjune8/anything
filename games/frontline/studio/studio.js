@@ -9,6 +9,7 @@ import { createMapDoc, Cancelled } from './docs/map.js';
 import { createGunDoc } from './docs/gun.js';
 import { createDataDoc } from './docs/data.js';
 import { createLookDoc } from './docs/look.js';
+import { createEffectDoc } from './docs/effect.js';
 import { createHome, EDITORS } from './home.js';
 import { createHelp } from './help.js';
 import { createTour } from './tour.js';
@@ -69,7 +70,7 @@ const ctx = {
   },
 };
 // 문서 종류 → [만드는 함수, 편집기]
-const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'] };
+const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'], effect: [createEffectDoc, 'effect'] };
 
 async function openAsset(key, opts = {}) {
   let doc = docs.get(key);
@@ -106,6 +107,7 @@ function activate(doc) {
     if (doc.kind === 'gun') window.__gv = doc.api;
     if (doc.kind === 'data') window.__dd = doc.api;
     if (doc.kind === 'look') window.__lk = doc.api;
+    if (doc.kind === 'effect') window.__fx = doc.api;
   } else home.render();
   renderTabs(); saveSession();
 }

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { normalOf } from '/shared/collision.js';
 import { scene, colliders } from './scene.js';
 import { stepGrenade } from '/shared/skills.js';
+import { playFx } from './vfx.js';
 import { softTex } from './textures.js';
 import { V3 } from './util.js';
 
@@ -109,7 +110,9 @@ const boomLight = new THREE.PointLight(0xffa040, 0, 30, 2); scene.add(boomLight)
 export function explode(id, p, r = 4) {
   const gr = grenades.get(id);
   if (gr) { scene.remove(gr.m); grenades.delete(id); }
-  _v.set(0, 0, 0); const at = new V3().fromArray(p);
+  const at = new V3().fromArray(p);
+  if (playFx('grenade_explode', at, { scale: r / 5 })) return; // 효과 에디터에서 만든 폭발 (없으면 아래 예전 효과)
+  _v.set(0, 0, 0);
   puff(at, _v, 0xffc070, 0.4, r * 1.3, 0.22, 0, 1); // 섬광
   for (let i = 0; i < 18; i++) {
     _v.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(2 + Math.random() * r);

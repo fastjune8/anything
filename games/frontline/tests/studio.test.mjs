@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json'), C('effects.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
@@ -67,7 +67,7 @@ try {
   const det = await page.evaluate(() => ({ title: document.querySelector('#homeDetail h2').textContent, rel: [...document.querySelectorAll('#homeDetail .rel button')].map(b => b.textContent), thumb: !!document.querySelector('#homeDetail .big canvas') }));
   check(det.title === '창고' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
   await page.click('[data-cat="effects"]');
-  check((await page.textContent('#homeCards')).includes('준비 중'), '효과는 "준비 중" 으로 자리가 잡혀 있다');
+  check((await page.textContent('#homeCards')).includes('유탄 폭발'), '효과 종류에 효과 카드가 있다 (효과 에디터)');
   await page.click('[data-cat="maps"]');
   await page.dblclick('[data-asset="map:frontline"]');
   await page.waitForFunction(() => window.__ed && window.__ed.map && window.__ed.map.id === 'frontline' && !document.getElementById('editor').hidden, null, { timeout: 30000 });
@@ -288,6 +288,33 @@ try {
   check(lookOpts.includes("zz_dusk"), '저장하면 열린 맵 에디터의 분위기 목록에도 바로 생긴다', JSON.stringify(lookOpts));
   await page.selectOption(`${ACT.insp} label.row:has(span.lbl:text-is("분위기 (빛·재질)")) select`, 'zz_dusk');
   check(await page.evaluate(() => window.__ed.map.look) === 'zz_dusk', '맵 설정에서 분위기를 고르면 맵 데이터에 들어간다');
+
+  console.log('\n[효과 에디터]');
+  await page.click('.tab.home'); await page.click('[data-cat="effects"]');
+  check(await page.locator('#homeCards [data-asset="fx:grenade_explode"]').count() === 1, '홈에 효과 카드가 보인다 (게임에서 쓰는 효과 표시)');
+  await page.dblclick('#homeCards [data-asset="fx:grenade_explode"]');
+  await page.waitForFunction(() => window.__fx && window.__studio.active && window.__studio.active.kind === 'effect', null, { timeout: 15000 });
+  check((await page.textContent('#edKind')).includes('효과 에디터'), '두 번 누르면 효과 에디터가 열린다');
+  await page.waitForFunction(() => window.__fx.stats().particles > 20, null, { timeout: 5000 }).catch(() => {});
+  check(await page.evaluate(() => window.__fx.stats().particles) > 20, '미리 보기에서 효과가 재생된다 (게임과 같은 실행기)', JSON.stringify(await page.evaluate(() => window.__fx.stats())));
+  await page.click(`${ACT.tools} [data-em="2"]`); // 불티 층
+  check(await page.evaluate(() => window.__fx.em) === 2, '층을 누르면 그 층을 고친다');
+  await page.fill(`${ACT.insp} .row:has(.lbl:text-is("한 번에 뿜는 수")) input`, '300');
+  await page.waitForFunction(() => window.__fx.stats().particles > 300, null, { timeout: 5000 }).catch(() => {});
+  check(await page.evaluate(() => window.__fx.stats().particles) > 300, '수치를 고치면 바로 다시 재생된다 (불티 300개)', JSON.stringify(await page.evaluate(() => window.__fx.stats())));
+  const nEm = await page.evaluate(() => window.__fx.data[window.__fx.cur].emitters.length);
+  await page.click(`${ACT.tools} [data-add="ring"]`);
+  check(await page.evaluate(n => window.__fx.data[window.__fx.cur].emitters.length === n + 1 && window.__fx.data[window.__fx.cur].emitters.at(-1).kind === 'ring', nEm), '"+ 고리" 로 층을 더한다');
+  await page.click(`${ACT.tools} [data-r="newFx"]`);
+  await page.fill('.modal [data-f="id"]', 'zz_test_fx'); await page.fill('.modal [data-f="name"]', '시험 효과');
+  await page.click('.modal [data-f="go"]');
+  await page.waitForFunction(() => window.__fx.data.some(e => e.id === 'zz_test_fx'), null, { timeout: 3000 }).catch(() => {});
+  check(await page.evaluate(() => window.__fx.data[window.__fx.cur].id) === 'zz_test_fx', '"+ 새 효과" 로 효과를 만든다');
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(() => !window.__fx.isDirty(), null, { timeout: 8000 }).catch(() => {});
+  const fxFile = JSON.parse(fs.readFileSync(C('effects.json'), 'utf8'));
+  check(fxFile.some(e => e.id === 'zz_test_fx') && fxFile.find(e => e.id === 'grenade_explode').emitters[2].count === 300 && !JSON.stringify(fxFile).includes('_off'), '저장하면 content/effects.json 에 들어간다 (미리 보기용 표시는 빼고)');
+  await page.waitForTimeout(400);
 
   console.log('\n[총 모델]');
   await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#sampleBtn');

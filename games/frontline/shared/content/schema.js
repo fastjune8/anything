@@ -242,6 +242,52 @@ export function checkGunMaterials(d) {
   return errors;
 }
 
+// ───────── 효과 (content/effects.json): 스킬·폭발 등의 시각 효과. 스튜디오 효과 에디터에서 만든다 ─────────
+// 효과 하나 = 층(emitter) 여러 개. 게임은 아래 "쓰는 곳"의 id 와 같은 효과를 그 순간에 재생한다 (없으면 예전 코드 효과)
+export const EFFECT_HOOKS = {
+  grenade_explode: '유탄이 터질 때 (크기 = 폭발 반경 ÷ 5)',
+  skill_adrenaline: '아드레날린을 쓸 때 (쓴 사람 발밑)',
+  skill_shove_hit: '밀어내기에 맞았을 때 (맞은 사람 가슴)',
+  charge_shot: '차지 샷이 나갈 때 (총구, 앞 = 쏜 방향)',
+};
+const BLEND = oneOf('섞는 방식', ['add', 'normal'], { hint: 'add = 빛처럼 더해짐(불꽃·빛), normal = 덮음(연기·먼지·파편)' });
+const DELAY = num('시작 지연 (초)', opt({ min: 0, max: 10, step: 0.01 }));
+export const EMITTER_SCHEMAS = {
+  particles: { label: '입자', fields: {
+    name: str('이름 (구분용)', opt()), delay: DELAY,
+    count: int('한 번에 뿜는 수', { min: 0, max: 500 }), rate: num('초당 뿜는 수 (흘려 뿜기)', opt({ min: 0, max: 1000, step: 1 })), duration: num('흘려 뿜는 시간 (초)', opt({ min: 0, max: 20, step: 0.05 })),
+    lifeMin: num('수명 최소 (초)', { min: 0.01, max: 20, step: 0.01 }), lifeMax: num('수명 최대 (초)', { min: 0.01, max: 20, step: 0.01 }),
+    speedMin: num('속도 최소 (m/s)', { min: 0, max: 200, step: 0.1 }), speedMax: num('속도 최대 (m/s)', { min: 0, max: 200, step: 0.1 }),
+    dir: oneOf('방향', ['sphere', 'up', 'down', 'out', 'ground', 'cone'], { hint: 'sphere = 사방, up/down = 위/아래, out = 가운데에서 바깥, ground = 바닥을 따라 둥글게, cone = 앞(쏜 방향)' }),
+    spread: num('퍼짐 (도, up·down·cone)', opt({ min: 0, max: 180, step: 1 })), radius: num('나오는 곳 반경 (m)', opt({ min: 0, max: 20, step: 0.05 })),
+    gravity: num('중력 (m/s², 음수 = 떠오름)', opt({ min: -50, max: 50, step: 0.1 })), drag: num('공기 저항', opt({ min: 0, max: 20, step: 0.1 })),
+    sizeStart: num('크기 처음 (m)', { min: 0, max: 20, step: 0.01 }), sizeEnd: num('크기 끝 (m)', { min: 0, max: 20, step: 0.01 }),
+    colorStart: color('색 처음'), colorEnd: color('색 끝'), glow: num('밝기 배율 (1 넘으면 더 빛남)', opt({ min: 0, max: 10, step: 0.1 })),
+    alphaStart: num('투명도 처음 (1 = 불투명)', { min: 0, max: 1, step: 0.01 }), alphaEnd: num('투명도 끝', { min: 0, max: 1, step: 0.01 }),
+    texture: oneOf('무늬', ['soft', 'spark', 'smoke', 'ring', 'star', 'square'], { hint: 'soft = 부드러운 빛, spark = 불꽃, smoke = 연기, ring = 고리, star = 별빛, square = 각진 파편' }), blend: BLEND,
+  } },
+  ring: { label: '고리', fields: {
+    name: str('이름 (구분용)', opt()), delay: DELAY, life: num('지속 (초)', { min: 0.02, max: 10, step: 0.01 }),
+    radiusStart: num('반경 처음 (m)', { min: 0, max: 50, step: 0.05 }), radiusEnd: num('반경 끝 (m)', { min: 0.01, max: 50, step: 0.05 }), width: num('두께 (m)', { min: 0.01, max: 10, step: 0.01 }),
+    color: color('색'), alphaStart: num('투명도 처음', { min: 0, max: 1, step: 0.01 }), alphaEnd: num('투명도 끝', { min: 0, max: 1, step: 0.01 }),
+    facing: oneOf('방향', ['ground', 'camera'], { hint: 'ground = 바닥에 눕힘, camera = 화면을 향함' }), blend: BLEND,
+  } },
+  light: { label: '빛', fields: {
+    name: str('이름 (구분용)', opt()), delay: DELAY, life: num('지속 (초)', { min: 0.02, max: 10, step: 0.01 }),
+    color: color('색'), intensity: num('세기', { min: 0, max: 2000, step: 1 }), range: num('비추는 거리 (m)', { min: 0.5, max: 100, step: 0.5 }),
+  } },
+};
+export const emitterSpec = kind => (EMITTER_SCHEMAS[kind] ? obj(EMITTER_SCHEMAS[kind].label, { kind: oneOf('종류', Object.keys(EMITTER_SCHEMAS)), ...EMITTER_SCHEMAS[kind].fields }) : null);
+export const EFFECT_SCHEMA = obj('효과', {
+  id: str('id', { pattern: '^[a-z][a-z0-9_]*$', hint: '게임이 이 id 로 부른다 (쓰는 곳 목록 참고)' }), name: str('이름'), desc: str('설명', opt()),
+  emitters: list('층', obj('층', {}), { custom: 'emitter', minLen: 1 }),
+});
+export function checkEffects(list) {
+  const errors = check(list, F('list', '효과 목록', { of: EFFECT_SCHEMA }));
+  (Array.isArray(list) ? list : []).map(e => e && e.id).forEach((id, i, ids) => { if (ids.indexOf(id) !== i) errors.push(`효과 id 중복: ${id}`); });
+  return errors;
+}
+
 // ───────── 모드 ─────────
 export const RULES = ['zone', 'deathmatch']; // server/modes/ 에 있는 규칙
 export const MODE_SCHEMA = obj('모드', {
@@ -284,7 +330,7 @@ export function check(value, spec, path = '', errors = []) {
       if (!Array.isArray(value)) { errors.push(`${at}: 목록이 아님`); break; }
       if (spec.minLen !== undefined && value.length < spec.minLen) errors.push(`${at}: 최소 ${spec.minLen}개 필요 (${spec.label})`);
       if (spec.maxLen !== undefined && value.length > spec.maxLen) errors.push(`${at}: 최대 ${spec.maxLen}개 (${spec.label})`);
-      value.forEach((v, i) => (spec.custom === 'object' ? checkObject(v, `${path}[${i}]`, errors) : check(v, spec.of, `${path}[${i}]`, errors)));
+      value.forEach((v, i) => (spec.custom === 'object' ? checkObject(v, `${path}[${i}]`, errors) : spec.custom === 'emitter' ? checkEmitter(v, `${path}[${i}]`, errors) : check(v, spec.of, `${path}[${i}]`, errors)));
       break;
     case 'obj':
       if (typeof value !== 'object' || Array.isArray(value)) { errors.push(`${at}: 객체가 아님`); break; }
@@ -313,6 +359,11 @@ export function objectSpec(type) {
   if (!s) return null;
   const look = type === 'tree' ? {} : Object.fromEntries(Object.entries(LOOK_FIELDS).filter(([k]) => !s.fields[k]));
   return obj(s.label, { type: oneOf('종류', Object.keys(OBJECT_SCHEMAS)), ...s.fields, ...look, ...COMMON_FIELDS });
+}
+function checkEmitter(e, path, errors) {
+  const spec = e && typeof e === 'object' ? emitterSpec(e.kind) : null;
+  if (!spec) { errors.push(`${path}: 모르는 층 종류 "${e && e.kind}" (${Object.keys(EMITTER_SCHEMAS).join(', ')})`); return; }
+  check(e, spec, path, errors);
 }
 function checkObject(o, path, errors) {
   const spec = o && typeof o === 'object' ? objectSpec(o.type) : null;

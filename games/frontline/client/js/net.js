@@ -5,6 +5,7 @@ import { applyParts } from '/shared/parts.js';
 import { loadoutMessage } from './loadout.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
 import { impact, addTracer, spawnGrenade, explode, clearGrenades } from './fx.js';
+import { playFx, vfx } from './vfx.js';
 import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
 import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
 import { loadMap } from './scene.js';
@@ -57,7 +58,7 @@ function onMessage(m) {
       setMode(m.mode); loadMap(m.map || MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이). 친선전은 맵을 따로 고를 수 있다
       game.zone = m.zone || null;
       resetSession(); // 서버에서 나는 새 플레이어 → 이동 예측 기록도 처음부터
-      clearRemotes(); roster.clear(); clearChat(); clearGrenades();
+      clearRemotes(); roster.clear(); clearChat(); clearGrenades(); vfx.clear();
       setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
       setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
       game.goalKills = m.goal; game.matchState = m.state; game.matchEndsAt = performance.now() + m.left; game.endAt = performance.now() + 10000;
@@ -130,12 +131,12 @@ function onMessage(m) {
     }
     case 'shove': { // 밀어내기에 맞아 넘어졌다 (위치는 서버가 옮긴다)
       if (m.id === me.id) { sfx.hurt(); wp.kickP += 0.05; wp.kickY += (Math.random() - 0.5) * 0.08; }
-      else { const r = remotes.get(m.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); } }
+      else { const r = remotes.get(m.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); playFx('skill_shove_hit', _v.copy(r.pos).setY(r.pos.y + 1.2)); } }
       break;
     }
     case 'sk': { // 다른 사람이 누르는 스킬을 썼다 (지금은 아드레날린: 소리만)
       const r = remotes.get(m.id);
-      if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); }
+      if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); if (m.e === 'adrenaline') playFx('skill_adrenaline', r.pos); }
       break;
     }
     case 'rl': {

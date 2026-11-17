@@ -4,6 +4,7 @@
 import { getSkill, newHeat, coolHeat, addHeat } from '/shared/skills.js';
 import { me, wp, loadout, net, eff } from './state.js';
 import { sfx } from './sfx.js';
+import { playFx } from './vfx.js';
 
 // 자리별 지금 스킬 { wi, skill } (출전 무기·고른 스킬이 바뀌면 다시 읽는다)
 export const slotSkill = n => { const wi = loadout.slots[n]; return { wi, skill: getSkill(loadout.skills[wi] && loadout.skills[wi][n]) }; };
@@ -47,6 +48,7 @@ export function pressSkill(n, switchTo) {
       if (sk.cd[n] > 0) { say(n, '쿨타임'); sfx.mech('dry'); return; }
       sk.cd[n] = skill.cd; sk.adrenT = skill.dur; sk.adrenRate = skill.rate;
       net.send({ t: 'sk', n }); sfx.mech('bolt'); sfx.whoosh(0);
+      playFx('skill_adrenaline', me.pos);
       break;
     case 'shove':
       if (sk.cd[n] > 0) { say(n, '쿨타임'); sfx.mech('dry'); return; }

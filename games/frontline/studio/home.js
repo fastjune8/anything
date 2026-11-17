@@ -4,6 +4,7 @@ import { buildLayout } from '/shared/maps/build.js';
 import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
 import { el } from './util.js';
+import { EFFECT_HOOKS } from '/shared/content/schema.js';
 
 const $ = id => document.getElementById(id);
 
@@ -13,7 +14,7 @@ export const EDITORS = {
   model: { name: '모델 에디터', icon: '⌐' },
   data: { name: '데이터 에디터', icon: '≡' },
   look: { name: '분위기 에디터', icon: '☀' },
-  effect: { name: '효과 에디터', icon: '✺', soon: true },
+  effect: { name: '효과 에디터', icon: '✺' },
 };
 // 데이터 종류
 export const CATS = [
@@ -24,7 +25,7 @@ export const CATS = [
   { group: '게임 데이터', id: 'parts', label: '파츠', icon: '⚙', editor: 'data', desc: '총에 다는 부품 — 자리별 파츠와 장단점' },
   { group: '게임 데이터', id: 'skills', label: '스킬', icon: '⚡', editor: 'data', desc: '무기 스킬 — Q(주무기)·E(보조무기)로 쓰는 스킬의 효과와 수치' },
   { group: '게임 데이터', id: 'modes', label: '모드', icon: '⚑', editor: 'data', desc: '게임 방식 — 인원·목표 점수·점령전 수치' },
-  { group: '준비 중', id: 'effects', label: '효과', icon: '✺', editor: 'effect', soon: true, desc: '스킬·총구 화염·피격 효과. 스킬 시스템과 함께 추가됩니다' },
+  { group: '콘텐츠', id: 'effects', label: '효과', icon: '✺', editor: 'effect', desc: '스킬·폭발 등의 시각 효과 — 입자·고리·빛을 층으로 쌓아 만든다. 게임은 정해진 id 의 효과를 그 순간에 재생' },
 ];
 
 // 맵 미리보기: 위에서 본 구조물 + 스폰 + 거점
@@ -64,12 +65,12 @@ export function drawLookThumb(l, w = 400, h = 300) {
 
 export function createHome(ctx) {
   let cat = 'maps', sel = null, query = '', modelKind = 'gun';
-  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [], skills: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
+  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [], skills: [], effects: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
 
   async function load() {
     const get = u => fetch(u, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    const [mapIds, gunIds, weapons, parts, modes, registry, looks, skills] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json'), get('/content/skills.json')]);
-    data.looks = looks || []; data.skills = skills || [];
+    const [mapIds, gunIds, weapons, parts, modes, registry, looks, skills, effects] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json'), get('/content/skills.json'), get('/content/effects.json')]);
+    data.looks = looks || []; data.skills = skills || []; data.effects = effects || [];
     data.maps = (await Promise.all((mapIds || []).map(id => get(`/content/maps/${id}.json`)))).filter(Boolean);
     data.models = await Promise.all((gunIds || []).map(async id => {
       const head = await fetch(`/content/guns/${id}.glb`, { method: 'HEAD', cache: 'no-store' }).catch(() => null);
@@ -82,7 +83,7 @@ export function createHome(ctx) {
 
   // ───────── 종류별 카드 ─────────
   const usersOf = lookId => data.maps.filter(m => (m.look || (data.looks[0] && data.looks[0].id)) === lookId); // 이 분위기를 쓰는 맵
-  const count = id => ({ skills: data.skills.length, looks: data.looks.length, maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: 0 }[id]);
+  const count = id => ({ skills: data.skills.length, looks: data.looks.length, maps: data.maps.length, models: data.models.length, weapons: data.weapons.length, parts: data.parts ? Object.values(data.parts.parts).flat().length : 0, modes: data.modes.length, effects: data.effects.length }[id]);
   const docOf = key => ctx.docs().get(key);
   const statePill = key => { const d = docOf(key); return d ? (d.isDirty() ? ['저장 안 됨', 'warn'] : ['열림', 'good']) : null; };
 
@@ -103,8 +104,7 @@ export function createHome(ctx) {
       case 'parts': return data.parts ? data.parts.slots.flatMap(s => (data.parts.parts[s.id] || []).map(p => ({ key: `part:${s.id}:${p.id}`, title: p.name, sub: `${s.name} · ${p.id}`, icon: '⚙', def: p, slot: s }))) : [];
       case 'skills': return data.skills.map(s => ({ key: `skill:${s.id}`, title: s.name, sub: `${s.effect} · ${s.id}${s.cd ? ` · 쿨타임 ${s.cd}초` : ''}`, icon: '⚡', def: s }));
       case 'modes': return data.modes.map(m => ({ key: `mode:${m.id}`, title: m.name, sub: `${m.teams ? `${m.max / 2} 대 ${m.max / 2}` : `최대 ${m.max}명`} · 맵 ${m.map}`, icon: '⚑', def: m }));
-      // 효과 에디터가 생기면 모델처럼 "검증 → 데이터로 등록" 으로 content/effects.json 에 올라간다
-      case 'effects': return [['총구 화염', '쏠 때 총구의 불꽃'], ['피격', '맞았을 때 튀는 것'], ['스킬 효과', '스킬 발동·명중 연출']].map(([t, s]) => ({ key: `effect:${t}`, title: t, sub: s, icon: '✺', soon: true }));
+      case 'effects': return data.effects.map(e => ({ key: `fx:${e.id}`, title: e.name, sub: `${e.id} · 층 ${e.emitters.length}개${EFFECT_HOOKS[e.id] ? ' · 게임에서 씀' : ''}`, icon: '✺', def: e, state: EFFECT_HOOKS[e.id] ? ['게임에서 씀', 'good'] : null }));
     }
     return [];
   }
@@ -136,6 +136,7 @@ export function createHome(ctx) {
       search.addEventListener('input', () => { query = search.value; renderCards(); });
       acts.appendChild(search);
     }
+    if (cat === 'effects') acts.appendChild(btn('+ 새 효과', () => ctx.openAsset('effect:edit', { create: true }), 'primary', 'newFxBtn'));
     if (cat === 'looks') acts.appendChild(btn('+ 새 분위기', () => ctx.openAsset('look:edit', { create: true }), 'primary', 'newLookBtn'));
     if (cat === 'maps') acts.appendChild(btn('+ 새 맵', () => ctx.openAsset(`map:new${Date.now()}`, { create: true }), 'primary', 'newMapBtn'));
     if (cat === 'models') {
@@ -186,6 +187,7 @@ export function createHome(ctx) {
     else if (kind === 'part') ctx.openAsset('data:parts', { slot: id, select: id2 });
     else if (kind === 'mode') ctx.openAsset('data:modes', { select: id });
     else if (kind === 'skill') ctx.openAsset('data:skills', { select: id });
+    else if (kind === 'fx') ctx.openAsset('effect:edit', { select: id });
   }
 
   // ───────── 오른쪽: 자세히 ─────────
@@ -247,6 +249,11 @@ export function createHome(ctx) {
       const ws = data.weapons.filter(w => (!p.only || p.only.includes(w.id)) && !(p.not || []).includes(w.id));
       if (ws[0]) { const d = describePart(ws[0], p); box.appendChild(el('h4', '', `장단점 (${ws[0].name} 기준)`)); box.appendChild(el('p', 'note pc p', d.pros.join(' · ') || '—')); box.appendChild(el('p', 'note pc c', d.cons.join(' · ') || '—')); }
       rel(`달 수 있는 무기 (${ws.length})`, ws.map(w => [w.name, go('weapons', `weapon:${w.id}`)]));
+    } else if (cat === 'effects') {
+      const e = it.def;
+      row('파일', 'content/effects.json'); row('게임에서 쓰는 곳', EFFECT_HOOKS[e.id] || '없음 (id 가 쓰는 곳 목록에 없다)'); if (e.desc) row('설명', e.desc);
+      row('층', e.emitters.map(x => `${x.name || x.kind}`).join(' · '));
+      box.appendChild(dl);
     } else if (cat === 'skills') {
       const s = it.def;
       row('효과', s.effect); row('설명', s.desc); if (s.cd) row('쿨타임', `${s.cd}초`); if (s.dur) row('지속', `${s.dur}초`);

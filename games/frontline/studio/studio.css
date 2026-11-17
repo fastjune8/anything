@@ -276,3 +276,12 @@ body.resizing-h { cursor: col-resize; } body.resizing-v { cursor: row-resize; }
 .motionbar { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
 .motionbar input[type=range] { flex: 1; min-width: 0; }
 .motionbar button { min-width: 34px; }
+/* 효과 에디터 · 층 목록 */
+.layers { display: grid; gap: 3px; margin: 4px 0 8px; }
+.layer { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 6px; align-items: center; padding: 5px 7px; border-radius: 5px; background: rgba(255,255,255,.04); cursor: pointer; font-size: 12px; }
+.layer:hover { background: rgba(255,255,255,.08); }
+.layer.on { background: rgba(255,180,58,.14); outline: 1px solid var(--accent, #ffb43a); }
+.layer.off .nm { opacity: .4; text-decoration: line-through; }
+.layer small { color: var(--dim, #8a939c); }
+.hooks .note { margin: 2px 0; font-size: 11px; }
+.hooks .note.miss { opacity: .55; }

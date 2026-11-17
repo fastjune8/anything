@@ -2,6 +2,7 @@
 //   입력(input.js) → 이동(player.js)·무기(weapon.js) → 카메라 → 화면 갱신(hud/fx/remotes) → 그리기
 import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap } from './scene.js';
 import { updateTracers, updateParts, updateGrenades } from './fx.js';
+import { vfx } from './vfx.js';
 import { updateDashFx, dashView } from './dashfx.js';
 import { updateSkills, sk as skillState } from './skills.js';
 import { updateRemotes, remotes, remoteHit } from './remotes.js';
@@ -57,6 +58,7 @@ function frame(now) {
   updateTracers(dt);
   updateParts(dt);
   updateGrenades(dt);
+  vfx.update(dt, camera); // 효과 (content/effects.json)
   updateDashFx(dt);
   updateObjective(dt); // 점령전 거점 (방에 없으면 숨긴다)
   if (game.joined) { updateHud(dt); updateMinimap(); }
@@ -75,7 +77,7 @@ fetch('/status').then(r => r.json()).then(st => {
 }).catch(() => {});
 
 // 디버그 / 자동 테스트 훅 (tests/browser.test.mjs 가 사용)
-window.__g = { me, remotes, roster, inv, net, remoteHit, vmGuns, teleport, netStats, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory, skills: skillState,
+window.__g = { me, remotes, roster, inv, net, remoteHit, vmGuns, teleport, netStats, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory, skills: skillState, vfx,
   input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
 if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }
 // 스튜디오 안에서 시험 플레이 중: Ctrl/⌘+P 로 멈추고 스튜디오로 돌아간다 (Unity 의 Play 버튼과 같은 단축키)

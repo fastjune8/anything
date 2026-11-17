@@ -9,6 +9,7 @@ import { showHit } from './hud.js';
 import { sfx } from './sfx.js';
 import { me, inv, wp, inp, game, net, loadout, eff, adsInput, currentSpread, hSpeed, PITCH_MAX } from './state.js';
 import { V3, UP, DEG, lerp, clamp } from './util.js';
+import { playFx } from './vfx.js';
 import { rpmMul, heldSkill, heatShot, heatOf, grenadeMode, sk, resetSkills, onFire } from './skills.js';
 
 const _o = new V3(), _d = new V3(), _f = new V3(), _r = new V3(), _u = new V3(), _mz = new V3();
@@ -67,7 +68,7 @@ function fire() {
   guns[wp.cur].flash.scale.setScalar((w.pellets > 1 || w.scope ? 1.5 : 1) * (0.8 + Math.random() * 0.5) * (1 - 0.5 * wp.adsT));
   muzzleLight.position.copy(_mz); muzzleLight.intensity = 60;
   sfx.shot(w);
-  if (charged) { sfx.mech('bolt', 1); guns[wp.cur].flash.scale.multiplyScalar(1.6); wp.vmKick = 1.6; } // 충전된 한 발
+  if (charged) { sfx.mech('bolt', 1); guns[wp.cur].flash.scale.multiplyScalar(1.6); wp.vmKick = 1.6; playFx('charge_shot', _mz, { dir: _f }); } // 충전된 한 발
   if (w.bolt) sfx.mech('bolt', 1, 0, 0.5);
   if (w.shell) sfx.mech('pump', 1, 0, 0.28);
 }

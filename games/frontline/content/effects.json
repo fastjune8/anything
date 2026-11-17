@@ -1,0 +1,27 @@
+[
+  {"id":"grenade_explode","name":"유탄 폭발","desc":"섬광 → 불꽃 덩어리 → 파편·불티 → 연기, 바닥 충격파와 빛","emitters":[
+    {"kind":"particles","name":"섬광","count":1,"lifeMin":0.12,"lifeMax":0.12,"speedMin":0,"speedMax":0,"dir":"sphere","sizeStart":2.6,"sizeEnd":4.2,"colorStart":"#fff2c8","colorEnd":"#ff9a3a","glow":2,"alphaStart":1,"alphaEnd":0,"texture":"soft","blend":"add"},
+    {"kind":"particles","name":"불덩어리","count":22,"lifeMin":0.25,"lifeMax":0.5,"speedMin":2,"speedMax":7,"dir":"sphere","radius":0.3,"drag":4,"gravity":-2,"sizeStart":1,"sizeEnd":1.8,"colorStart":"#ffd27a","colorEnd":"#c2381a","glow":1.6,"alphaStart":0.9,"alphaEnd":0,"texture":"smoke","blend":"add"},
+    {"kind":"particles","name":"불티","count":40,"lifeMin":0.4,"lifeMax":0.9,"speedMin":6,"speedMax":16,"dir":"sphere","drag":1.2,"gravity":9,"sizeStart":0.09,"sizeEnd":0.03,"colorStart":"#ffe3a0","colorEnd":"#ff6a1a","glow":2.5,"alphaStart":1,"alphaEnd":0,"texture":"spark","blend":"add"},
+    {"kind":"particles","name":"파편","count":16,"lifeMin":0.5,"lifeMax":1,"speedMin":4,"speedMax":10,"dir":"up","spread":70,"gravity":14,"drag":0.5,"sizeStart":0.08,"sizeEnd":0.08,"colorStart":"#3a3530","colorEnd":"#2a2622","alphaStart":1,"alphaEnd":0.6,"texture":"square","blend":"normal"},
+    {"kind":"particles","name":"연기","delay":0.06,"count":14,"lifeMin":1.4,"lifeMax":2.4,"speedMin":0.6,"speedMax":2.2,"dir":"up","spread":80,"radius":0.8,"drag":1.4,"gravity":-0.8,"sizeStart":1.4,"sizeEnd":3.6,"colorStart":"#5a544c","colorEnd":"#8a847a","alphaStart":0.65,"alphaEnd":0,"texture":"smoke","blend":"normal"},
+    {"kind":"ring","name":"충격파","life":0.35,"radiusStart":0.3,"radiusEnd":5,"width":0.35,"color":"#ffc070","alphaStart":0.55,"alphaEnd":0,"facing":"ground","blend":"add"},
+    {"kind":"light","name":"폭발 빛","life":0.35,"color":"#ffa040","intensity":420,"range":14}
+  ]},
+  {"id":"skill_adrenaline","name":"아드레날린","desc":"발밑에서 붉은 기운이 솟아오르는 맥박","emitters":[
+    {"kind":"ring","name":"맥박","life":0.45,"radiusStart":0.2,"radiusEnd":1.6,"width":0.25,"color":"#ff4a3a","alphaStart":0.85,"alphaEnd":0,"facing":"ground","blend":"add"},
+    {"kind":"ring","name":"두 번째 맥박","delay":0.18,"life":0.45,"radiusStart":0.2,"radiusEnd":1.3,"width":0.18,"color":"#ff8a4a","alphaStart":0.7,"alphaEnd":0,"facing":"ground","blend":"add"},
+    {"kind":"particles","name":"솟는 기운","count":0,"rate":60,"duration":0.6,"lifeMin":0.5,"lifeMax":0.9,"speedMin":1.5,"speedMax":3,"dir":"up","spread":12,"radius":0.45,"drag":1,"sizeStart":0.14,"sizeEnd":0.02,"colorStart":"#ff7a5a","colorEnd":"#ff2a1a","glow":2,"alphaStart":0.9,"alphaEnd":0,"texture":"spark","blend":"add"},
+    {"kind":"light","name":"붉은 빛","life":0.5,"color":"#ff4a30","intensity":60,"range":5}
+  ]},
+  {"id":"skill_shove_hit","name":"밀어내기 맞음","desc":"맞은 자리에서 터지는 먼지와 짧은 충격파","emitters":[
+    {"kind":"particles","name":"먼지","count":18,"lifeMin":0.35,"lifeMax":0.7,"speedMin":2,"speedMax":5,"dir":"sphere","drag":3.5,"gravity":1,"sizeStart":0.35,"sizeEnd":0.9,"colorStart":"#c9bda6","colorEnd":"#9a917f","alphaStart":0.6,"alphaEnd":0,"texture":"smoke","blend":"normal"},
+    {"kind":"ring","name":"충격","life":0.22,"radiusStart":0.15,"radiusEnd":1.2,"width":0.16,"color":"#ffffff","alphaStart":0.8,"alphaEnd":0,"facing":"camera","blend":"add"},
+    {"kind":"particles","name":"불꽃","count":10,"lifeMin":0.12,"lifeMax":0.25,"speedMin":5,"speedMax":9,"dir":"sphere","drag":2,"sizeStart":0.07,"sizeEnd":0.02,"colorStart":"#ffffff","colorEnd":"#ffc070","glow":2,"alphaStart":1,"alphaEnd":0,"texture":"spark","blend":"add"}
+  ]},
+  {"id":"charge_shot","name":"차지 샷","desc":"충전된 한 발: 총구 앞으로 뻗는 밝은 불꽃","emitters":[
+    {"kind":"particles","name":"총구 불꽃","count":14,"lifeMin":0.08,"lifeMax":0.18,"speedMin":8,"speedMax":18,"dir":"cone","spread":14,"drag":3,"sizeStart":0.08,"sizeEnd":0.02,"colorStart":"#ffffff","colorEnd":"#5ad7ff","glow":3,"alphaStart":1,"alphaEnd":0,"texture":"spark","blend":"add"},
+    {"kind":"particles","name":"번쩍","count":1,"lifeMin":0.07,"lifeMax":0.07,"speedMin":0,"speedMax":0,"dir":"sphere","sizeStart":0.5,"sizeEnd":0.9,"colorStart":"#c8f4ff","colorEnd":"#3ad7ff","glow":2,"alphaStart":0.9,"alphaEnd":0,"texture":"star","blend":"add"},
+    {"kind":"light","name":"푸른 빛","life":0.12,"color":"#5ad7ff","intensity":40,"range":4}
+  ]}
+]

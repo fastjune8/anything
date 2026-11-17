@@ -171,6 +171,17 @@ console.log('\n[무기 스킬: 대쉬 · 질주 · 과열 · 유탄]');
   check(Math.abs(k4.vel.z) < kb.force * 1.05, '연사 간격보다 빨리 밀려나기가 겹치지 않는다', k4.vel.z.toFixed(2));
 }
 
+console.log('\n[효과 데이터 (content/effects.json)]');
+{
+  const { checkEffects, EFFECT_HOOKS } = await import('../shared/content/schema.js');
+  const fs = await import('node:fs');
+  const list = JSON.parse(fs.readFileSync(new URL('../content/effects.json', import.meta.url)));
+  check(checkEffects(list).length === 0, '기본 효과 데이터가 검사를 통과한다', checkEffects(list).join(' / '));
+  check(Object.keys(EFFECT_HOOKS).every(id => list.some(e => e.id === id)), '게임에서 쓰는 곳마다 효과가 있다 (유탄 폭발·아드레날린·밀어내기·차지 샷)');
+  const bad = checkEffects([{ id: 'x', name: 'x', emitters: [{ kind: 'laser' }] }, { id: 'y', name: 'y', emitters: [{ kind: 'ring', life: 0.3 }] }]);
+  check(bad.some(e => e.includes('모르는 층 종류')) && bad.some(e => e.includes('값이 없음')), '모르는 층 종류·빠진 칸을 잡아낸다', bad.slice(0, 2).join(' / '));
+}
+
 console.log('\n[넘어가기 / 오르기: findVault]');
 {
   const { findVault } = await import('../shared/vault.js');
