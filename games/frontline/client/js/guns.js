@@ -1,8 +1,10 @@
 // 총과 병사 모델. 총은 상자/원통을 조합해 만들고, 파츠(조준경·총열·손잡이·탄창·개머리판)는 setGunParts 로 갈아 끼운다.
+// 조준경·총구 장치·앞 손잡이는 Blender 파츠 모델(content/parts/<id>.glb, partmodels.js)이 있으면 그것을 쓴다.
 import * as THREE from 'three';
 import { modelFor, modelIdFor } from './gunmodels.js';
 import { gunSpec } from './gunmodel.js';
-import { dressGun, dressMaterial } from './gunmat.js';
+import { dressGun, dressGunLite, dressMaterial } from './gunmat.js';
+import { partModel } from './partmodels.js';
 
 const M = {
   steel: new THREE.MeshStandardMaterial({ color: 0x1d1f22, metalness: 0.85, roughness: 0.42 }),
@@ -162,7 +164,7 @@ const MAG_SCALE = { ext: 1.32, fast: 0.84 };
 // 조준선 높이·총구 위치 등 파츠에 따라 달라지는 값(sightY, adsZ, muzzleZ, magRest)도 함께 갱신한다.
 export function setGunParts(gun, parts = {}) {
   const a = gun.att, b = gun.base;
-  for (const c of [...a.children]) { c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); a.remove(c); }
+  for (const c of [...a.children]) { c.traverse(o => { if (o.geometry && !o.userData.sharedGeo) o.geometry.dispose(); }); a.remove(c); }
   gun.muzzleZ = b.muzzleZ; gun.sightY = b.sightY; gun.adsZ = b.adsZ;
   const hasOptic = !gun.scope && !!gun.optic && !!OPTIC[parts.optic];
   for (const m of gun.irons || []) m.visible = !hasOptic; // 조준경을 달면 가늠자/가늠쇠는 접는다
@@ -173,11 +175,20 @@ export function setGunParts(gun, parts = {}) {
   } else if (hasOptic) {
     const o = new THREE.Group(), s = gun.small || 1;
     o.position.set(0, gun.optic[0], gun.optic[1]); o.scale.setScalar(s); a.add(o);
-    gun.sightY = gun.optic[0] + OPTIC[parts.optic](o) * s;
+    const pm = partModel(parts.optic); // Blender 파츠 모델이 있으면 그것, 없으면 코드로 만든 모양
+    if (pm) o.add(pm.root);
+    gun.sightY = gun.optic[0] + (pm ? (pm.sockets.sight ? pm.sockets.sight.position.y : 0.03) : OPTIC[parts.optic](o)) * s;
     if (parts.optic === 'acog') gun.adsZ = -0.09 - gun.optic[1]; // 접안부가 눈 가까이 오도록
   }
-  if (BARREL[parts.barrel]) gun.muzzleZ -= BARREL[parts.barrel](a, gun.barrelY, b.muzzleZ, gun.small || 1);
-  if (gun.grip && GRIP[parts.grip]) GRIP[parts.grip](a, gun.grip[0], gun.grip[1]);
+  const pb = BARREL[parts.barrel] && partModel(parts.barrel);
+  if (pb) { // 총구 장치 모델: 원점 = 총구 끝, socket_muzzle = 새 총구 끝
+    const s = gun.small || 1, g = new THREE.Group();
+    g.position.set(0, gun.barrelY, b.muzzleZ); g.scale.setScalar(s); g.add(pb.root); a.add(g);
+    gun.muzzleZ -= (pb.sockets.muzzle ? -pb.sockets.muzzle.position.z : 0.1) * s;
+  } else if (BARREL[parts.barrel]) gun.muzzleZ -= BARREL[parts.barrel](a, gun.barrelY, b.muzzleZ, gun.small || 1);
+  const pg = gun.grip && GRIP[parts.grip] && partModel(parts.grip);
+  if (pg) { pg.root.position.set(0, gun.grip[0], gun.grip[1]); a.add(pg.root); } // 앞 손잡이 모델: 원점 = 총열 덮개 아랫면
+  else if (gun.grip && GRIP[parts.grip]) GRIP[parts.grip](a, gun.grip[0], gun.grip[1]);
 
   const ms = MAG_SCALE[parts.mag] || 1;
   if (gun.mag) { // 탄창: 윗부분은 그대로 두고 아래로 길어지거나 짧아진다 (Blender 모델은 원점이 탄창 윗면이라 그냥 늘리면 된다)
@@ -204,34 +215,36 @@ export function attachArms(group, spec) {
 }
 
 // 총 모델 그룹 + 기준점(spec) → 파츠를 달 수 있는 총 객체. 코드로 만든 총과 Blender 모델(gunmodel.js)이 같이 쓴다
-export function wrapGun(group, spec, parts) {
+// detail = false: 질감 셰이더 없이 재질 값만 (다른 플레이어가 든 총 — 작게 보이고 수가 많다)
+export function wrapGun(group, spec, parts, detail = true) {
   const att = new THREE.Group(); group.add(att); // 파츠 모델이 들어가는 곳
   const gun = { group, att, ...spec, base: { muzzleZ: spec.muzzleZ, sightY: spec.sightY, adsZ: spec.adsZ, magPos: spec.mag ? spec.mag.position.clone() : null } };
   setGunParts(gun, parts);
-  return dressGun(gun); // 색 칸별 재질 값 + 총마다 자기 재질 (효과용)
+  return detail ? dressGun(gun) : dressGunLite(gun); // 색 칸별 질감 + 총마다 자기 재질 (효과용)
 }
 
 // 등록된 모델(.glb)로 총 만들기. 부착 지점이 모자라면 null (→ 코드로 만든 총)
-function buildFromModel(src, modelId, withArms, parts) {
+function buildFromModel(src, modelId, withArms, parts, detail) {
   const group = new THREE.Group(), root = src.clone(true);
   group.add(root); group.updateMatrixWorld(true);
   const spec = gunSpec(group);
   if (!spec) return null;
   if (withArms) attachArms(group, spec);
-  const gun = wrapGun(group, spec, parts);
+  const gun = wrapGun(group, spec, parts, detail);
   gun.model = modelId; // 어떤 모델로 만들었는지 (확인·테스트용)
   return gun;
 }
 
 // withArms: 1인칭 뷰모델용 팔 포함 여부
 // 무기 데이터에 등록된 모델이 연결돼 있으면 그 모델로, 아니면 코드로 만든 총
-export function buildGun(id, withArms, parts) {
+// detail: 질감 셰이더까지 (1인칭·무기고). 다른 플레이어의 총은 false
+export function buildGun(id, withArms, parts, detail = true) {
   const src = modelFor(id);
-  if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts); if (g) return g; }
+  if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts, detail); if (g) return g; }
   const group = new THREE.Group();
   const spec = (BUILD[id] || BUILD.ar)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
   if (withArms) attachArms(group, spec);
-  return wrapGun(group, spec, parts);
+  return wrapGun(group, spec, parts, detail);
 }
 
 // ───────── 3인칭 병사 모델 ─────────

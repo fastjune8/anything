@@ -24,7 +24,7 @@ function makeRig(i) {
   soldier.root.visible = false;
   scene.add(soldier.root);
   const guns = WEAPONS.map(w => {
-    const g = buildGun(w.id, false); g.group.visible = false; soldier.gunSlot.add(g.group);
+    const g = buildGun(w.id, false, {}, false); g.group.visible = false; // 작게 보이므로 질감 셰이더 없이 soldier.gunSlot.add(g.group);
     g.group.traverse(o => { if (o.isMesh) o.castShadow = true; });
     return g;
   });

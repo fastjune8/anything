@@ -84,7 +84,7 @@ function inject(m) {
         // 모서리 닳음: 날카로운 변까지 거리 → 가까울수록 칠이 벗겨진다 (잡음으로 들쭉날쭉하게)
         vec3 gmD = vGmEdge + (1.0 - vGmSharp) * 1e3;
         float gmE = 1.0 - smoothstep(0.0, uWearW, min(gmD.x, min(gmD.y, gmD.z)));
-        float gmN = gmNoise(vGmPos * 260.0) * 0.6 + gmNoise(vGmPos * 900.0) * 0.4;
+        float gmN = gmNoise(vGmPos * 380.0);
         gmWear = uWear * smoothstep(0.35, 0.75, gmE * 0.85 + gmN * 0.45 * gmE + (gmN - 0.5) * 0.25);
         diffuseColor.rgb = mix(diffuseColor.rgb, uWearColor, gmWear);
         // 미세 질감: 색을 아주 조금 흔든다
@@ -97,9 +97,9 @@ function inject(m) {
         metalnessFactor = mix(metalnessFactor, 1.0, gmWear);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         // 미세 질감의 결: 법선을 아주 조금 흔들어 빛이 결을 따라 반짝이게
-        normal = normalize(normal + (vec3(gmNoise(vGmPos * 1100.0 + 7.0), gmNoise(vGmPos * 1100.0 + 19.0), gmNoise(vGmPos * 1100.0 + 31.0)) - 0.5) * uGrain * 0.22);`);
+        normal = normalize(normal + (vec3(gmG, fract(gmG * 7.13 + gmN), fract(gmG * 3.77 + 0.5)) - 0.5) * uGrain * 0.22); // 이미 구한 잡음을 다시 써서 가볍게`);
   };
-  m.customProgramCacheKey = () => 'frontier-gunmat-1';
+  m.customProgramCacheKey = () => 'frontier-gunmat-2';
 }
 
 // 일반 재질 → 질감용 재질 (광택 코팅을 쓰려고 MeshPhysicalMaterial 로)
@@ -134,6 +134,13 @@ function applyTo(m, slot) {
 
 // 공유 재질 하나에 재질 값만 입힌다 (코드로 만든 총의 파츠가 같이 쓰는 재질)
 export function dressMaterial(m) { const slot = slotFor(m); if (slot) { m.userData.slot = slot; applyTo(m, slot); } }
+
+// 가벼운 버전: 재질 값만 (공유 재질에 그대로). 다른 플레이어가 든 작은 총처럼 질감이 안 보이는 곳 — 셰이더·복제 없음
+export function dressGunLite(gun) {
+  const done = new Set();
+  gun.group.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) if (!done.has(m)) { done.add(m); dressMaterial(m); } });
+  return gun;
+}
 
 // 총 객체(guns.js 의 wrapGun 결과)의 재질을 복제해 질감을 입힌다. 팔(소매·장갑)은 건드리지 않는다
 export function dressGun(gun) {
