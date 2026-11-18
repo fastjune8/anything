@@ -10,6 +10,7 @@ import { createGunDoc } from './docs/gun.js';
 import { createDataDoc } from './docs/data.js';
 import { createLookDoc } from './docs/look.js';
 import { createEffectDoc } from './docs/effect.js';
+import { createCharacterDoc } from './docs/character.js';
 import { createHome, EDITORS } from './home.js';
 import { createHelp } from './help.js';
 import { createTour } from './tour.js';
@@ -54,7 +55,7 @@ const ctx = {
   openAsset: (key, opts) => openAsset(key, opts),
   play: url => startPlay(url),
   docs: () => docs,
-  assets: () => ({ maps: home.data.maps.map(m => m.id), guns: home.data.models.map(m => m.id) }),
+  assets: () => ({ maps: home.data.maps.map(m => m.id), guns: home.data.models.map(m => m.id), characters: home.data.characters.map(c => c.id) }),
   // 무기 데이터: 무기 문서를 열면 그 문서가 고치는 중인 값을 같이 본다 (파츠 장단점 계산 등)
   weapons: () => weaponsDoc || (home.data.weapons.length ? home.data.weapons : WEAPONS), weaponIds: () => ctx.weapons().map(w => w.id), setWeapons: d => { weaponsDoc = d; },
   registry: () => home.data.registry, // 데이터로 등록된 모델
@@ -70,7 +71,7 @@ const ctx = {
   },
 };
 // 문서 종류 → [만드는 함수, 편집기]
-const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'], effect: [createEffectDoc, 'effect'] };
+const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'], effect: [createEffectDoc, 'effect'], char: [createCharacterDoc, 'model'] };
 
 async function openAsset(key, opts = {}) {
   let doc = docs.get(key);
@@ -108,6 +109,7 @@ function activate(doc) {
     if (doc.kind === 'data') window.__dd = doc.api;
     if (doc.kind === 'look') window.__lk = doc.api;
     if (doc.kind === 'effect') window.__fx = doc.api;
+    if (doc.kind === 'character') window.__ch = doc.api;
   } else home.render();
   renderTabs(); saveSession();
 }

@@ -10,6 +10,8 @@ import { SLOTS as PART_SLOTS, PARTS as PART_LIST } from '/shared/parts.js';
 import { buildGun, wrapGun, setGunParts, attachArms } from '/js/guns.js';
 import { SLOTS, SKINS, scanModel, gunSpec, checkModel, applySkin, slotOf, modelType, socketsFor } from '/js/modelrules.js';
 import { sampleGunGlb } from '../samplegun.js';
+import { isCharacter } from '/js/charrules.js';
+import { createCharacterDoc } from './character.js';
 import { attachClips, poseClip, reloadMotion } from '/js/gunanim.js';
 import { dressGun, gunMats, setGunMats, setGunFx, useGunMaterials, LAYERS } from '/js/gunmat.js';
 import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
@@ -76,6 +78,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
 
   // ───────── 모델 ─────────
   const gltf = await new GLTFLoader().parseAsync(buffer, '');
+  if (isCharacter(gltf.scene)) { controls.dispose(); return createCharacterDoc(ctx, null, { buffer, name, gltf }); } // 리깅된 캐릭터 → 캐릭터 보기
   const root = new THREE.Group(); root.add(gltf.scene); root.updateMatrixWorld(true);
   const scan = scanModel(root);
   const checks = checkModel(root, { bytes: buffer.byteLength, clips: gltf.animations }, scan);

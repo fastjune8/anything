@@ -1,6 +1,7 @@
 // 개발용 기능: 스튜디오(/studio/)와 스튜디오가 저장할 때 쓰는 API. 라이브(prod)에서는 꺼져 있다.
 //   PUT /api/maps/<id>   맵 데이터 저장 → 검사 → content/maps/<id>.json 에 쓰고, 새 맵이면 목록(index.json)에 추가
 //   PUT /api/guns/<id>   총 모델(.glb) 저장 → content/guns/<id>.glb, 목록 content/guns/index.json
+//   PUT /api/characters/<id>   캐릭터 모델(.glb) 저장 → content/characters/<id>.glb, 목록 content/characters/index.json
 //   PUT /api/content/<이름>   데이터 파일 저장 (이름 목록과 검사는 shared/content/registry.js) (검사 후). 개발 서버는 이 파일이 바뀌면 다시 시작한다 (npm run dev)
 //   PUT /api/drafts/<맵 id>   저장하지 않은 맵을 시험 플레이용으로 서버 메모리에만 올린다 → { id: 'draft_<맵 id>' }
 //   GET /api/drafts/<draft id>   그 맵 데이터 (게임 화면이 받아 간다)
@@ -42,8 +43,8 @@ export function handleDevApi(req, res, url) {
   const ur = url.match(/^\/api\/register\/model\/([a-z0-9_]+)$/);
   if (ur && req.method === 'DELETE') { unregisterModel(res, ur[1]); return true; }
   if (url === '/api/version' && req.method === 'GET') { versionInfo().then(v => send(res, 200, v)); return true; }
-  const g = url.match(/^\/api\/guns\/([a-z0-9_]+)$/);
-  if (g && req.method === 'PUT') { saveGun(req, res, g[1]); return true; }
+  const g = url.match(/^\/api\/(guns|characters)\/([a-z0-9_]+)$/);
+  if (g && req.method === 'PUT') { saveGlb(req, res, g[1], g[2]); return true; }
   const c = url.match(/^\/api\/content\/([a-z]+)$/);
   if (c && CONTENT[c[1]] && req.method === 'PUT') { saveData(req, res, c[1]); return true; }
   const d = url.match(/^\/api\/drafts\/([a-z0-9_]+)$/);
@@ -70,16 +71,17 @@ export function handleDevApi(req, res, url) {
 }
 
 // 총 모델 저장. 내용 검사(부착 지점 등)는 총기 뷰어가 하고, 여기서는 glb 파일인지만 본다
-function saveGun(req, res, id) {
+// folder = guns (총·근접 무기) | characters (리깅된 캐릭터)
+function saveGlb(req, res, folder, id) {
   readBody(req, MAX_GLB).then(buf => {
     if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'glTF') { send(res, 400, { ok: false, errors: ['.glb 파일이 아님'] }); return; }
-    const dir = path.join(CONTENT_DIR, 'guns'), index = path.join(dir, 'index.json');
+    const dir = path.join(CONTENT_DIR, folder), index = path.join(dir, 'index.json');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${id}.glb`), buf);
     const list = fs.existsSync(index) ? JSON.parse(fs.readFileSync(index, 'utf8')) : [];
     const isNew = !list.includes(id);
     if (isNew) fs.writeFileSync(index, formatContent([...list, id].sort()));
-    console.log(`[총기 뷰어] 총 모델 저장: ${id}.glb (${(buf.length / 1024).toFixed(0)}KB)${isNew ? ' (새 총)' : ''}`);
+    console.log(`[모델 에디터] 저장: content/${folder}/${id}.glb (${(buf.length / 1024).toFixed(0)}KB)${isNew ? ' (새 파일)' : ''}`);
     send(res, 200, { ok: true, id, isNew, bytes: buf.length });
   }).catch(() => send(res, 413, { ok: false, errors: ['파일이 너무 큼 (최대 5MB)'] }));
 }

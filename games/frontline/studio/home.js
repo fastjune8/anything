@@ -65,12 +65,13 @@ export function drawLookThumb(l, w = 400, h = 300) {
 
 export function createHome(ctx) {
   let cat = 'maps', sel = null, query = '', modelKind = 'gun';
-  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [], skills: [], effects: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
+  const data = { maps: [], models: [], weapons: [], parts: null, modes: [], registry: [], looks: [], skills: [], effects: [], characters: [] }; // registry: 데이터로 등록된 모델 (content/models.json)
 
   async function load() {
     const get = u => fetch(u, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    const [mapIds, gunIds, weapons, parts, modes, registry, looks, skills, effects] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json'), get('/content/skills.json'), get('/content/effects.json')]);
+    const [mapIds, gunIds, weapons, parts, modes, registry, looks, skills, effects, charIds] = await Promise.all([get('/content/maps/index.json'), get('/content/guns/index.json'), get('/content/weapons.json'), get('/content/parts.json'), get('/content/modes.json'), get('/content/models.json'), get('/content/looks.json'), get('/content/skills.json'), get('/content/effects.json'), get('/content/characters/index.json')]);
     data.looks = looks || []; data.skills = skills || []; data.effects = effects || [];
+    data.characters = (charIds || []).map(id => ({ id }));
     data.maps = (await Promise.all((mapIds || []).map(id => get(`/content/maps/${id}.json`)))).filter(Boolean);
     data.models = await Promise.all((gunIds || []).map(async id => {
       const head = await fetch(`/content/guns/${id}.glb`, { method: 'HEAD', cache: 'no-store' }).catch(() => null);
@@ -95,7 +96,8 @@ export function createHome(ctx) {
       case 'looks': return data.looks.map((l, i) => ({
         key: `look:${l.id}`, title: l.name, sub: `${l.id}${i === 0 ? ' · 기본' : ''} · 쓰는 맵 ${usersOf(l.id).length}개`, thumb: () => drawLookThumb(l, 400, 240), def: l,
       }));
-      case 'models': return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `${reg && reg.kind === 'melee' ? '근접 무기' : '총'} · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
+      case 'models': if (modelKind === 'char') return data.characters.map(c => ({ key: `char:${c.id}`, title: c.id, sub: `캐릭터 · content/characters/${c.id}.glb`, icon: '♙', def: c }));
+        return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `${reg && reg.kind === 'melee' ? '근접 무기' : '총'} · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
       case 'weapons': {
         const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets)), maxRpm = Math.max(...data.weapons.map(w => w.rpm));
         return data.weapons.map(w => ({ key: `weapon:${w.id}`, title: w.name, sub: `${w.cls} · ${w.id}`, icon: '✦', def: w,
@@ -141,7 +143,7 @@ export function createHome(ctx) {
     if (cat === 'maps') acts.appendChild(btn('+ 새 맵', () => ctx.openAsset(`map:new${Date.now()}`, { create: true }), 'primary', 'newMapBtn'));
     if (cat === 'models') {
       const seg = el('div', 'seg');
-      for (const [k, label] of [['gun', '총'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
+      for (const [k, label] of [['gun', '총 · 근접'], ['char', '캐릭터'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
       acts.append(seg, btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'), btn('+ 새 모델 (.glb)', () => $('fileIn').click(), 'primary', 'openGlbBtn'));
     }
     if (['weapons', 'parts', 'modes', 'skills'].includes(cat)) {
@@ -181,7 +183,7 @@ export function createHome(ctx) {
   // 편집기로 열기
   function open(it) {
     const [kind, id, id2] = it.key.split(':');
-    if (kind === 'map' || kind === 'gun') ctx.openAsset(it.key);
+    if (kind === 'map' || kind === 'gun' || kind === 'char') ctx.openAsset(it.key);
     else if (kind === 'look') ctx.openAsset('look:edit', { select: id });
     else if (kind === 'weapon') ctx.openAsset('data:weapons', { select: id });
     else if (kind === 'part') ctx.openAsset('data:parts', { slot: id, select: id2 });
@@ -223,6 +225,9 @@ export function createHome(ctx) {
       row('스폰', `개인전 ${m.spawns.ffa.length}곳${m.spawns.team ? ` · 팀 ${m.spawns.team.map(t => t.length).join(' / ')}` : ' · 팀 없음'}`); row('거점', `${(m.zones || []).length}개`);
       box.appendChild(dl);
       rel('이 맵을 기본 맵으로 쓰는 모드', data.modes.filter(x => x.map === m.id).map(x => [x.name, go('modes', `mode:${x.id}`)]));
+    } else if (cat === 'models' && it.key.startsWith('char:')) {
+      row('파일', `content/characters/${it.def.id}.glb`); row('열기', '두 번 누르면 모델 에디터의 캐릭터 보기 (뼈·웨이트·무기 쥐기·애니메이션)');
+      box.appendChild(dl);
     } else if (cat === 'models') {
       const reg = it.reg;
       row('파일', `content/guns/${it.def.id}.glb`); row('크기', `${(it.def.bytes / 1024).toFixed(0)} KB`);

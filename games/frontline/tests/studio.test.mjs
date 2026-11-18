@@ -18,10 +18,10 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json'), C('effects.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json'), C('effects.json'), C('characters', 'index.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
-  fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true });
+  fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true }); fs.rmSync(C('characters', 'zz_test_char.glb'), { force: true });
 };
 // 지금 화면에 나와 있는 문서의 조각 (탭을 바꾸면 다른 문서의 조각은 숨는다)
 const ACT = { bar: '#edBar > div:not([hidden])', tools: '#toolbox > div:not([hidden])', over: '#overlays > div:not([hidden])', insp: '#inspector > div:not([hidden])' };
@@ -288,6 +288,58 @@ try {
   check(lookOpts.includes("zz_dusk"), '저장하면 열린 맵 에디터의 분위기 목록에도 바로 생긴다', JSON.stringify(lookOpts));
   await page.selectOption(`${ACT.insp} label.row:has(span.lbl:text-is("분위기 (빛·재질)")) select`, 'zz_dusk');
   check(await page.evaluate(() => window.__ed.map.look) === 'zz_dusk', '맵 설정에서 분위기를 고르면 맵 데이터에 들어간다');
+
+  console.log('\n[캐릭터 (리깅된 모델)]');
+  { // 규칙대로 만든 작은 3인칭 리그를 브라우저에서 만들어 .glb 로 연다 (실제 캐릭터 파일은 git 밖이라)
+    const opened = await page.evaluate(async () => {
+      const THREE = await import('three'), { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+      const B = {}, bone = (n, parent, x, y, z) => { const b = new THREE.Bone(); b.name = n; b.position.set(x, y, z); (parent ? B[parent] : null)?.add(b); B[n] = b; return b; };
+      bone('Root', null, 0, 0, 0); bone('Hips', 'Root', 0, 0.95, 0); bone('Spine', 'Hips', 0, 0.1, 0); bone('Spine1', 'Spine', 0, 0.12, 0); bone('Chest', 'Spine1', 0, 0.12, 0); bone('Neck', 'Chest', 0, 0.2, 0); bone('Head', 'Neck', 0, 0.1, 0);
+      for (const [S, sx] of [['Left', 1], ['Right', -1]]) {
+        bone(`${S}Shoulder`, 'Chest', 0.06 * sx, 0.15, 0); bone(`${S}UpperArm`, `${S}Shoulder`, 0.12 * sx, 0, 0); bone(`${S}ForeArm`, `${S}UpperArm`, 0.27 * sx, 0, 0); bone(`${S}Hand`, `${S}ForeArm`, 0.25 * sx, 0, 0); bone(`${S}HandGrip`, `${S}Hand`, 0.08 * sx, -0.02, 0);
+        bone(`${S}UpperLeg`, 'Hips', 0.1 * sx, -0.05, 0); bone(`${S}LowerLeg`, `${S}UpperLeg`, 0, -0.42, 0); bone(`${S}Foot`, `${S}LowerLeg`, 0, -0.42, 0); bone(`${S}Toe`, `${S}Foot`, 0, -0.06, 0.12);
+      }
+      bone('BackWeaponSocket', 'Chest', 0, 0.05, -0.15); bone('HipWeaponSocket', 'Hips', -0.18, 0, 0); bone('WeaponRoot', 'Root', 0, 1.2, 0.3); bone('LeftHandIK', 'WeaponRoot', 0, 0, 0.3);
+      const geo = new THREE.BoxGeometry(0.4, 1.7, 0.25); geo.translate(0, 0.85, 0);
+      const n = geo.attributes.position.count;
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Array(n * 4).fill(0), 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Array.from({ length: n * 4 }, (_, i) => (i % 4 ? 0 : 1)), 4));
+      const list = Object.values(B), mesh = new THREE.SkinnedMesh(geo, new THREE.MeshStandardMaterial({ name: 'MAT_Body' }));
+      const root = new THREE.Group(); root.add(B.Root, mesh); root.updateMatrixWorld(true);
+      mesh.bind(new THREE.Skeleton([B.Hips, ...list.filter(b => b !== B.Hips)]));
+      const buffer = await new GLTFExporter().parseAsync(root, { binary: true });
+      await window.__studio.openAsset(`gun:file${Date.now()}`, { buffer, name: 'zz_test_char.glb' });
+      return true;
+    });
+    await page.waitForFunction(() => window.__ch && window.__studio.active && window.__studio.active.kind === 'character', null, { timeout: 20000 });
+    const ch = await page.evaluate(() => ({ kind: window.__ch.kind, fails: window.__ch.checks.filter(c => c.level === 'fail').map(c => c.text), bones: window.__ch.bones.size, edKind: document.getElementById('edKind').textContent }));
+    check(opened && ch.kind === 'tp' && !ch.fails.length && ch.edKind.includes('모델 에디터'), '리깅된 .glb 를 열면 모델 에디터가 캐릭터 보기로 열고 규칙 검사를 통과한다 (3인칭)', JSON.stringify(ch));
+    const pose = await page.evaluate(async () => {
+      const THREE = await import('three'), c = window.__ch, arm = c.bones.get('LeftForeArm'), hand = c.bones.get('LeftHand');
+      const before = hand.getWorldPosition(new THREE.Vector3());
+      c.selectBone(arm); arm.rotation.z += 0.8; arm.updateMatrixWorld(true);
+      const moved = hand.getWorldPosition(new THREE.Vector3()).distanceTo(before);
+      const w = document.querySelector('#toolbox > div:not([hidden]) [data-r="showWeights"]'); w.checked = true; w.dispatchEvent(new Event('change'));
+      const colored = !!c.root.getObjectByProperty('isSkinnedMesh', true).geometry.attributes.color;
+      return { moved, colored, sel: c.selBone && c.selBone.name };
+    });
+    check(pose.sel === 'LeftForeArm' && pose.moved > 0.05 && pose.colored, '뼈를 골라 돌려 보고, 고른 뼈의 웨이트를 색으로 본다', JSON.stringify(pose));
+    await page.evaluate(() => window.__ch.setGun('ar_lancer'));
+    await page.waitForFunction(() => window.__ch.gun && window.__ch.hold, null, { timeout: 10000 }).catch(() => {});
+    const hold = await page.evaluate(async () => {
+      const THREE = await import('three'), c = window.__ch;
+      const rg = c.bones.get('RightHandGrip').getWorldPosition(new THREE.Vector3()), sr = c.gun.getObjectByName('socket_hand_r').getWorldPosition(new THREE.Vector3());
+      return { right: +rg.distanceTo(sr).toFixed(4), hold: c.hold };
+    });
+    check(hold.right < 0.01 && hold.hold, '무기를 고르면 오른손 그립이 총의 socket_hand_r 에 오고(양손 IK), 왼손 결과(당긴 거리)를 알려 준다', JSON.stringify(hold));
+    await page.fill(`${ACT.bar} [data-r="charId"]`, 'zz_test_char');
+    await page.click(`${ACT.bar} [data-r="save"]`);
+    await page.waitForFunction(() => window.__studio.active && window.__studio.active.key === 'char:zz_test_char', null, { timeout: 8000 }).catch(() => {});
+    check(fs.existsSync(C('characters', 'zz_test_char.glb')) && JSON.parse(fs.readFileSync(C('characters', 'index.json'), 'utf8')).includes('zz_test_char'), '프로젝트에 저장하면 content/characters/<id>.glb 와 목록이 생긴다');
+    await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#homeHead button:has-text("캐릭터")');
+    check(await page.locator('#homeCards [data-asset="char:zz_test_char"]').count() === 1, '홈 → 모델 → 캐릭터 에 저장한 캐릭터가 보인다');
+    await page.click('#homeHead button:has-text("총 · 근접")'); // 다음 테스트를 위해 총 목록으로
+  }
 
   console.log('\n[효과 에디터]');
   await page.click('.tab.home'); await page.click('[data-cat="effects"]');
