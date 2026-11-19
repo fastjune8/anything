@@ -43,10 +43,18 @@ export const HELP = {
   },
   model: {
     title: '모델 에디터',
-    html: `<p>Blender 로 만든 <b>.glb</b> 를 열면 규칙(docs/GUN_MODELING.md)대로 만들어졌는지 오른쪽에서 검사합니다. <b>✕</b> 는 꼭 고쳐야 저장할 수 있고, <b>!</b> 는 확인만 하면 됩니다.</p>
+    html: `<h3>한눈에 보기</h3>
+      <p>홈 → <b>모델</b> 에서 종류를 고릅니다: <b>총 · 근접</b>(무기 모델) · <b>캐릭터</b>(뼈대 · 웨이트 · 애니메이션) · <b>의상</b>(입혀 보기 · 갈아입히기). 카드를 <b>두 번</b> 누르면 열립니다. 처음이면 홈 → 모델 의 <b>튜토리얼</b> 버튼 (1분), 또는 아래 <b>모델 에디터 튜토리얼</b>.</p>
+      <p>도구 상자는 위쪽 <b>탭</b>으로 나뉘어 있습니다 (한 번에 한 묶음만 보임). 찾는 기능이 안 보이면 다른 탭을 눌러 보세요. 총: <b>보기 / 파츠·스킨 / 모션 / 질감</b>, 캐릭터: <b>보기 / 뼈 / 무기·동작</b>.</p>
+      <h3>의상 입혀 보기 — 옷 탈부착 · 교체</h3>
+      <p>홈 → 모델 → <b>의상</b> → "의상 입혀 보기" (또는 의상 카드를 두 번 누르면 그 옷을 입은 채로 열림). 게임과 <b>같은 몸 · 같은 옷 코드</b>라서 여기서 되면 게임에서도 됩니다. 저장할 것은 없습니다.</p>
+      ${rows([['① 옷 고르기', '칸(상의 · 하의 · 장갑 · 신발 · 머리카락 · 헤드셋 · 가방)마다 목록에서 고르면 즉시 입혀진다. 이미 입고 있으면 교체. "(벗음)" 또는 × = 그 칸만 벗기'], ['② 한 번에', '"기본 복장" / "전부 벗기" (벗은 자리의 몸이 다시 보이는지 확인)'], ['③ 새 옷', '나중에 추가될 옷은 <code>content/cosmetics.json</code> 의 items 에 한 줄을 더하고 <b>새 의상 찾기</b> → 칸 목록에 자동으로 나온다. 등록 전인 .glb 는 화면에 끌어다 놓으면 그 칸에 <b>임시로</b> 입혀 본다 (저장 안 됨, 1인칭 모델 없음)'], ['색 · 피부', '팔레트 · 피부색 · 팀 색(아군/적군)'], ['보기', '정면 · 뒷면 · 옆 · 3/4 · 상체 · 하체 · 머리 · 발, 오른쪽 아래 1인칭 창(게임 카메라), 자세 고르기 · 재생(Space)'], ['오른쪽 · 입고 있는 옷', '칸마다 입은 옷 · 입혀졌는지 · 1인칭 여부 · 가려진 몸 영역. 못 입혀지면 이유(막힘 · 뼈 이름)가 나온다'], ['탈부착 · 교체 검사', '장착 → 해제 → 같은 칸 교체 → 연속 요청 → 120번 갈아입기(누수)를 실제로 실행해 ✓ / ✕ 로 보여 준다. 옷이 1벌뿐인 칸의 교체는 확인할 수 없어 "건너뜀(!)" 으로 표시된다. 끝나면 지금 입은 옷으로 돌아온다']])}
+      <p>새 옷을 만드는 규칙은 <code>docs/CHARACTER_CUSTOMIZATION.md</code>. 자세한 사용 순서는 <code>docs/MODEL_EDITOR.md</code>.</p>
+      <h3>총 · 근접 모델 — 도구 상자 탭: 보기 / 파츠·스킨 / 모션 / 질감</h3>
+      <p>Blender 로 만든 <b>.glb</b> 를 열면 규칙(docs/GUN_MODELING.md)대로 만들어졌는지 오른쪽에서 검사합니다. <b>✕</b> 는 꼭 고쳐야 저장할 수 있고, <b>!</b> 는 확인만 하면 됩니다.</p>
       ${rows([['열기', '홈 → 모델 → ".glb 열기", 또는 화면에 파일을 끌어다 놓기'], ['살펴보기', '왼쪽 끌기 회전 · 오른쪽 끌기 이동 · 휠 확대. 부착 지점 이름이 보인다'], ['1인칭', '게임에서 들고 있는 모습 (같은 시야각)'], ['정조준', '빨간 점(조준점)에 가늠쇠가 겹치면 정상'], ['크기 비교', '지금 게임의 총을 반투명으로 겹쳐 보기'], ['파츠 달아 보기', '조준경·소음기·앞 손잡이·탄창이 제자리에 붙는지'], ['스킨', '색 칸(재질 이름)별로 색을 바꿔 보기'], ['저장', '위쪽에 총 id 를 넣고 "프로젝트에 저장" → content/guns/&lt;id&gt;.glb (작업 중)'], ['데이터로 등록', '검사에 ✕ 가 없으면 "데이터로 등록" → 이름·쓸 무기를 고른다. 확인 사항(!)이 남아 있으면 확인했다고 체크해야 한다. content/models.json 에 올라가고, 고른 무기의 모델이 된다. 같은 버튼으로 바꾸기·등록 해제']])}
       <p>Blender 준비는 <code>tools/blender/frontier_gun_template.py</code> 를 Scripting 탭에서 실행하면 됩니다.</p>
-      <h3>캐릭터 (리깅된 .glb)</h3>
+      <h3>캐릭터 (리깅된 .glb) — 도구 상자 탭: 보기 / 뼈 / 무기·동작</h3>
       <p>리깅된 캐릭터를 열면 자동으로 <b>캐릭터 보기</b>가 됩니다 (규칙: <code>docs/CHARACTER_MODELING.md</code>). 3인칭 전신·1인칭 팔 모두.</p>
       ${rows([['뼈', '왼쪽 목록(찾기) 또는 화면에서 관절을 클릭 → 고리를 끌어 돌려 보기 (몸이 자연스럽게 휘는지). 오른쪽에서 각도 입력, "레스트 자세" 로 되돌리기'], ['웨이트 (고른 뼈)', '고른 뼈가 몸을 얼마나 움직이는지 색으로 (파랑 0 → 빨강 1)'], ['무기 쥐기', '등록된 총을 골라 양손 IK 로 들어 보기 / 오른손 그립에 그대로 붙이기. 왼손이 닿지 않으면 몇 cm 당겼는지 알려 준다'], ['애니메이션', '파일 안의 클립 또는 "애니메이션 불러오기" (같은 뼈대의 .glb). 상체 덧씌우기 · 재생(Space) · 한 장면씩 · 느리게'], ['1인칭 / 눈높이', '1인칭 팔은 게임 카메라 그대로, 3인칭은 캐릭터 눈높이에서'], ['게임 병사 비교', '지금 게임의 상자 병사를 반투명으로 겹쳐 크기 비교']])}`,
   },
@@ -73,7 +81,7 @@ export const HELP = {
   },
 };
 
-export function createHelp({ onTour }) {
+export function createHelp({ onTour, onModelTour }) {
   const box = document.getElementById('help'), tabs = document.getElementById('helpTabs'), body = document.getElementById('helpBody');
   let cur = 'common';
   function show(key) {
@@ -91,5 +99,6 @@ export function createHelp({ onTour }) {
   document.getElementById('helpClose').addEventListener('click', close);
   box.addEventListener('click', e => { if (e.target === box) close(); });
   document.getElementById('tourAgain').addEventListener('click', () => { close(); onTour(); });
+  document.getElementById('tourModel').addEventListener('click', () => { close(); onModelTour(); });
   return { open, close, get isOpen() { return !box.hidden; } };
 }

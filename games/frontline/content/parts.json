@@ -28,8 +28,8 @@
       {"id":"fast","name":"신속 탄창","mul":{"reload":0.75,"mag":0.84}}
     ],
     "stock": [
-      {"id":"light","name":"경량 개머리판","mul":{"move":1.04,"adsTime":0.9,"recoilV":1.12,"recoilH":1.1},"not":["m9"]},
-      {"id":"heavy","name":"중량 개머리판","mul":{"recoilV":0.88,"recoilH":0.9,"move":0.96,"adsTime":1.08},"not":["m9"]}
+      {"id":"light","name":"경량 개머리판","mul":{"move":1.04,"adsTime":0.9,"recoilV":1.12,"recoilH":1.1},"not":["akimbo","revolver","knife"]},
+      {"id":"heavy","name":"중량 개머리판","mul":{"recoilV":0.88,"recoilH":0.9,"move":0.96,"adsTime":1.08},"not":["akimbo","revolver","knife"]}
     ]
   }
 }

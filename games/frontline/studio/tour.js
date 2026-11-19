@@ -1,6 +1,6 @@
 // 처음 켠 사람을 위한 짧은 튜토리얼: 화면의 각 부분을 차례로 밝히며 역할과 버튼 위치를 알려 준다.
 // 한 번 끝내거나 건너뛰면 다시 나오지 않는다 (도움말 → "튜토리얼 다시 보기").
-const KEY = 'fs_tour_done_v1';
+const KEY = 'fs_tour_done_v1', KEY_MODEL = 'fs_tour_model_v1';
 
 // before: 그 단계를 보여 주기 전에 화면을 맞춘다 (홈으로 가기, 맵 열기 등)
 export function tourSteps(api) {
@@ -20,10 +20,25 @@ export function tourSteps(api) {
   ];
 }
 
+// 모델 에디터 튜토리얼: 의상 화면에서 옷을 고르고 · 벗고 · 바꾸고 · 새 옷을 입혀 보는 순서 + 도구 상자 탭
+export function modelTourSteps(api) {
+  return [
+    { title: '모델 에디터 — 3가지만 기억하세요', text: '① 총·근접 무기 모델, ② 캐릭터(뼈·웨이트·애니메이션), ③ 의상(입히고 벗기고 바꿔 보기). 이 안내는 ③ 의상 화면부터 보여 줍니다 (1분). 언제든 건너뛸 수 있어요.' },
+    { target: '#toolbox .wd-slots', before: () => api.openWardrobe(), title: '① 옷 고르기', text: '칸(상의·하의·장갑·신발 …)마다 목록에서 옷을 고르면 바로 입혀집니다. 이미 입고 있으면 그 옷이 벗겨지고 새 옷으로 교체됩니다. "(벗음)" 이나 × 를 누르면 그 칸만 벗습니다.' },
+    { target: '#toolbox .wd-quick', title: '② 한 번에', text: '"기본 복장" 은 게임의 기본 옷으로, "전부 벗기" 는 맨몸으로 돌립니다. 벗었을 때 옷 밑의 몸이 다시 보이는지 확인할 때 좋아요.' },
+    { target: '#toolbox .wd-drop', title: '③ 새 옷 입혀 보기', text: '나중에 추가될 의상은 cosmetics.json 에 한 줄을 더하고 "새 의상 찾기" 를 누르면 칸 목록에 나옵니다. 아직 등록 전인 .glb 는 화면에 끌어다 놓으면 그 칸에 임시로 입혀 볼 수 있어요 (저장되지 않음).' },
+    { target: '#stage', title: '화면', text: '끌면 돌리고 휠로 확대합니다. 오른쪽 아래 작은 창은 게임의 1인칭 카메라 — 3인칭과 1인칭에서 모두 옷이 맞는지 한 번에 봅니다. 왼쪽 "보기" 의 정면·뒷면·상체 버튼으로 자리를 바꿔요.' },
+    { target: '#inspector', title: '입은 옷 · 검사', text: '지금 입은 옷과 가려진 몸 영역이 나옵니다. "검사 실행" 은 장착 → 해제 → 교체 → 반복을 실제로 돌려 보고, 확인하지 못한 항목(예: 옷이 1벌뿐인 칸의 교체)은 "건너뜀" 으로 솔직하게 표시합니다.' },
+    { target: '#toolbox .mtabs', before: () => api.openChar(), title: '도구 상자 탭', text: '캐릭터·총 화면은 도구가 많아서 위쪽 탭으로 나눴습니다 — 한 번에 한 묶음만 보입니다 (캐릭터: 보기 / 뼈 / 무기·동작, 총: 보기 / 파츠·스킨 / 모션 / 질감). 찾는 기능이 안 보이면 다른 탭을 눌러 보세요.' },
+    { title: '끝', text: '홈 → 모델 에서 "총 · 근접 / 캐릭터 / 의상" 을 고르면 각각의 목록이 나옵니다. 사용법 전체는 ? (F1) → 모델 에디터, 튜토리얼은 홈 → 모델 의 "튜토리얼" 버튼에서 다시 볼 수 있어요.' },
+  ];
+}
+
 export function createTour(api) {
   const root = document.getElementById('tour'), hole = document.getElementById('tourHole'), tip = document.getElementById('tourTip');
   let steps = [], i = 0;
-  const done = () => { try { localStorage.setItem(KEY, '1'); } catch { /* 저장이 막혀도 괜찮다 */ } };
+  let kind = 'main';
+  const done = () => { try { localStorage.setItem(kind === 'model' ? KEY_MODEL : KEY, '1'); } catch { /* 저장이 막혀도 괜찮다 */ } };
   const seen = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return true; } };
 
   async function show(n) {
@@ -53,8 +68,8 @@ export function createTour(api) {
     tip.style.left = `${Math.max(M, Math.min(vw - W - M, x))}px`; tip.style.top = `${Math.max(M, Math.min(vh - H - M, y))}px`;
     tip.querySelector('[data-a="next"]').focus();
   }
-  function start() { steps = tourSteps(api); root.hidden = false; show(0); }
-  function end() { root.hidden = true; done(); api.goHome(); }
+  function start(name = 'main') { kind = name === 'model' ? 'model' : 'main'; steps = kind === 'model' ? modelTourSteps(api) : tourSteps(api); root.hidden = false; show(0); }
+  function end() { root.hidden = true; done(); if (kind === 'main') api.goHome(); }
   addEventListener('resize', () => { if (!root.hidden) show(i); });
   return { start, end, startIfNew() { if (!seen()) start(); }, get running() { return !root.hidden; } };
 }

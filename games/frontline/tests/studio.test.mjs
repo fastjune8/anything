@@ -18,7 +18,7 @@ if (!fs.existsSync(CHROME)) {
 }
 const C = (...p) => path.join(ROOT, 'content', ...p);
 const TEST_ID = 'zz_studio_test', GUN_ID = 'zz_gun_test';
-const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json'), C('effects.json'), C('characters', 'index.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
+const keep = [C('maps', 'index.json'), C('guns', 'index.json'), C('modes.json'), C('models.json'), C('weapons.json'), C('prefabs.json'), C('looks.json'), C('skills.json'), C('effects.json'), C('characters', 'index.json'), C('cosmetics.json')].map(f => [f, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null]);
 const cleanup = () => {
   for (const [f, text] of keep) { if (text === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, text); }
   fs.rmSync(C('maps', `${TEST_ID}.json`), { force: true }); fs.rmSync(C('guns', `${GUN_ID}.glb`), { force: true }); fs.rmSync(C('characters', 'zz_test_char.glb'), { force: true });
@@ -63,9 +63,9 @@ try {
   }));
   check(shell.home && shell.tabs === 1, '처음엔 홈 탭 하나', JSON.stringify(shell));
   check(['maps', 'models', 'weapons', 'parts', 'modes', 'effects'].every(c => shell.cats.includes(c)) && shell.cards.includes('map:frontline') && shell.cards.includes('map:warehouse'), '종류(맵·모델·무기·파츠·모드·효과)와 맵 카드가 보인다', JSON.stringify(shell));
-  await page.click('[data-asset="map:warehouse"]');
+  await page.click('[data-asset="map:outpost"]');
   const det = await page.evaluate(() => ({ title: document.querySelector('#homeDetail h2').textContent, rel: [...document.querySelectorAll('#homeDetail .rel button')].map(b => b.textContent), thumb: !!document.querySelector('#homeDetail .big canvas') }));
-  check(det.title === '창고' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
+  check(det.title === '전초기지' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
   await page.click('[data-cat="effects"]');
   check((await page.textContent('#homeCards')).includes('유탄 폭발'), '효과 종류에 효과 카드가 있다 (효과 에디터)');
   await page.click('[data-cat="maps"]');
@@ -142,7 +142,8 @@ try {
   check(checkMap(saved).length === 0 && saved.objects.filter(o => o.type === 'crate').length === 2, '⌘S 로 저장하면 content/maps 에 검사를 통과하는 파일이 생긴다');
   const inHome = await page.waitForFunction(id => window.__studio.home.data.maps.some(m => m.id === id), TEST_ID, { timeout: 8000 }).then(() => true).catch(() => false); // 저장 뒤 홈이 목록을 다시 읽는 동안
   check(JSON.parse(fs.readFileSync(C('maps', 'index.json'), 'utf8')).includes(TEST_ID) && inHome, '새 맵이 맵 목록(index.json)과 홈에 들어간다');
-  const c = connect(srv.port, 'tester', { mode: 'zone', create: { name: 'x', private: true, bots: false, minutes: 3, map: TEST_ID } }); await c.open;
+  const c = connect(srv.port, 'tester'); await c.ready();
+  c.send({ t: 'rcreate', name: 'x', mode: 'dom', pass: 'x', bots: false, minutes: 5, map: TEST_ID });
   const wel = await c.waitFor('welcome');
   check(wel && wel.map === TEST_ID, '서버를 다시 켜지 않아도 저장한 맵으로 방을 만들 수 있다');
   c.ws.close();
@@ -341,6 +342,85 @@ try {
     await page.click('#homeHead button:has-text("총 · 근접")'); // 다음 테스트를 위해 총 목록으로
   }
 
+  console.log('\n[의상 (모델 에디터): 입히기 · 벗기기 · 교체 · 새 의상 · 검사]');
+  const wearAssets = (() => { try { const j = JSON.parse(fs.readFileSync(C('cosmetics.json'), 'utf8')); return j.items.length > 0 && fs.existsSync(C('characters', 'hyperfps_thirdperson_v_7.glb')) && j.items.every(i => fs.existsSync(C(i.tp)) && (!i.fp || fs.existsSync(C(i.fp)))); } catch { return false; } })();
+  if (!wearAssets) console.log('  (등록된 옷이 없거나(카탈로그가 비어 있음 — 절차적 옷은 폐기됨) 캐릭터·옷 .glb 가 이 컴퓨터의 content/ 에 없어 건너뜀)');
+  else { // 게임과 같은 몸·옷 코드로 실제 옷(content/wearables)을 입히고 벗겨 본다
+    const cosmetics = JSON.parse(fs.readFileSync(C('cosmetics.json'), 'utf8'));
+    await page.click('.tab.home'); await page.click('[data-cat="models"]'); await page.click('#homeHead button:has-text("의상")');
+    check(await page.locator('#homeCards .acard').count() === cosmetics.items.length, '홈 → 모델 → 의상 에 cosmetics.json 의 모든 의상이 카드로 보인다', String(cosmetics.items.length));
+    await page.dblclick('#homeCards [data-asset="wear:tactical_jacket_001"]');
+    await page.waitForFunction(() => window.__wd && window.__studio.active && window.__studio.active.kind === 'wear', null, { timeout: 90000 });
+    const WD = {
+      ready: () => page.evaluate(() => window.__wd.ready()),
+      st: () => page.evaluate(() => { const s = window.__wd.state(); return { tp: s.tpWear, fp: s.fpWear, mask: s.tp.mask, fpMask: s.fp ? s.fp.mask : 0 }; }),
+    };
+    await WD.ready();
+    const base = await WD.st();
+    check(base.tp.length === Object.keys(cosmetics.defaults.items).length && base.tp.includes('upper:tactical_jacket_001') && base.mask > 0, '의상 화면: 게임의 기본 복장이 3인칭에 입혀져 있고 몸 가리기가 켜진다', JSON.stringify(base));
+    check(base.fp.includes('upper:tactical_jacket_001') && base.fpMask > 0, '1인칭 창에도 팔 모델에 옷이 입혀진다');
+    // 벗기: × 버튼
+    await page.click(`${ACT.tools} .wd-slot[data-slot="upper"] button`); await WD.ready();
+    const off = await WD.st();
+    check(!off.tp.some(x => x.startsWith('upper:')) && !off.fp.some(x => x.startsWith('upper:')) && off.mask < base.mask && off.tp.length === base.tp.length - 1, '상의를 벗으면 그 옷만 사라지고(3인칭·1인칭), 다른 옷은 그대로, 몸 가리기가 풀린다', JSON.stringify(off));
+    // 입기: 목록에서 고르기
+    await page.selectOption(`${ACT.tools} .wd-slot[data-slot="upper"] select`, 'tactical_jacket_001'); await WD.ready();
+    const on = await WD.st();
+    check(JSON.stringify(on) === JSON.stringify(base), '목록에서 고르면 다시 입혀지고 처음과 똑같은 상태로 돌아온다');
+    // 전부 벗기 / 기본 복장
+    await page.click(`${ACT.tools} button:has-text("전부 벗기")`); await WD.ready();
+    const nude = await WD.st();
+    check(!nude.tp.length && !nude.fp.length && nude.mask === 0 && nude.fpMask === 0, '전부 벗기: 옷이 모두 사라지고 몸 가리기가 0 (3인칭·1인칭)', JSON.stringify(nude));
+    await page.click(`${ACT.tools} button:has-text("기본 복장")`); await WD.ready();
+    check(JSON.stringify(await WD.st()) === JSON.stringify(base), '기본 복장으로 한 번에 돌아온다');
+    // 새 의상: cosmetics.json 에 한 줄을 더하고 "새 의상 찾기" (같은 재킷의 이전 버전 파일을 다른 옷처럼 등록)
+    const oldJ = cosmetics.items.find(i => i.id === 'tactical_jacket_001');
+    const alt = { ...oldJ, id: 'zz_jacket_alt', name: 'ZZ 재킷 (시험)', tp: oldJ.tp.replace('_v_2', '_v_1'), fp: oldJ.fp.replace('_v_2', '_v_1') };
+    fs.writeFileSync(C('cosmetics.json'), JSON.stringify({ ...cosmetics, items: [...cosmetics.items, alt] }));
+    await page.click(`${ACT.tools} button:has-text("새 의상 찾기")`);
+    await page.waitForFunction(() => [...document.querySelectorAll('#toolbox > div:not([hidden]) .wd-slot[data-slot="upper"] option')].some(o => o.value === 'zz_jacket_alt'), null, { timeout: 8000 }).catch(() => {});
+    const opts = await page.$$eval(`${ACT.tools} .wd-slot[data-slot="upper"] option`, os => os.map(o => o.value));
+    check(opts.includes('zz_jacket_alt'), '새 의상을 cosmetics.json 에 더하고 "새 의상 찾기" 를 누르면 (다시 켜지 않아도) 그 칸 목록에 나온다', JSON.stringify(opts));
+    const before = await page.evaluate(() => { const o = {}; window.__wd.tp.root.traverse(x => { if (x.userData.wear && x.userData.wear.slot !== 'upper') o[x.uuid] = 1; }); return Object.keys(o); });
+    await page.selectOption(`${ACT.tools} .wd-slot[data-slot="upper"] select`, 'zz_jacket_alt'); await WD.ready();
+    const sw = await WD.st();
+    const keepOthers = await page.evaluate(b => { const now = []; window.__wd.tp.root.traverse(x => { if (x.userData.wear && x.userData.wear.slot !== 'upper') now.push(x.uuid); }); return b.length === now.length && b.every(u => now.includes(u)); }, before);
+    check(sw.tp.includes('upper:zz_jacket_alt') && !sw.tp.includes('upper:tactical_jacket_001') && sw.fp.includes('upper:zz_jacket_alt') && !sw.fp.includes('upper:tactical_jacket_001'), '다른 옷으로 교체: 원래 상의 메시가 사라지고 새 상의만 남는다 (3인칭·1인칭)', JSON.stringify(sw));
+    check(keepOthers, '교체해도 다른 칸의 옷은 같은 메시 그대로 유지된다');
+    // 탈부착·교체 검사
+    await page.click(`${ACT.insp} button:has-text("검사 실행")`);
+    await page.waitForFunction(() => { const s = document.querySelector('#inspector > div:not([hidden]) [data-r="checkOut"] .sum'); return s && !/하는 중/.test(s.textContent); }, null, { timeout: 240000 });
+    const ck = await page.$$eval(`${ACT.insp} [data-r="checkOut"] .ck`, ds => ds.map(d => `${d.className.replace('ck ', '')}|${d.textContent}`));
+    check(ck.length >= 10 && ck.every(c => c.startsWith('ok|')) && ck.some(c => c.includes('A → B 교체')) && ck.some(c => c.includes('A → B → A')) && ck.some(c => c.includes('갈아입기 120회')), '탈부착·교체 검사가 입기·벗기·교체·연속 요청·누수를 모두 돌려 통과한다 (옷이 2벌인 칸은 실제 교체 포함)', JSON.stringify(ck.filter(c => !c.startsWith('ok|'))));
+    check(JSON.stringify(await WD.st()) === JSON.stringify(sw), '검사가 끝나면 검사 전에 입고 있던 옷으로 돌아온다');
+    // 임시 .glb (등록 전인 옷)
+    await page.selectOption(`${ACT.tools} [data-r="tmpSlot"]`, 'hands');
+    await page.setInputFiles(`${ACT.tools} [data-r="tmpFile"]`, C('wearables', 'tactical_gloves_001_v_1.glb')); await page.waitForTimeout(500); await WD.ready();
+    const tmp = await WD.st();
+    check(tmp.tp.some(x => x.startsWith('hands:tmp_')) && !tmp.tp.includes('hands:tactical_gloves_001') && !tmp.fp.some(x => x.startsWith('hands:')), '등록 전인 .glb 를 고른 칸에 임시로 입혀 본다 (기존 장갑은 교체, 1인칭 모델은 없음)', JSON.stringify(tmp.tp));
+    // 모델 에디터 튜토리얼 + 도구 상자 탭
+    await page.evaluate(() => window.__studio.tour.start('model'));
+    await page.waitForFunction(() => (document.querySelector('#tourTip h3') || {}).textContent, null, { timeout: 5000 });
+    const titles = [];
+    for (let i = 0; i < 9; i++) {
+      titles.push(await page.textContent('#tourTip h3'));
+      const last = await page.locator('#tourTip [data-a="next"]').textContent();
+      await page.click('#tourTip [data-a="next"]'); if (/시작하기/.test(last)) break;
+      await page.waitForFunction(t => document.querySelector('#tourTip h3') && document.querySelector('#tourTip h3').textContent !== t, titles[titles.length - 1], { timeout: 20000 }).catch(() => {});
+    }
+    check(titles.length >= 8 && titles[0].includes('모델 에디터') && titles.some(t => t.includes('옷 고르기')) && await page.locator('#tour').isHidden(), '모델 에디터 튜토리얼이 의상 → 화면 → 검사 → 도구 상자 탭 순서로 끝까지 진행된다', JSON.stringify(titles));
+    await page.waitForFunction(() => window.__studio.active && window.__studio.active.kind === 'character', null, { timeout: 60000 }).catch(() => {}); // 튜토리얼 마지막 단계가 캐릭터 화면을 여는 중일 수 있다
+    check(await page.evaluate(() => window.__studio.active && window.__studio.active.kind === 'character'), '튜토리얼이 끝나도 홈으로 쫓겨나지 않고 보던 편집기에 남는다');
+    const tabs = await page.$$eval(`${ACT.tools} .mtabs button`, b => b.map(x => x.textContent));
+    check(JSON.stringify(tabs) === JSON.stringify(['보기', '뼈', '무기 · 동작']), '캐릭터 도구 상자는 탭 3개(보기 / 뼈 / 무기 · 동작)로 나뉜다', JSON.stringify(tabs));
+    const vis = () => page.evaluate(() => ['views', 'boneTree', 'gunSel'].map(k => !!document.querySelector(`#toolbox > div:not([hidden]) [data-r="${k}"]`).offsetParent));
+    const v1 = await vis(); await page.click(`${ACT.tools} .mtabs button:has-text("뼈")`); const v2 = await vis(); await page.click(`${ACT.tools} .mtabs button:has-text("무기 · 동작")`); const v3 = await vis();
+    check(JSON.stringify([v1, v2, v3]) === JSON.stringify([[true, false, false], [false, true, false], [false, false, true]]), '탭을 누르면 그 묶음만 보인다', JSON.stringify([v1, v2, v3]));
+    await page.evaluate(() => { for (const k of ['wear:edit', 'char:hyperfps_thirdperson_v_7']) if (window.__studio.docs.has(k)) window.__studio.closeDoc(k); });
+    fs.writeFileSync(C('cosmetics.json'), JSON.stringify(cosmetics, null, 2)); // 시험용으로 더한 의상을 되돌린다 (끝에서 원본 문자열로도 복원)
+    await page.click('.tab.home');
+  }
+
   console.log('\n[효과 에디터]');
   await page.click('.tab.home'); await page.click('[data-cat="effects"]');
   check(await page.locator('#homeCards [data-asset="fx:grenade_explode"]').count() === 1, '홈에 효과 카드가 보인다 (게임에서 쓰는 효과 표시)');
@@ -420,6 +500,7 @@ try {
   await page.click(`${ACT.tools} [data-view="ads"]`);
   const ads = await page.evaluate(() => { const g = window.__gv.model.gun, h = window.__gv.holder; return Math.abs(h.position.y + g.sightY) < 1e-6 && Math.abs(h.position.z - g.adsZ) < 1e-6; });
   check(ads, '정조준 보기: 게임과 같은 계산으로 조준선이 화면 가운데');
+  await page.click(`${ACT.tools} .mtabs button:has-text("파츠 · 스킨")`); // 도구 상자는 탭으로 나뉜다
   await page.selectOption(`${ACT.tools} select[data-slot="optic"]`, 'reddot');
   await page.selectOption(`${ACT.tools} select[data-slot="mag"]`, 'ext');
   const wp = await page.evaluate(() => { const g = window.__gv.model.gun; return { up: g.sightY > 0.065, irons: g.irons.every(o => !o.visible), mag: g.mag.scale.y > 1.2 }; });
@@ -462,14 +543,16 @@ try {
 
   console.log('\n[등록한 모델이 게임에 자동으로 적용]');
   const gctx = await browser.newContext({ viewport: { width: 1000, height: 600 } });
-  await gctx.addInitScript(() => localStorage.setItem('fd_loadout', JSON.stringify({ slots: ['mp5', 'm9'], parts: {} })));
+  await gctx.addInitScript(() => localStorage.setItem('fd_loadout2', JSON.stringify([{ id: 'mp5' }, { id: 'akimbo' }])));
   const gp = await gctx.newPage();
   const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
   await gp.goto(`http://localhost:${srv.port}/?auto=Tester&nolock&mode=ffa`);
   await gp.waitForFunction(() => window.__g && window.__g.joined, null, { timeout: 60000 });
   const gm = await gp.evaluate(i => ({ cur: window.__g.cur, models: window.__g.vmGuns.map(g => g.model || null), sightY: window.__g.vmGuns[i].sightY }), W('mp5'));
-  check(gm.models[W('mp5')] === 'zz_gun_test' && Math.abs(gm.sightY - 0.064) < 1e-3, '게임을 열면 MP5 가 등록된 모델로 그려진다 (정조준 높이도 모델의 부착 지점대로)', JSON.stringify(gm));
-  check(gm.models.filter(Boolean).length >= 1 && gm.models[W('m9')] === null, '모델이 없는 무기는 코드로 만든 총 그대로', JSON.stringify(gm.models));
+  // 게임은 모든 총을 guns.js 의 WEAPON_SCALE 배율로 그린다 → 정조준 높이 = 모델의 socket_ads 높이(0.064) × 배율
+  const WEAPON_SCALE = Number(/export const WEAPON_SCALE = ([\d.]+)/.exec(fs.readFileSync(path.join(ROOT, 'client/js/guns.js'), 'utf8'))[1]);
+  check(gm.models[W('mp5')] === 'zz_gun_test' && Math.abs(gm.sightY - 0.064 * WEAPON_SCALE) < 1e-3, '게임을 열면 MP5 가 등록된 모델로 그려진다 (정조준 높이도 모델의 부착 지점 × 무기 배율)', JSON.stringify(gm));
+  check(gm.models.filter(Boolean).length >= 1 && gm.models[W('akimbo')] === null, '모델이 없는 무기는 코드로 만든 총 그대로', JSON.stringify(gm.models));
   check(gerr.length === 0, '게임 화면 오류가 없다', gerr.join(' | '));
   await gctx.close();
 
@@ -493,7 +576,7 @@ try {
   check(await page.evaluate(() => window.__dd.data[window.__dd.cur].id) === 'm870' && (await page.textContent('#edKind')).includes('데이터 에디터'), '홈에서 무기 카드를 두 번 누르면 데이터 에디터가 그 무기를 고른 채 열린다');
   const mp5Row = await page.textContent(`#overlays > div:not([hidden]) table.cmp tbody tr:nth-child(${W('mp5') + 1})`);
   const regList = await page.textContent(`${ACT.tools}`);
-  check(mp5Row.includes('시험 소총') && regList.includes('시험 소총') && regList.includes('MP5'), '데이터 에디터에 등록된 모델이 보인다 (무기 표의 모델 열, 도구 상자의 "등록된 모델" 과 연결된 무기)', mp5Row);
+  check(mp5Row.includes('시험 소총') && regList.includes('시험 소총') && regList.includes('호넷 SMG'), '데이터 에디터에 등록된 모델이 보인다 (무기 표의 모델 열, 도구 상자의 "등록된 모델" 과 연결된 무기)', mp5Row);
   await page.evaluate(i => window.__dd.select(i), W('mp5'));
   const opts = await page.evaluate(() => [...document.querySelectorAll('#inspector > div:not([hidden]) select')].flatMap(s => [...s.options].map(o => o.value)));
   check(opts.includes('zz_gun_test'), '무기의 "모델" 은 등록된 모델 중에서 고르는 목록이다');
@@ -509,7 +592,7 @@ try {
   console.log('\n[스킬 데이터]');
   await page.evaluate(() => window.__dd.select(0)); // 기본 돌격소총
   const skillOpts = await page.evaluate(() => [...document.querySelectorAll('#inspector > div:not([hidden]) .list select')].map(s => [...s.options].map(o => o.value).join(',')));
-  check(skillOpts.length === 10 && skillOpts.every(o => o.includes('dash') && o.includes('grenade')), '무기의 "스킬" 칸은 스킬 목록에서 고른다 (기본 돌격소총: 주무기 5 + 보조무기 5)', JSON.stringify(skillOpts.length));
+  check(skillOpts.length === 8 && skillOpts.every(o => o.includes('dash') && o.includes('grenade')), '무기의 "스킬" 칸은 스킬 목록에서 고른다 (돌격소총: 주무기 4 + 보조무기 4)', JSON.stringify(skillOpts.length));
   await page.click('.tab.home'); await page.click('[data-cat="skills"]');
   check(await page.locator('#homeCards [data-asset="skill:dash"]').count() === 1, '홈에 스킬 카드가 보인다');
   await page.dblclick('#homeCards [data-asset="skill:dash"]');
@@ -551,7 +634,7 @@ try {
   await page.dispatchEvent(`${ACT.insp} .row:has(.lbl:text-is("혼자 점령하는 시간 (초)")) input`, 'change');
   await page.keyboard.press('ControlOrMeta+s');
   await page.waitForFunction(() => !window.__dd.isDirty(), null, { timeout: 8000 });
-  check(JSON.parse(fs.readFileSync(C('modes.json'), 'utf8'))[0].zone.capture === 9, '모드 수치(점령 시간)를 고치고 ⌘S 하면 content/modes.json 에 저장된다');
+  check(JSON.parse(fs.readFileSync(C('modes.json'), 'utf8'))[0].dom.capture === 9, '모드 수치(점령 시간)를 고치고 ⌘S 하면 content/modes.json 에 저장된다');
   // 예전 버전이 남긴 잘못된 크기 값(null → 'nullpx')이 있어도 기본 크기로 열린다
   await page.evaluate(() => localStorage.setItem('fs_layout_v1', JSON.stringify({ '--ed-l': null, '--ed-r': null })));
   await page.goto(`http://localhost:${srv.port}/studio/?open=map:frontline&active=map:frontline`);

@@ -85,7 +85,7 @@ export function describePart(base, part) {
 
 // ───── 출전 무기 ─────
 export const LOADOUT_SIZE = 2;
-export const DEFAULT_LOADOUT = ['ar', 'm9'];
+export const DEFAULT_LOADOUT = ['ar', 'revolver'];
 // 없어진 무기 → 대신 쓰는 무기 (브라우저에 저장된 예전 출전 무기)
 export const WEAPON_ALIASES = { m4: 'ar', ak: 'ar' };
 export const weaponId = id => WEAPON_ALIASES[id] || id;

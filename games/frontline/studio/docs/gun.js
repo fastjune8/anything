@@ -15,7 +15,7 @@ import { createCharacterDoc } from './character.js';
 import { attachClips, poseClip, reloadMotion } from '/js/gunanim.js';
 import { dressGun, gunMats, setGunMats, setGunFx, useGunMaterials, LAYERS } from '/js/gunmat.js';
 import { GUN_SLOTS, checkGunMaterials } from '/shared/content/schema.js';
-import { html, saveContent } from '../util.js';
+import { html, saveContent, tabifyTools } from '../util.js';
 
 const VM_FOV = 52; // 게임의 1인칭 총 카메라와 같은 시야각
 const hex = n => '#' + n.toString(16).padStart(6, '0');
@@ -54,6 +54,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
       <label class="kv" title="차지 샷 충전·아드레날린: core 가 밝아진다">효과 · 충전<input type="range" min="0" max="1" step="0.01" value="0" data-r="fxCharge"></label>`)
     + '<p class="note">만드는 규칙: docs/GUN_MODELING.md · 조작법은 ? (F1)</p>');
   for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
+  tabifyTools(tools, [['보기', ['보기', '표시']], ['파츠 · 스킨', ['크기 비교', '파츠 달아 보기', '스킨 (색 칸)']], ['모션', ['모션']], ['질감', ['질감 비교']]]); // 한 번에 한 묶음만 보인다
   const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span></span><span class="grow"></span>
     <span class="grp"><span class="gl">총 id</span><input type="text" data-r="gunId" placeholder="예: vk12" size="14" title="영문 소문자·숫자·_ (content/guns/<id>.glb)">
     <button type="button" class="primary" data-r="save" title="검사를 통과하면 프로젝트(content/guns)에 저장 (⌘S)">프로젝트에 저장</button></span>

@@ -1,31 +1,30 @@
-// 서버 설정: 환경변수와 경로, 게임 진행 시간 등 (여기서만 process.env 를 읽는다)
+// 서버 설정: 환경변수와 경로 (여기서만 process.env 를 읽는다)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MATCH_RESTART_MS, MATCH_TIME_MS } from '../shared/constants.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const CLIENT_DIR = path.join(ROOT, 'client');
 export const SHARED_DIR = path.join(ROOT, 'shared');
-export const CONTENT_DIR = path.join(ROOT, 'content'); // 맵·무기·파츠 데이터 (에디터가 쓴다)
+export const CONTENT_DIR = path.join(ROOT, 'content'); // 맵·무기·스킬 데이터 (스튜디오가 쓴다)
 export const STUDIO_DIR = path.join(ROOT, 'studio');   // FRONTIER Studio (개발 서버에서만 제공)
 export const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
+export const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data'); // 계정·전적 저장 (git 에 올리지 않는다)
 
 export const PORT = Number(process.env.PORT) || 3000;
 export const APP_ENV = process.env.APP_ENV || 'dev'; // dev | prod | test
 export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 export const STARTED_AT = Date.now();
 
-export const TICK_MS = 50; // 방 업데이트 주기 (봇 AI, 체력 회복)
-// 명중 신고 확인(랙 보정). 라이브는 항상 켜짐. 점수·규칙만 보는 서버 테스트는 HIT_CHECK=off 로 끈다 (아무 데서나 쏜 신고로 킬을 만들기 위해)
-export const HIT_CHECK = APP_ENV === 'prod' || process.env.HIT_CHECK !== 'off';
-
-// 아래는 테스트에서 시간을 줄이려고 환경변수로 바꿀 수 있다
+// 테스트에서 시간을 줄이려고 환경변수로 바꿀 수 있다
 export const goalFor = cfg => Number(process.env.GOAL) || cfg.goal;
-export const MATCH_MS = process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : MATCH_TIME_MS;
-export const RESTART_MS = process.env.RESTART_SECONDS ? Number(process.env.RESTART_SECONDS) * 1000 : MATCH_RESTART_MS;
+export const matchMsFor = cfg => (process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : cfg.minutes * 60000);
+export const RESULTS_MS = process.env.RESULTS_SECONDS ? Number(process.env.RESULTS_SECONDS) * 1000 : 15000; // 결과 화면 (재매치/로비 선택)
+export const VICTORY_MS = process.env.VICTORY_SECONDS ? Number(process.env.VICTORY_SECONDS) * 1000 : 3500;  // 승리 연출
 export const botFillFor = cfg => (process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : cfg.fill);
+export const respawnFor = cfg => (process.env.RESPAWN_SECONDS ? Number(process.env.RESPAWN_SECONDS) : cfg.respawn);
+export const PERSIST = process.env.PERSIST !== 'off';   // 테스트는 계정 파일을 쓰지 않는다
 
 export function lanAddresses() {
   const out = [];

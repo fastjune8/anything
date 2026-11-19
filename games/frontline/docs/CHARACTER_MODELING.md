@@ -16,7 +16,8 @@
 - **웨이트**: 웨이트 없는 정점 ✕, 합이 1 이 아닌 정점 !, 한 정점에 뼈 4개까지
 - **크기**: 3인칭 키 1.4~2.2m, 발바닥 y = 0, 정면 +Z. 크기가 1 이 아닌 뼈 !
 - **삼각형**: 3인칭 권장 20,000 / 최대 40,000, 1인칭 권장 12,000 / 최대 20,000. 파일 최대 4MB
-- **클립 이름**: 3인칭 `tp_<동작>[_<무기종류>]`, 1인칭 `fp_<동작>_<무기종류>` (무기 종류: rifle smg shotgun sniper pistol melee). 크기(scale) 키 !
+- **클립 이름**: 3인칭 `TP_<동작>[_<방향|무기종류>]`, 1인칭 `FP_<동작>_<무기종류>` — 단어마다 대문자로 시작 (예: `TP_Idle`, `TP_Walk_Left`, `TP_Run_Back`, `FP_Reload_Rifle`; 방향: Back Left Right, 무기 종류: Rifle Smg Shotgun Sniper Pistol Melee). 크기(scale) 키 !
+- **이동 클립은 제자리(in-place)**: `Root` 에 키 없음. 게임이 캡슐을 움직이고 재생 속도 = 실제 속도 ÷ 클립 기준 속도 (기준 속도는 `모델링/character/animation_spec.md`)
 
 ## 무기 쥐기 (게임과 같은 규칙)
 - 무기는 오른손 그립(`RightHandGrip` / `ViewmodelRightGrip`)에: 무기의 `socket_hand_r` 이 그 자리에 온다

@@ -1,7 +1,6 @@
-// 무기 스킬 (서버·브라우저 공용). 데이터는 content/skills.json, 칸 설명은 shared/content/schema.js 의 SKILL_SCHEMA.
-//  - 출전 무기 2개 중 1번(주무기) 무기에 고른 스킬 = Q, 2번(보조무기) 무기에 고른 스킬 = E
-//  - 누르는 스킬(아드레날린·대쉬·유탄)은 들고 있는 무기와 상관없이 쓸 수 있고, 늘 켜진 스킬(질주·과열)은 그 무기를 들고 있을 때만 적용된다
-//  - 열(과열)·유탄의 움직임·폭발 피해는 서버와 브라우저가 이 함수들로 같은 결과를 낸다
+// 무기 스킬 데이터 (서버·브라우저 공용). 수치는 content/skills.json, 칸 설명은 shared/content/schema.js 의 SKILL_SCHEMA.
+//   기획 3.3: 무기마다 여러 스킬, 무기마다 하나를 고른다. 같은 스킬이라도 장착 자리(주무기/보조무기)에 따라 값이 다를 수 있다
+//   → 스킬의 "secondary" 칸에 보조무기 자리일 때 바뀌는 값을 적는다. 동작은 shared/sim/abilities.js
 import data from '../content/skills.json' with { type: 'json' };
 import { checkSkills } from './content/schema.js';
 import { rayWorld } from './collision.js';
@@ -26,25 +25,16 @@ export function pickSkill(weapon, slot, id) {
   const list = skillsFor(weapon, slot);
   return list.find(s => s.id === id) || list[0] || null;
 }
-
-// ───── 과열 ─────
-// h = { heat 0~1, since(마지막 사격 뒤 지난 초), over(과열됨) }
-export const newHeat = () => ({ heat: 0, since: 9, over: false });
-export function coolHeat(h, sk, dt) {
-  h.since += dt;
-  if (h.since >= sk.coolDelay || h.over) h.heat = Math.max(0, h.heat - sk.cool * dt);
-  if (h.over && h.heat <= 0) h.over = false; // 다 식으면 다시 쏠 수 있다
+// 자리에 맞춘 최종 수치 (보조무기 자리면 secondary 값을 덮어쓴다)
+export function skillForSlot(sk, slot) {
+  if (!sk) return null;
+  const { secondary, ...base } = sk;
+  return slot === 1 && secondary ? { ...base, ...secondary } : base;
 }
-export function addHeat(h, sk) {
-  h.heat = Math.min(1, h.heat + sk.heat); h.since = 0;
-  if (h.heat >= 1) h.over = true;
-}
-export const heatMul = (h, sk) => 1 + sk.bonus * h.heat; // 피해 배율
 
-// ───── 유탄 ─────
+// ───── 유탄 (서버가 날리고, 브라우저는 같은 식으로 그린다) ─────
 export const GRENADE_GRAVITY = 12;
-export const GRENADE_LIFE = 4; // 이 시간이 지나면 공중에서도 터진다
-// g = { p: {x,y,z}, v: {x,y,z}, t } 를 dt 만큼 움직인다. 무언가에 닿으면 g.done = true (닿은 자리에서 터진다)
+export const GRENADE_LIFE = 4;
 const _d = { x: 0, y: 0, z: 0 };
 export function stepGrenade(g, dt, colliders) {
   g.v.y -= GRENADE_GRAVITY * dt;
@@ -53,20 +43,16 @@ export function stepGrenade(g, dt, colliders) {
   if (len > 1e-6) {
     _d.x = dx / len; _d.y = dy / len; _d.z = dz / len;
     const hit = rayWorld(g.p, _d, colliders, len);
-    const groundT = dy < 0 && g.p.y + dy <= 0 ? g.p.y / -_d.y : Infinity; // 땅
-    const t = Math.min(hit.t < len ? hit.t : Infinity, groundT);
-    if (t < Infinity) { g.p.x += _d.x * (t - 0.05); g.p.y += _d.y * (t - 0.05); g.p.z += _d.z * (t - 0.05); g.done = true; return g; }
+    if (hit.t < len) { g.p.x += _d.x * (hit.t - 0.05); g.p.y += _d.y * (hit.t - 0.05); g.p.z += _d.z * (hit.t - 0.05); g.done = true; return g; }
     g.p.x += dx; g.p.y += dy; g.p.z += dz;
   }
   if (g.t >= GRENADE_LIFE) g.done = true;
   return g;
 }
-// 폭발 중심에서 dist m 떨어진 곳의 피해 (가운데 = 최대, 가장자리 = 30%)
 export function splashDamage(sk, dist) {
   if (dist >= sk.radius) return 0;
   return sk.dmg * (1 - 0.7 * (dist / sk.radius));
 }
-// 폭발이 대상(몸 가운데)에 닿는가: 사이에 벽이 없어야 한다
 const _o = { x: 0, y: 0, z: 0 };
 export function blastReaches(c, target, colliders) {
   const dx = target.x - c.x, dy = target.y - c.y, dz = target.z - c.z, len = Math.hypot(dx, dy, dz);

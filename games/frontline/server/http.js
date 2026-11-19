@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { APP_ENV, CLIENT_DIR, CONTENT_DIR, STUDIO_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
-import { roomStats, listCustomRooms } from './rooms.js';
+import { hubStats, rooms } from './lobby/hub.js';
 import { DEV_TOOLS, handleDevApi } from './devtools.js';
 
 const MIME = {
@@ -33,14 +33,14 @@ export function createHttpServer() {
     // 상태 확인 (배포 전에 접속 중인 유저가 있는지 보는 용도)
     if (url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ env: APP_ENV, version: VERSION, editor: DEV_TOOLS, uptime: Math.round((Date.now() - STARTED_AT) / 1000), ...roomStats() }));
+      res.end(JSON.stringify({ env: APP_ENV, version: VERSION, editor: DEV_TOOLS, uptime: Math.round((Date.now() - STARTED_AT) / 1000), ...hubStats() }));
       return;
     }
 
     // 공개 친선전 방 목록 (로비)
     if (url === '/rooms') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ rooms: listCustomRooms() }));
+      res.end(JSON.stringify({ rooms: [...rooms].filter(r => r.custom).map(r => r.summary()) }));
       return;
     }
 

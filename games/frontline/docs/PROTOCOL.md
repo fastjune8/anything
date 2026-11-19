@@ -1,70 +1,64 @@
-# 통신 규약 (WebSocket)
+# 통신 규약
 
-브라우저와 서버는 WebSocket 으로 JSON 메시지를 주고받는다. 모든 메시지는 `t` 필드로 종류를 구분한다.
-서버 처리: `server/net.js` (분배) → `server/room.js` / `server/chat.js` / `server/combat.js`.
-클라이언트 처리: `client/js/net.js` (받기) / 각 모듈에서 `net.send(...)` (보내기).
+> 기준 문서: [`GAME_DESIGN.md`](GAME_DESIGN.md). 엔진 구조는 [`ENGINE.md`](ENGINE.md).
 
-좌표는 미터, 각도는 라디안. 플레이어 id 는 방 안에서만 유일한 0~7 정수. 위치 `p` 는 `[x, y, z]` (y 는 발 높이).
+연결 하나(WebSocket, JSON)로 로비와 경기를 모두 주고받는다. 페이지를 열면 바로 접속해 `hello` 를 보낸다.
+경기 중 메시지는 그 사람의 방(`server/game/room.js`)이, 나머지는 로비(`server/lobby/hub.js`)가 처리한다.
 
-## 클라이언트 → 서버
+## 접속 · 로비
 
-| t | 필드 | 설명 |
+| 보내는 쪽 | 메시지 | 내용 |
 |---|---|---|
-| `join` | `name`, `mode`, `loadout`, 그리고 아래 중 하나 | 입장. 연결 후 가장 먼저 보낸다. 이름은 14자까지. `mode` 는 `zone`(점령전) / `ffa`(개인전, 없으면 이것) / `tdm`. `loadout` = 들고 갈 무기 2개와 파츠·스킬 (`[{ id, parts, skill }, …]`, 0 = 주무기 Q, 1 = 보조무기 E) `[{id:'m4', parts:{optic:'reddot', …}}, {id:'m9', parts:{}}]` — 서버가 정리한다(없거나 틀리면 기본 M4A1+M9, 달 수 없는 파츠는 버림). 방 선택: (없음) = **빠른 시작**, `code` = 친선전 방 **코드로 입장**, `create` = 친선전 **방 만들기** `{name(20자), private, bots, minutes(3/5/10), map(선택: 맵 id, 없으면 모드 기본 맵)}` |
-| `in` | `s`(첫 입력 번호), `i`(`[[앞뒤, 좌우, 플래그, yaw, pitch, 무기번호, 정조준 0~1], …]`) | **이동 입력 (M1: 서버 권한 이동).** 입력 하나 = 1/60초. 0.05초마다 모아서 보낸다. 플래그: 1 점프, 2 앉기, 4 달리기, 8 대쉬(스킬 키를 이 입력에서 눌렀음 — 대쉬를 고른 사람만, 수치·쿨타임은 서버가 아는 값). 서버가 `shared/movement.js` 로 위치를 계산한다. 실제 시간보다 많이 보낸 입력은 버린다(속도 핵 방지). 예전의 위치 직접 보내기(`s`)는 받지 않는다 |
-| `tp` | `p`, `y` | 순간이동 — **개발·테스트 서버만** (라이브는 무시). 스튜디오 "여기서 시작", 자동 테스트 |
-| `shot` | `w`, `o`(총구 위치), `e`(`[[x,y,z,n], ...]` 탄착점) | 사격. 소리/궤적용으로 다른 사람에게 전달된다. `n`=6 이면 사람에 맞음, 그 외는 벽 방향 번호. 들고 오지 않은 무기면 무시된다. |
-| `rl` | `w` | 재장전 시작 (소리용). |
-| `sk` | `n`(자리 0 = Q 주무기, 1 = E 보조무기) | 누르는 스킬 사용 (지금은 아드레날린). 서버가 쿨타임을 확인한다. 대쉬는 `in` 플래그, 유탄은 `gl` |
-| `gl` | `o`(쏜 눈 위치), `d`(방향) | 유탄 발사 (유탄 스킬). 서버가 유탄 수·쏜 위치를 확인하고, 날아가는 길과 범위 피해를 계산한다 (server/skills.js) |
-| `hit` | `w`, `o`(쏜 눈 위치), `hits`(`[[부위, 거리, 대상id, 방향x, 방향y, 방향z, tick번호], ...]`) | 명중 신고. 서버가 **랙 보정**으로 확인한다 (server/lagcomp.js): `tick번호` = 그때 보고 있던 상대 위치(`s` 의 `n`). 그 순간의 상대 자세로 같은 판정 모양(shared/hitbox.js)에 광선을 쏴서, 몸을 지나지 않거나 벽 너머이거나 쏜 위치가 실제와 다르면 버린다. 부위·거리도 서버가 정한다. 1초보다 옛날은 1초 전으로. 들고 온 무기·파츠 성능으로 피해 계산 |
-| `respawn` | (없음) | 부활 요청. 죽은 뒤 1.5초가 지나야 받아 준다. 사람은 자동 부활이 없다 (봇은 3초 뒤 자동). |
-| `chat` | `text` | 채팅. 120자 제한, 5초에 4개, 연속 400ms 미만은 무시. |
+| 브라우저 | `hello` `{ token?, name? }` | 손님 계정 로그인. 토큰이 없거나 모르는 토큰이면 새 계정 |
+| 서버 | `hi` `{ token, me, loadout, outfit, modes, maps }` | 토큰은 브라우저가 `localStorage.fd_token` 에 저장. `me` = 프로필(아래) |
+| 브라우저 | `name` `{ name }` | 이름 변경 → 서버 `profile` |
+| 브라우저 | `lo` `{ loadout?, outfit? }` | 출전 무기 2개와 자리별 스킬 `[{ id, skill }, { id, skill }]`, 외형. 서버가 정리해서 `lo` 로 돌려준다 (계정에 저장) |
+| 브라우저 | `stats` | 서버 `profile` |
+| 서버 | `profile` `{ me }` | `me = { id, name, tag, level, xp, next, stats }` — stats: 플레이 시간·승/패/무·킬·데스·어시스트·점령·무기별 기록 |
+| 브라우저 | `chat` `{ ch: 'lobby'\|'party'\|'room', text }` | 로비·파티 채팅 (경기 중에는 `room` = 방 전체) |
+| 서버 | `chat` `{ ch, from(계정 id), name, text, id?(방 안 번호) }` | |
+| 브라우저 | `fr+` `{ tag: '이름#1234' }` · `fra` `{ id, ok }` · `fr-` `{ id }` | 친구 요청 · 수락/거절 · 삭제 |
+| 서버 | `friends` `{ list: [{ id, name, tag, level, status }], inc: [요청] }` | status: `offline` · `lobby` · `queue` · `match:<모드>` |
+| 브라우저 | `pinv` `{ id }` · `pjoin` `{ party }` · `pleave` | 파티 초대(친구만) · 참가 · 나가기 |
+| 서버 | `pinv` `{ party, from, name }` · `party` `{ party: { id, leader, members } \| null }` | |
+| 브라우저 | `qm` `{ mode }` | 빠른 매칭 (파티면 파티장만, 파티 전원이 같은 팀) |
+| 서버 | `queue` `{ mode }` → 곧 `welcome` | |
+| 브라우저 | `rooms` · `rcreate` `{ name, mode, map, minutes, max, pass, bots }` · `rjoin` `{ code, pass }` | 커스텀 방 목록 · 만들기 · 코드로 입장 |
+| 서버 | `rooms` `{ list }` · `denied` `{ reason: not_found\|full\|limit\|password }` | |
+| 서버 | `note` `{ text }` · `kicked` | 알림 · 같은 계정으로 다른 곳에서 접속해 끊김 |
+| 서버 | `lobby` `{ me }` | 경기에서 나와 로비로 |
 
-## 서버 → 클라이언트
+## 경기
 
-| t | 필드 | 설명 |
+| 보내는 쪽 | 메시지 | 내용 |
 |---|---|---|
-| `denied` | `reason` | 입장 거부 후 연결이 닫힌다. `not_found`(코드의 방이 없음) / `full`(가득 참) / `limit`(방을 더 만들 수 없음) |
-| `welcome` | `id`, `mode`, `map`, `room`, `team`, `ts`, `goal`, `left`(남은 ms), `state`, `players`, `lan`, `port`, (점령전) `zone` | 입장 직후 한 번. `map` = 이 방의 맵 id. `zone` = 거점 상태 (아래 `zone` 메시지와 같은 칸). `players` = `[{id,name,bot,k,d,alive,hp,team,lo}]` (`lo` = 그 사람의 출전 무기 `[[무기번호, 파츠], …]`, 봇은 `null`. 총 모델에 파츠를 그리는 용도). `room` 은 친선전이면 `{code, name, minutes}`, 빠른 시작이면 `null`. `team` 은 팀전에서 0/1, 개인전은 -1. `ts` = 팀 점수 `[0팀, 1팀]` |
-| `pj` | `player` | 누가 방에 들어옴 (봇 포함). |
-| `pl` | `id` | 누가 방에서 나감. |
-| `spawn` | `id`, `p` | 스폰/부활. 내 id 면 내 캐릭터를 그 위치로 옮긴다. |
-| `s` | `id`, `p`, `y`, `x`, `c`, `w`, `n` | 다른 플레이어(사람/봇)의 위치.  `n` = 서버 tick 번호 (명중 신고에 붙여 보낸다 → 랙 보정). |
-| `me` | `q`(처리한 마지막 입력 번호), `st`(이동 상태 전체: 위치·속도·땅·앉기·키·넘어가기·대쉬…) | 서버가 계산한 **내** 이동 상태 (0.05초마다, 바뀌었을 때). 브라우저는 이 상태로 맞추고 `q` 이후의 입력을 다시 적용한다 (client/js/player.js `reconcile`) |
-| `shot` | `id`, `w`, `o`, `e`, `q` | 다른 플레이어의 사격 (봇 사격 포함). `q`=1 이면 소음기: 소리를 줄이고 미니맵에 표시하지 않는다 (서버가 붙인다). |
-| `rl` | `id`, `w` | 다른 플레이어 재장전. |
-| `sk` | `id`, `e`(효과), `d`(지속 초) | 누가 누르는 스킬을 썼다 (연출·소리용) |
-| `gl` | `id`, `by`, `o`, `v`(속도) | 유탄이 날아간다 (쏜 사람 포함 모두). 브라우저는 shared/skills.js 의 같은 계산으로 그린다 |
-| `boom` | `id`, `p`, `r`(반경) | 유탄이 터졌다. 피해는 서버가 `dmg` · `kill` 로 따로 알린다 |
-| `dmg` | `to`, `from`, `hp`, `dmg`, `head` | 누가 누구에게 피해를 줌. |
-| `hp` | `hp` | 내 체력 회복 (5초간 피해 없으면 0.5초마다 +5). |
-| `rh` | `id`, `hp` | 다른 플레이어의 체력 회복 (그 사람을 제외한 방 전체에게). 머리 위 체력바 갱신용. |
-| `kill` | `killer`, `victim`, `w`, `head`, `sc`(`[[id,킬,데스], ...]`), `ts` | 킬. 팀전이면 `ts`(팀 점수)가 갱신된다. |
-| `chat` | `id`, `name`, `text` | 채팅 (보낸 사람에게도 돌아온다). |
-| `end` | `winner`, `wt`, `ts`, `sc`, `restart`(다음 경기까지 ms) | 경기 종료. `wt` = 팀전에서 이긴 팀 (-1 = 무승부/개인전). |
-| `start` | `goal`, `ts`, `left`, `players`, (점령전) `zone` | 새 경기 시작 (기록 초기화, 이어서 `spawn`). |
-| `zone` | `o`(주인 팀, -1 = 없음), `ct`(게이지를 채우는 팀), `p`(게이지 0~1), `c`(교전 중 0/1), `n`(`[0팀, 1팀]` 거점 안 인원), `ts` | 점령전 거점 상태. 바뀌었을 때만, 최대 0.2초마다. `ts` 는 거점 점수. |
-| `zcap` | `team` | 거점 점령 완료 (그 팀의 거점이 됨). |
+| 서버 | `welcome` | `{ id, mode, map, team, n(서버 tick), state, left(ms), ot, goal, sc[2], respawn(초), room?, players, lo, dom? }` |
+| 서버 | `start` | 재매치: 새 경기 (`welcome` 의 경기 부분과 같다) |
+| 브라우저 | `cmd` `{ s: 첫 번호, c: [입력, …] }` | 1/60초 입력. 입력 = `[앞뒤, 좌우, 버튼, yaw, pitch, 무기 자리(0/1), vt]` · 버튼 비트: 점프 1 · 앉기/슬라이딩 2 · 달리기 4 · 사격 8 · 정조준 16 · 재장전 32 · 스킬Q 64 · 스킬E 128 · `vt` = 그 순간 화면에 보이던 서버 tick (랙 보정) |
+| 서버 | `me` `{ q: 처리한 마지막 입력 번호, k, n, hp, alive, ps }` | 내 시뮬레이션 상태 전체 (바뀌었을 때, 30Hz). 브라우저는 `ps` 로 맞추고 `q` 이후 입력을 다시 계산한다 |
+| 서버 | `snap` `{ n, p: [[id, x, y, z, yaw, pitch, f, 무기번호, hp, 앉음, vx, vy, vz], …] }` | 다른 사람 (30Hz, 나 제외). f = 상태 비트 (`shared/sim/config.js` 의 `PF`: 정조준·달리기·공중·슬라이딩·앉기·넘어짐·투명·부활보호·무적·재장전·그래플·돌진·등장·피해감소) |
+| 서버 | `ev` `{ n, l: [사건, …] }` | 그 tick 의 사건 묶음 (아래) |
+| 브라우저 | `leave` · `rematch` `{ v }` | 로비로 · 결과 화면에서 재매치 선택 |
+| 서버 | `end` | `{ wt(이긴 팀, -1 무승부), top(개인전 1등 id), sc, dur(초), board: [{ id, name, team, bot, k, d, a, caps, w }], me: { result, xp, ups, profile }, victory(ms), results(ms) }` |
+| 브라우저 | `tp` `{ p, y }` · `hp` `{ v }` | 개발·테스트용 (라이브 서버는 무시) |
 
-## HTTP
+### 사건 (`ev.l` 의 `e`)
 
-| 경로 | 설명 |
+| e | 내용 |
 |---|---|
-| `/` , `/js/*`, `/css/*` | `client/` 폴더 |
-| `/shared/*` | `shared/` 폴더 (서버와 같이 쓰는 규칙 코드) |
-| `/vendor/three/*` | three.js |
-| `/rooms` | `{rooms: [{code, name, mode, humans, max, state, minutes, bots}]}` — 공개 친선전 방 목록 (비공개 방은 나오지 않는다) |
-| `/content/*` | `content/` 폴더 (맵·무기·파츠 데이터) |
-| `/status` | `{env, version, editor, uptime, rooms, humans, modes: {zone: {rooms, humans}, ffa: {…}, tdm: {…}}}` — 로비의 모드별 인원 표시, 배포 전 접속자 확인 |
-| `/studio/` | FRONTIER Studio (**개발 서버만**, 라이브 404. `/editor/` 는 여기로 옮겨 감) |
-| `PUT /api/maps/<id>` | 맵 저장 (**개발 서버만**, 아래 API 모두 같음). 본문 = 맵 JSON. 검사 실패 시 400 `{ok:false, errors}` |
-| `PUT /api/guns/<id>` | 총 모델 저장. 본문 = .glb |
-| `PUT /api/content/<weapons\|parts\|modes>` | 데이터 파일 저장 (검사 후) |
-| `PUT /api/drafts/<맵 id>` / `GET /api/drafts/draft_<맵 id>` | 시험 플레이용 임시 맵 (파일에 쓰지 않음). 게임은 `?draft=` 로 받아 간다 |
+| `spawn` `{ id, p, y }` | 부활 (부활 보호·등장 연출 시작) |
+| `pj` `{ p }` · `pl` `{ id }` | 들어옴(봇 포함) · 나감 |
+| `shot` `{ id, w, o, l: [[x,y,z,면], …], c }` | 다른 사람의 사격 (서버가 판정한 탄 끝점. 면 6 = 사람). 쏜 사람에게는 오지 않는다 (예측으로 이미 그림) |
+| `mel` `{ id }` · `rl` `{ id, w }` · `sw` `{ id, w }` · `sk` `{ id, k }` · `hook` `{ id, p }` | 근접 공격 · 재장전 · 무기 교체 · 스킬 · 그래플 지점 |
+| `gl` `{ id, by, o, v }` · `boom` `{ id, p, r }` | 유탄 발사 · 폭발 |
+| `dmg` `{ to, from, hp, d, h, k }` | 피해 (k = head·normal·melee·blast·bleed·fall) |
+| `blk` `{ id }` | 부활 보호·무적에 막힘 (쏜 사람에게만) |
+| `kill` `{ k, v, w, how, as, sc, kd, rs }` | 처치 (k = -1 이면 스스로/환경). how = 킬피드 아이콘, as = 어시스트 id, kd = [[id, 킬, 데스, 어시], …], rs = 부활 대기(초) |
+| `shove` `{ id, by }` · `bleed` `{ id }` | 넉백에 넘어짐 · 출혈 시작 |
+| `dom` `{ pts: [[주인, 진행팀, 진행도, 경합, 0팀 인원, 1팀 인원], …], sc }` | 점령전 거점 상태 (바뀌었을 때 0.2초마다) |
+| `cap` `{ z, team }` · `contest` `{ z }` · `ot` | 점령 · 경합 시작 · 연장전 |
+| `snd` `{ s, k, b, w }` | 들린 적의 소리: s = 소리 주인 표시용 번호(목숨마다 새로), k = 종류(walk·sprint·slide·land·fire·reload·skill), b = 방향(15° 단위, 월드 기준), w = 세기 1~3. **좌표는 없다** |
+| `rm` `{ id, v }` | 누가 재매치를 골랐다 |
 
-## 새 메시지를 추가하려면
-1. 이 문서에 한 줄 추가
-2. 클라이언트→서버: `server/net.js` 의 `HANDLERS` 에 함수 추가, 검증은 별도 모듈(`chat.js`, `combat.js` 처럼)에 순수 함수로 두면 단위 테스트가 쉽다.
-3. 서버→클라이언트: `client/js/net.js` 의 `onMessage` 에 `case` 추가
-4. `tests/protocol.test.mjs` 에 시나리오 추가
+## 새 메시지를 추가할 때
+1. 위 표에 적는다. 2. 서버: 로비면 `hub.js` 의 `LOBBY`, 경기면 `room.js` 의 `handle`. 3. 브라우저: `client/js/net.js` 의 `onMessage`/`onEvent`. 4. `tests/server.test.mjs` 에 확인을 더한다.

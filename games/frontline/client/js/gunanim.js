@@ -29,7 +29,7 @@ export function poseClip(gun, name, f) {
   if (!a) return false;
   for (const other of Object.values(gun.actions)) if (other && other !== a) other.weight = 0;
   a.weight = 1; a.time = Math.max(0, Math.min(1, f)) * a.getClip().duration; gun.mixer.update(0);
-  if (gun.armL && gun.handTarget) gun.armL.position.subVectors(gun.handTarget.position, gun.handRest);
+  if (gun.armL && gun.handTarget) gun.armL.position.subVectors(gun.handTarget.position, gun.handRest).multiplyScalar(gun.modelScale || 1); // 모델 안 좌표 → 총 그룹 좌표 (guns.js WEAPON_SCALE)
   return true;
 }
 

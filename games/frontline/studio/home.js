@@ -5,6 +5,8 @@ import { calcDamage } from '/shared/weapons.js';
 import { describePart } from '/shared/parts.js';
 import { el } from './util.js';
 import { EFFECT_HOOKS } from '/shared/content/schema.js';
+import { ITEMS, DEFAULTS as WEAR_DEFAULTS } from '/shared/cosmetics.js';
+import { SLOT_LABEL, regionName } from './wearlabels.js';
 
 const $ = id => document.getElementById(id);
 
@@ -20,7 +22,7 @@ export const EDITORS = {
 export const CATS = [
   { group: '콘텐츠', id: 'maps', label: '맵', icon: '▦', editor: 'map', desc: '전장 배치 — 구조물·엄폐물·스폰 지점·거점' },
   { group: '콘텐츠', id: 'looks', label: '분위기', icon: '☀', editor: 'look', desc: '빛·하늘·안개와 맵 물체 재질(색·무늬) 묶음. 맵마다 하나를 고른다' },
-  { group: '콘텐츠', id: 'models', label: '모델', icon: '⌐', editor: 'model', desc: 'Blender 로 만든 총·물체 모델 (.glb). 규칙 검사·1인칭·파츠·스킨 미리 보기' },
+  { group: '콘텐츠', id: 'models', label: '모델', icon: '⌐', editor: 'model', desc: 'Blender 로 만든 총 · 캐릭터 · 의상 모델 (.glb). 규칙 검사 · 1인칭 · 파츠 · 스킨 미리 보기, 의상은 입혀 보고 갈아입혀 보기' },
   { group: '게임 데이터', id: 'weapons', label: '무기', icon: '✦', editor: 'data', desc: '총의 성능 수치 — 피해·연사·탄창·반동 …' },
   { group: '게임 데이터', id: 'parts', label: '파츠', icon: '⚙', editor: 'data', desc: '총에 다는 부품 — 자리별 파츠와 장단점' },
   { group: '게임 데이터', id: 'skills', label: '스킬', icon: '⚡', editor: 'data', desc: '무기 스킬 — Q(주무기)·E(보조무기)로 쓰는 스킬의 효과와 수치' },
@@ -96,7 +98,9 @@ export function createHome(ctx) {
       case 'looks': return data.looks.map((l, i) => ({
         key: `look:${l.id}`, title: l.name, sub: `${l.id}${i === 0 ? ' · 기본' : ''} · 쓰는 맵 ${usersOf(l.id).length}개`, thumb: () => drawLookThumb(l, 400, 240), def: l,
       }));
-      case 'models': if (modelKind === 'char') return data.characters.map(c => ({ key: `char:${c.id}`, title: c.id, sub: `캐릭터 · content/characters/${c.id}.glb`, icon: '♙', def: c }));
+      case 'models':
+        if (modelKind === 'wear') return [...ITEMS.values()].map(w => ({ key: `wear:${w.id}`, title: w.name, sub: `${SLOT_LABEL[w.slot] || w.slot} · ${w.id}${w.set ? ` · ${w.set}` : ''}`, icon: '♙', def: w, state: WEAR_DEFAULTS.items[w.slot] === w.id ? ['기본 복장', 'good'] : null }));
+        if (modelKind === 'char') return data.characters.map(c => ({ key: `char:${c.id}`, title: c.id, sub: `캐릭터 · content/characters/${c.id}.glb`, icon: '♙', def: c }));
         return modelKind === 'gun' ? data.models.map(m => { const reg = data.registry.find(x => x.id === m.id); return { key: `gun:${m.id}`, title: reg ? reg.name : m.id, sub: `${reg && reg.kind === 'melee' ? '근접 무기' : '총'} · ${m.id} · ${(m.bytes / 1024).toFixed(0)}KB${reg && reg.linkedTo ? ` · ${reg.linkedTo}` : ''}`, icon: '⌐', def: m, reg, state: reg ? ['등록됨', 'good'] : ['작업 중', ''] }; }) : [];
       case 'weapons': {
         const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets)), maxRpm = Math.max(...data.weapons.map(w => w.rpm));
@@ -143,8 +147,11 @@ export function createHome(ctx) {
     if (cat === 'maps') acts.appendChild(btn('+ 새 맵', () => ctx.openAsset(`map:new${Date.now()}`, { create: true }), 'primary', 'newMapBtn'));
     if (cat === 'models') {
       const seg = el('div', 'seg');
-      for (const [k, label] of [['gun', '총 · 근접'], ['char', '캐릭터'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
-      acts.append(seg, btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'), btn('+ 새 모델 (.glb)', () => $('fileIn').click(), 'primary', 'openGlbBtn'));
+      for (const [k, label] of [['gun', '총 · 근접'], ['char', '캐릭터'], ['wear', '의상'], ['prop', '물체 (준비 중)']]) { const b = btn(label, () => { modelKind = k; sel = null; render(); }, k === modelKind ? 'on' : ''); seg.appendChild(b); }
+      acts.append(seg);
+      if (modelKind === 'wear') acts.append(btn('의상 입혀 보기', () => ctx.openAsset('wear:edit'), 'primary', 'openWardrobeBtn'));
+      else acts.append(btn('예시 모델', () => ctx.openAsset('gun:sample'), '', 'sampleBtn'), btn('+ 새 모델 (.glb)', () => $('fileIn').click(), 'primary', 'openGlbBtn'));
+      acts.append(btn('튜토리얼', () => ctx.tour('model'), '', 'modelTourBtn'));
     }
     if (['weapons', 'parts', 'modes', 'skills'].includes(cat)) {
       acts.appendChild(btn('데이터 에디터로 열기', () => ctx.openAsset(`data:${cat}`)));
@@ -184,6 +191,7 @@ export function createHome(ctx) {
   function open(it) {
     const [kind, id, id2] = it.key.split(':');
     if (kind === 'map' || kind === 'gun' || kind === 'char') ctx.openAsset(it.key);
+    else if (kind === 'wear') ctx.openAsset('wear:edit', { select: id });
     else if (kind === 'look') ctx.openAsset('look:edit', { select: id });
     else if (kind === 'weapon') ctx.openAsset('data:weapons', { select: id });
     else if (kind === 'part') ctx.openAsset('data:parts', { slot: id, select: id2 });
@@ -225,6 +233,13 @@ export function createHome(ctx) {
       row('스폰', `개인전 ${m.spawns.ffa.length}곳${m.spawns.team ? ` · 팀 ${m.spawns.team.map(t => t.length).join(' / ')}` : ' · 팀 없음'}`); row('거점', `${(m.zones || []).length}개`);
       box.appendChild(dl);
       rel('이 맵을 기본 맵으로 쓰는 모드', data.modes.filter(x => x.map === m.id).map(x => [x.name, go('modes', `mode:${x.id}`)]));
+    } else if (cat === 'models' && it.key.startsWith('wear:')) {
+      const w = it.def, same = [...ITEMS.values()].filter(x => x.slot === w.slot && x.id !== w.id);
+      row('칸', SLOT_LABEL[w.slot] || w.slot); row('id', w.id); if (w.set) row('세트', w.set);
+      row('3인칭 모델', `content/${w.tp}`); row('1인칭 모델', w.fp ? `content/${w.fp}` : '없음 (1인칭에서는 그리지 않는다)');
+      row('가리는 몸', w.mask && w.mask.length ? w.mask.map(regionName).join(', ') : '없음 (뼈에 붙는 물건)'); row('기본 복장', WEAR_DEFAULTS.items[w.slot] === w.id ? '예' : '아니오');
+      box.appendChild(dl);
+      rel(`같은 칸의 다른 옷 (${same.length}) — 교체해 볼 수 있는 옷`, same.map(x => [x.name, go('models', `wear:${x.id}`)]));
     } else if (cat === 'models' && it.key.startsWith('char:')) {
       row('파일', `content/characters/${it.def.id}.glb`); row('열기', '두 번 누르면 모델 에디터의 캐릭터 보기 (뼈·웨이트·무기 쥐기·애니메이션)');
       box.appendChild(dl);
@@ -239,7 +254,7 @@ export function createHome(ctx) {
       const w = it.def, dps = calcDamage(w, 'body', 10) * w.pellets * w.rpm / 60;
       row('분류', w.cls); row('피해', `${w.dmg}${w.pellets > 1 ? ' × ' + w.pellets : ''} (머리 ×${w.head})`); row('분당 발사', `${w.rpm}`); row('DPS (10m)', dps.toFixed(0));
       const reg = w.model && data.registry.find(x => x.id === w.model);
-      row('탄창', `${w.mag} / 예비 ${w.reserve}`); row('재장전', `${w.reload}초`); row('이동 속도', `${Math.round(w.move * 100)}%`);
+      row('탄창', `${w.mag}`); row('재장전', `${w.reload}초`); row('이동 속도', `${Math.round(w.move * 100)}%`);
       row('모델', reg ? `${reg.name} (등록된 모델)` : '코드로 만든 총');
       const skName = id => (data.skills.find(s => s.id === id) || { name: id }).name;
       row('스킬', w.skills ? `Q(주무기): ${(w.skills.primary || []).map(skName).join(', ') || '없음'} · E(보조무기): ${(w.skills.secondary || []).map(skName).join(', ') || '없음'}` : '없음');

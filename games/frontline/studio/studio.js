@@ -53,6 +53,7 @@ const ctx = {
   changed: () => { renderTabs(); home.render(); },
   refreshAssets: async () => { await home.load(); await ctx.dataChanged('weapons'); },
   openAsset: (key, opts) => openAsset(key, opts),
+  tour: name => tour && tour.start(name), // 튜토리얼 다시 보기 (name = 'model' 이면 모델 에디터 안내)
   play: url => startPlay(url),
   docs: () => docs,
   assets: () => ({ maps: home.data.maps.map(m => m.id), guns: home.data.models.map(m => m.id), characters: home.data.characters.map(c => c.id) }),
@@ -71,7 +72,7 @@ const ctx = {
   },
 };
 // 문서 종류 → [만드는 함수, 편집기]
-const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'], effect: [createEffectDoc, 'effect'], char: [createCharacterDoc, 'model'] };
+const FACTORY = { map: [createMapDoc, 'map'], gun: [createGunDoc, 'model'], data: [createDataDoc, 'data'], look: [createLookDoc, 'look'], effect: [createEffectDoc, 'effect'], char: [createCharacterDoc, 'model'], wear: [(...a) => import('./docs/wardrobe.js').then(m => m.createWardrobeDoc(...a)), 'model'] }; // 의상 화면은 처음 열 때만 불러온다 (캐릭터 모델이 커서)
 
 async function openAsset(key, opts = {}) {
   let doc = docs.get(key);
@@ -110,6 +111,7 @@ function activate(doc) {
     if (doc.kind === 'look') window.__lk = doc.api;
     if (doc.kind === 'effect') window.__fx = doc.api;
     if (doc.kind === 'character') window.__ch = doc.api;
+    if (doc.kind === 'wear') window.__wd = doc.api;
   } else home.render();
   renderTabs(); saveSession();
 }
@@ -171,9 +173,18 @@ async function openGlbFile(file) {
 }
 $('fileIn').addEventListener('change', () => { openGlbFile($('fileIn').files[0]); $('fileIn').value = ''; });
 const main = $('main');
-main.addEventListener('dragover', e => { if ([...e.dataTransfer.items].some(i => i.kind === 'file')) { e.preventDefault(); $('drop').classList.add('over'); } });
+main.addEventListener('dragover', e => {
+  if (![...e.dataTransfer.items].some(i => i.kind === 'file')) return;
+  e.preventDefault(); $('drop').querySelector('b').textContent = active && active.dropFile ? '.glb 를 놓으면 그 옷을 입혀 봅니다 (임시 — 저장되지 않음)' : '.glb 를 놓으면 모델 에디터로 엽니다';
+  $('drop').classList.add('over');
+});
 main.addEventListener('dragleave', e => { if (!main.contains(e.relatedTarget)) $('drop').classList.remove('over'); });
-main.addEventListener('drop', e => { e.preventDefault(); $('drop').classList.remove('over'); const f = e.dataTransfer.files[0]; if (f && /\.glb$/i.test(f.name)) openGlbFile(f); else flash('.glb 파일만 열 수 있습니다'); });
+main.addEventListener('drop', e => {
+  e.preventDefault(); $('drop').classList.remove('over'); const f = e.dataTransfer.files[0];
+  if (!f || !/\.glb$/i.test(f.name)) { flash('.glb 파일만 열 수 있습니다'); return; }
+  if (active && active.dropFile) active.dropFile(f); // 의상 화면: 놓은 .glb 를 그 옷으로 입혀 본다
+  else openGlbFile(f);
+});
 
 // ───────── 저장 ─────────
 async function saveAll() {
@@ -248,11 +259,17 @@ $('updateClose').addEventListener('click', () => { updateDismissed = true; $('up
 
 // ───────── 시작 ─────────
 const home = createHome(ctx);
-help = createHelp({ onTour: () => tour.start() });
+help = createHelp({ onTour: () => tour.start(), onModelTour: () => tour.start('model') });
 tour = createTour({
   goHome: () => activate(null),
   selectFirst: () => { const m = home.data.maps[0]; home.setCat('maps', m ? `map:${m.id}` : null); },
   openFirstMap: async () => { const m = home.data.maps[0]; if (m) await openAsset(`map:${m.id}`); },
+  openWardrobe: () => openAsset('wear:edit'),
+  openChar: async () => { // 가장 새 3인칭 캐릭터 (이름의 v_번호가 큰 것). 목록은 저장할 때마다 이름순으로 다시 정렬되므로 첫 번째를 쓰면 옛 버전이 열린다
+    const ver = id => Number((id.match(/v_(\d+)/) || [0, 0])[1]), ids = home.data.characters.map(c => c.id).filter(id => /thirdperson/.test(id)).sort((a, b) => ver(b) - ver(a));
+    const id = ids[0] || (home.data.characters[0] && home.data.characters[0].id); if (id) await openAsset(`char:${id}`); return !!id;
+  },
+  openGun: async () => { await openAsset('gun:sample'); },
 });
 $('helpBtn').addEventListener('click', () => help.open(active ? active.editor : 'common'));
 await home.load();

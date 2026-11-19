@@ -1,70 +1,76 @@
-// 출전 무기(2개)와 무기별 파츠: 브라우저에 저장하고, 바뀌면 성능(eff)을 다시 계산해 듣는 쪽에 알린다.
-// 규칙(어떤 파츠를 달 수 있는지, 성능 계산)은 shared/parts.js 에 있고 서버도 같은 것을 쓴다.
+// 출전 무기 2자루 · 자리별 스킬 · 외형. 브라우저에 저장하고 서버(계정)에도 알린다 (로비의 `lo`).
+//   규칙(같은 무기 두 번 금지, 고를 수 있는 스킬)은 shared/sim/player.js 의 makeLoadout — 서버도 같은 함수로 정리한다.
 import { WEAPONS } from '/shared/weapons.js';
-import { applyParts, sanitizeParts, sanitizeLoadout, getPart, weaponId } from '/shared/parts.js';
-import { pickSkill, skillsFor } from '/shared/skills.js';
-import { loadout, eff, wp, inv } from './state.js';
+import { makeLoadout, loadoutWire } from '/shared/sim/player.js';
+import { skillsFor } from '/shared/skills.js';
+import { sanitizeOutfit, SLOTS as OUTFIT_SLOTS } from '/shared/cosmetics.js';
+import { me, wp, net } from './state.js';
 import { params } from './util.js';
 
-const KEY = 'fd_loadout';
-
-// 지금까지 얻은 무기. 아직 획득 시스템이 없어서 전부 가진 것으로 시작한다. (?owned=ar,m9 로 일부만 가진 화면을 확인할 수 있다)
-const ownedParam = params.get('owned');
-export const owned = new Set(ownedParam ? ownedParam.split(',') : WEAPONS.map(w => w.id));
-if (ownedParam) for (const id of ['ar', 'm9']) owned.add(id); // 기본 무기는 항상 가진다
-
+const KEY = 'fd_loadout2', OUTFIT_KEY = 'fd_outfit';
 const listeners = [];
-// fn(wi): wi 번 무기의 파츠가 바뀜, fn(-1): 출전 무기가 바뀜(전체 다시 그리기)
 export function onLoadoutChange(fn) { listeners.push(fn); }
-const notify = wi => { for (const fn of listeners) fn(wi); };
+const notify = () => { for (const fn of listeners) fn(-1); };
 
-function refresh(wi) { Object.assign(eff[wi], applyParts(WEAPONS[wi], loadout.parts[wi])); }
-function save() {
-  const parts = {}, skills = {};
-  WEAPONS.forEach((w, i) => { if (Object.keys(loadout.parts[i]).length) parts[w.id] = loadout.parts[i]; if (loadout.skills[i].some(Boolean)) skills[w.id] = loadout.skills[i]; });
-  try { localStorage.setItem(KEY, JSON.stringify({ slots: loadout.slots.map(i => WEAPONS[i].id), parts, skills })); } catch { /* 저장 불가(사생활 보호 모드 등)면 이번 접속 동안만 유지 */ }
+// 출전 정보: [{ id, skill }, { id, skill }]
+export const loadout = { wire: loadoutWire(me.lo) };
+function apply(wire, { save = true, tell = true } = {}) {
+  me.lo = makeLoadout(wire);
+  loadout.wire = loadoutWire(me.lo);
+  wp.cur = me.lo[0].wi; wp.slot = 0;
+  if (save) { try { localStorage.setItem(KEY, JSON.stringify(loadout.wire)); } catch { /* 저장 불가면 이번 접속만 */ } }
+  if (tell) net.send({ t: 'lo', loadout: loadout.wire });
+  notify();
 }
-// 손에 든 무기를 1번으로 되돌린다 (로비에서 출전 무기를 바꿨을 때)
-function holdFirst() { wp.cur = loadout.slots[0]; wp.prev = loadout.slots[1]; }
-
-// 저장된 값 불러오기 (형식이 깨졌거나 없어진 무기/파츠는 버린다)
 {
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(KEY)); } catch { /* 깨진 값은 무시 */ }
-  const sp = saved && typeof saved.parts === 'object' && saved.parts ? saved.parts : {};
-  const ss = saved && typeof saved.skills === 'object' && saved.skills ? saved.skills : {};
-  WEAPONS.forEach((w, i) => {
-    loadout.parts[i] = sanitizeParts(w.id, sp[w.id]); refresh(i); inv[i].ammo = eff[i].mag;
-    loadout.skills[i] = [0, 1].map(n => { const s = pickSkill(w, n, (ss[w.id] || [])[n]); return s ? s.id : null; }); // 자리마다 고를 수 있는 스킬 (처음엔 첫 번째)
-  });
-  const ids = saved && Array.isArray(saved.slots) ? saved.slots.map(weaponId).filter(id => owned.has(id)) : []; // 없어진 무기(M4·AK)는 기본 돌격소총으로
-  loadout.slots = sanitizeLoadout(ids.map(id => ({ id }))).map(l => l.wi);
-  holdFirst();
+  try { saved = JSON.parse(localStorage.getItem(KEY)); } catch { /* 깨진 값 */ }
+  const q = params.get('lo'); // 개발·테스트: ?lo=ar:dash,awm:grapple
+  if (q) saved = q.split(',').map(p => { const [id, skill] = p.split(':'); return { id, skill }; });
+  if (saved) apply(saved, { save: !q, tell: false });
 }
-
-// slot(0/1)번 자리에 wi 번 무기를 넣는다. 이미 다른 자리에 있던 무기면 두 자리를 맞바꾼다.
-export function equip(slot, wi) {
-  if (!owned.has(WEAPONS[wi].id) || loadout.slots[slot] === wi) return;
-  const other = 1 - slot;
-  if (loadout.slots[other] === wi) loadout.slots[other] = loadout.slots[slot];
-  loadout.slots[slot] = wi;
-  holdFirst(); save(); notify(-1);
+// 서버가 계정에 저장해 둔 값 (다른 브라우저에서 고른 것)
+export function fromServer(wire) { if (!localStorage.getItem(KEY) && Array.isArray(wire)) apply(wire, { tell: false }); else net.send({ t: 'lo', loadout: loadout.wire, outfit: outfit.choice }); }
+// slot 자리에 무기 id. 다른 자리에 같은 무기가 있으면 맞바꾼다
+export function equip(slot, id) {
+  const w = loadout.wire.map(x => ({ ...x }));
+  if (w[1 - slot].id === id) w[1 - slot] = { ...w[slot] };
+  w[slot] = { id, skill: null };
+  apply(w);
 }
-
-// wi 번 무기의 slotId 자리에 파츠를 단다. partId 가 없으면(null) 기본 상태로 되돌린다.
-export function setPart(wi, slotId, partId) {
-  if (partId && !getPart(WEAPONS[wi].id, slotId, partId)) return;
-  if (partId) loadout.parts[wi][slotId] = partId; else delete loadout.parts[wi][slotId];
-  refresh(wi); inv[wi].ammo = eff[wi].mag;
-  save(); notify(wi);
+export function setSkill(slot, skillId) {
+  const w = loadout.wire.map(x => ({ ...x }));
+  w[slot].skill = skillId;
+  apply(w);
 }
+export const skillChoices = slot => skillsFor(WEAPONS.find(w => w.id === loadout.wire[slot].id), slot);
 
-// wi 번 무기를 slot(0 = 주무기, 1 = 보조무기) 자리에 들고 갈 때 쓸 스킬
-export function setSkill(wi, slot, skillId) {
-  if (!skillsFor(WEAPONS[wi], slot).some(s => s.id === skillId)) return;
-  loadout.skills[wi][slot] = skillId;
-  save(); notify(wi);
+// ───── 외형 (기획 11.3: 헤어·의상·의상 색·액세서리) ─────
+export const outfit = { choice: { items: {} } };
+const outfitListeners = [];
+export function onOutfitChange(fn) { outfitListeners.push(fn); }
+{
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(OUTFIT_KEY)); } catch { /* 깨진 값 */ }
+  const raw = saved && typeof saved === 'object' ? saved : { items: {} };
+  const q = params.get('outfit');
+  if (q) for (const part of q.split(',')) {
+    const [k, v] = part.split(':');
+    if (k === 'none') { raw.items = Object.fromEntries(OUTFIT_SLOTS.map(s => [s, null])); continue; }
+    if (k === 'palette') raw.palette = v; else if (k === 'skin') raw.skin = Number(v);
+    else if (OUTFIT_SLOTS.includes(k)) { raw.items = raw.items || {}; raw.items[k] = v === '-' || !v ? null : v; }
+  }
+  outfit.choice = sanitizeOutfit(raw);
 }
-
-// 입장할 때 서버로 보내는 형식
-export const loadoutMessage = () => loadout.slots.map((i, n) => ({ id: WEAPONS[i].id, parts: loadout.parts[i], skill: loadout.skills[i][n] }));
+export function setOutfitChoice(choice) {
+  outfit.choice = sanitizeOutfit(choice);
+  try { localStorage.setItem(OUTFIT_KEY, JSON.stringify(outfit.choice)); } catch { /* 저장 불가 */ }
+  net.send({ t: 'lo', outfit: outfit.choice });
+  for (const fn of outfitListeners) fn(outfit.choice);
+}
+export function equipOutfit(slot, id) {
+  const items = { ...outfit.choice.items };
+  if (id === undefined) delete items[slot]; else items[slot] = id;
+  setOutfitChoice({ ...outfit.choice, items });
+}
+export const outfitMessage = () => outfit.choice;

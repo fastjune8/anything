@@ -1,20 +1,20 @@
 {
   "name": "frontier",
-  "version": "2.0.0",
-  "description": "FRONTIER — 무기 스킬을 조합해 싸우는 웹 하이퍼 FPS",
+  "version": "3.0.0",
+  "description": "FRONTIER — 무기 스킬을 조합해 싸우는 웹 하이퍼 FPS (점령전 중심)",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server/index.js",
-    "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch-path=server --watch-path=shared --watch-path=content/weapons.json --watch-path=content/parts.json --watch-path=content/modes.json --watch-path=content/models.json server/index.js",
-    "test": "node tests/unit.test.mjs && node tests/rules.test.mjs && node tests/tdm.test.mjs && node tests/custom.test.mjs && node tests/loadout.test.mjs && node tests/zone.test.mjs && node tests/movement.test.mjs && node tests/lagcomp.test.mjs && node tests/skills.test.mjs && node tests/protocol.test.mjs",
+    "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch-path=server --watch-path=shared --watch-path=content/weapons.json --watch-path=content/skills.json --watch-path=content/modes.json --watch-path=content/models.json server/index.js",
+    "test": "node tests/engine.test.mjs && node tests/cosmetics.test.mjs && node tests/garment.test.mjs && node tests/server.test.mjs",
     "test:browser": "node tests/browser.test.mjs && node tests/studio.test.mjs",
     "test:all": "eslint . && npm test && node tests/browser.test.mjs && node tests/studio.test.mjs",
     "deploy:prod": "./deploy/deploy.sh prod",
     "rollback:prod": "./deploy/deploy.sh prod --rollback",
     "lint": "eslint .",
     "check": "eslint . && npm test",
-    "test:unit": "node tests/unit.test.mjs"
+    "test:unit": "node tests/engine.test.mjs"
   },
   "dependencies": {
     "three": "0.170.0",

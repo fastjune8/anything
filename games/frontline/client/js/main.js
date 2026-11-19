@@ -1,84 +1,163 @@
 // 시작점: 모듈을 불러오고 매 프레임 루프를 돈다.
-//   입력(input.js) → 이동(player.js)·무기(weapon.js) → 카메라 → 화면 갱신(hud/fx/remotes) → 그리기
+//   입력(input.js) → 예측(predict.js: 1/60초 시뮬레이션) → 카메라 → 화면 갱신(remotes/hud/minimap/fx) → 그리기
+import * as THREE from 'three';
 import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap } from './scene.js';
 import { updateTracers, updateParts, updateGrenades } from './fx.js';
 import { vfx } from './vfx.js';
 import { updateDashFx, dashView } from './dashfx.js';
-import { updateSkills, sk as skillState } from './skills.js';
-import { updateRemotes, remotes, remoteHit } from './remotes.js';
-import { updateViewmodel, guns as vmGuns } from './viewmodel.js';
-import { updateMovement, rpos, teleport, netStats } from './player.js';
-import { updateWeapon, startReload, switchTo } from './weapon.js';
+import { updateRemotes, remotes, liveTargets } from './remotes.js';
+import { updateViewmodel, guns as vmGuns, arms as fpArms } from './viewmodel.js';
+import { updatePrediction, updateRecoil, rpos, teleport, netStats } from './predict.js';
 import { updateHud } from './hud.js';
 import { updateObjective } from './objective.js';
 import { updateMinimap, lastStats as minimapStats } from './minimap.js';
-import { sendState } from './net.js';
+import { connect, sendInputs, leaveMatch } from './net.js';
 import { isActive } from './input.js';
-import { join, nameEl } from './menu.js';
-import { me, inv, wp, inp, game, roster, net, loadout, eff, PITCH_MAX } from './state.js';
-import { armory, updateArmory } from './armory.js';
-import { $, params, BASE_FOV, EMBED, lerp, clamp, smooth } from './util.js';
+import { me, wp, inp, game, roster, net, lobby, eff, PITCH_MAX } from './state.js';
+import { outfit, onOutfitChange, setOutfitChoice, equipOutfit, loadout, equip, setSkill } from './loadout.js';
+import { $, params, BASE_FOV, EMBED, lerp, clamp, smooth, MODE_CFG, setMode } from './util.js';
+import { setDisplay } from './dom.js';
+import { WEAPONS } from '/shared/weapons.js';
+import { setMapDef } from '/shared/maps/index.js';
+import { TPAnimator, RIFLE_WEAPONS, newCharState } from './charanim.js';
+import { clipNames, wearableCacheSize } from './charassets.js';
+import { buildGun } from './guns.js';
+import { dress, setOutfit, outfitState, equip as equipWear, undress } from './outfit.js';
+import { clock } from './clock.js';
+import { BODY } from '/shared/sim/config.js';
+import './lobby.js';
 
+// ───── 3인칭 시점 (기획 11.2: 1인칭·3인칭 지원) ─────
+// V 키: 어깨 너머 3인칭 카메라. 1인칭과 같은 게임 상태로 같은 캐릭터·무기를 그린다 (조준·사격 판정은 늘 눈 기준)
+const localTP = { anim: TPAnimator.create(), guns: [], cs: newCharState(), view: params.has('tpcam') };
+const tpCam = new THREE.PerspectiveCamera(70, 1, 0.05, 1500); tpCam.rotation.order = 'YXZ';
+if (localTP.anim) {
+  localTP.anim.root.visible = false; scene.add(localTP.anim.root);
+  localTP.guns = WEAPONS.map(w => { const g = buildGun(w.id, false, {}, false); g.group.visible = false; return g; });
+  localTP.outfit = dress(localTP.anim.inst, outfit.choice, { view: 'tp' });
+  onOutfitChange(c => setOutfit(localTP.outfit, c));
+}
+addEventListener('keydown', e => { if (e.code === 'KeyV' && !e.repeat && localTP.anim && game.joined && !inp.chatOpen) localTP.view = !localTP.view; });
+function updateLocalTP(dt) {
+  const L = localTP, cs = L.cs;
+  if (!L.anim) return;
+  const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
+  cs.fwd = -me.vel.x * sy - me.vel.z * cy; cs.side = me.vel.x * cy - me.vel.z * sy;
+  cs.air = !me.onGround; cs.vy = me.vel.y; cs.ads = wp.adsT; cs.sprint = wp.sprinting;
+  cs.rifle = RIFLE_WEAPONS.has(WEAPONS[wp.cur].id);
+  cs.reloadF = wp.reload && !wp.reload.shell ? Math.min(1, wp.reload.t / wp.reload.total) : null;
+  cs.shots = wp.shots; cs.pitch = me.pitch; cs.alive = me.alive;
+  const root = L.anim.root;
+  root.position.copy(rpos); root.rotation.set(me.slide > 0 ? -0.7 : 0, me.yaw, 0);
+  root.scale.set(1, me.crouch && me.slide <= 0 ? 0.74 : 1, 1);
+  L.anim.setGun(L.guns[wp.cur]);
+  L.anim.update(dt, cs);
+}
+
+// 속도감: 달리기보다 빠를수록 시야가 넓어진다 (슬라이딩·슬라이딩 점프·반동 이동)
+let fovBoost = 0;
+function speedFov(dt) {
+  const v = Math.hypot(me.vel.x, me.vel.z), want = Math.min(9, Math.max(0, v - 7) * 1.4) + (me.slide > 0 ? 2 : 0);
+  fovBoost += (want - fovBoost) * (1 - Math.exp(-dt * 6));
+  return fovBoost;
+}
 let last = performance.now(), menuAngle = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const real = Math.min(0.25, (now - last) / 1000); last = now; // 실제로 흐른 시간 (탭을 오래 비웠을 때만 자른다)
-  const dt = Math.min(0.05, real); // 연출·무기는 한 프레임에 너무 많이 진행하지 않게
+  const real = Math.min(0.25, (now - last) / 1000); last = now;
+  const dt = Math.min(0.05, real);
   const active = isActive();
-
+  let cam = camera;
   if (game.joined) {
-    updateMovement(real, active); // 이동은 실제 시간대로 (느린 컴퓨터에서도 게임 시간이 늦게 흐르지 않는다)
-    updateSkills(dt);
-    updateWeapon(dt, active);
+    updatePrediction(real, active);
+    updateRecoil(dt);
     const w = eff[wp.cur];
-    const fov = lerp(BASE_FOV, w.adsFov, smooth(0, 1, wp.adsT)) + wp.sprintT * 4 + dashView.fov;
+    const fov = lerp(BASE_FOV, w.adsFov, smooth(0, 1, wp.adsT)) + wp.sprintT * 4 + dashView.fov + speedFov(dt);
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
-
-    let eye = me.h - 0.13, roll = dashView.roll;
+    let eye = me.h - BODY.EYE, roll = dashView.roll;
     if (!me.alive) { me.deadT = Math.min(1, me.deadT + dt * 2.2); const e = smooth(0, 1, me.deadT); eye = lerp(eye, 0.3, e); roll = e * 0.6; }
-    if (me.stunT > 0) { eye -= 0.35 * Math.min(1, me.stunT / 0.15); roll += 0.3 * Math.min(1, me.stunT / 0.15); } // 넘어짐 (밀어내기에 맞음)
-    camera.position.set(rpos.x, rpos.y + eye + me.stepOff, rpos.z); // rpos: 1/60초 계산 사이를 부드럽게 이은 위치
+    if (me.stunT > 0) { eye -= 0.35 * Math.min(1, me.stunT / 0.15); roll += 0.3 * Math.min(1, me.stunT / 0.15); }
+    if (me.slide > 0) roll += 0.03;
+    camera.position.set(rpos.x, rpos.y + eye + me.stepOff, rpos.z);
     camera.rotation.set(clamp(me.pitch + wp.kickP, -PITCH_MAX, PITCH_MAX), me.yaw + wp.kickY, roll);
     camera.updateMatrixWorld();
     updateViewmodel(dt);
-    sendState(dt);
-  } else if (armory.open) {
-    updateArmory(dt);
-    vm.visible = false;
+    updateLocalTP(dt);
+    sendInputs(real);
+    if (localTP.view && localTP.anim) {
+      // 어깨 너머: 뒤 2.8m · 오른쪽 0.55m, 벽에 막히면 당긴다
+      const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw), cp = Math.cos(me.pitch), sp = Math.sin(me.pitch);
+      const back = new THREE.Vector3(sy * cp, -sp, cy * cp), side = new THREE.Vector3(cy, 0, -sy);
+      const pivot = new THREE.Vector3(rpos.x, rpos.y + me.h - 0.1, rpos.z).addScaledVector(side, 0.55);
+      tpCam.position.copy(pivot).addScaledVector(back, 2.8);
+      tpCam.rotation.set(me.pitch, me.yaw, 0); tpCam.aspect = camera.aspect; tpCam.fov = camera.fov; tpCam.updateProjectionMatrix();
+      cam = tpCam;
+    }
   } else {
-    // 메뉴 배경: 전장을 천천히 선회
     menuAngle += dt * 0.05;
     camera.position.set(Math.sin(menuAngle) * 48, 16, Math.cos(menuAngle) * 48);
     camera.lookAt(0, 2, 0);
     vm.visible = false;
   }
   inp.mdx = inp.mdy = 0;
-
   updateRemotes(dt);
-  updateTracers(dt);
-  updateParts(dt);
-  updateGrenades(dt);
-  vfx.update(dt, camera); // 효과 (content/effects.json)
+  updateTracers(dt); updateParts(dt); updateGrenades(dt);
+  vfx.update(dt, camera);
   updateDashFx(dt);
-  updateObjective(dt); // 점령전 거점 (방에 없으면 숨긴다)
-  if (game.joined) { updateHud(dt); updateMinimap(); }
-
+  updateObjective(dt);
+  if (game.joined) { updateHud(dt, inp.board); updateMinimap(); }
   renderer.clear();
-  if (armory.open && !game.joined) { renderer.render(armory.scene, armory.camera); return; } // 무기고는 전장 대신 자기 장면을 그린다
-  renderer.render(scene, camera);
-  if (vm.visible) { renderer.clearDepth(); renderer.render(vmScene, vmCam); }
+  if (localTP.anim) localTP.anim.root.visible = game.joined && cam === tpCam && me.alive;
+  renderer.render(scene, cam);
+  if (vm.visible && cam === camera) { renderer.clearDepth(); renderer.render(vmScene, vmCam); }
 }
 requestAnimationFrame(frame);
 
-// 라이브(prod)가 아닌 서버에서는 화면 아래에 환경 이름을 표시해 헷갈리지 않게 한다
+// 로비로 나가기 (스튜디오 시험 플레이 중이면 스튜디오로)
+$('leave').addEventListener('click', () => { if (EMBED) { parent.postMessage({ t: 'studio-stop' }, location.origin); return; } leaveMatch(); });
+if (EMBED) addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.code === 'KeyP') { e.preventDefault(); parent.postMessage({ t: 'studio-stop' }, location.origin); } }, true);
+
+// 개발 서버 표시
 fetch('/status').then(r => r.json()).then(st => {
   if (st.env === 'prod') return;
   const t = $('envtag'); t.textContent = `${String(st.env).toUpperCase()} · v${st.version}`; t.style.display = 'block';
 }).catch(() => {});
 
-// 디버그 / 자동 테스트 훅 (tests/browser.test.mjs 가 사용)
-window.__g = { me, remotes, roster, inv, net, remoteHit, vmGuns, teleport, netStats, get cur() { return wp.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; }, game, minimapStats, switchTo, startReload, loadout, eff, armory, skills: skillState, vfx,
-  input(o) { if ('fire' in o) { inp.fireHeld = o.fire; if (o.fire) inp.fireFresh = true; } if ('ads' in o) inp.adsHeld = o.ads; if (o.key) inp.keys.add(o.key); if (o.keyUp) inp.keys.delete(o.keyUp); } };
-if (params.get('auto')) { nameEl.value = params.get('auto'); join(); }
-// 스튜디오 안에서 시험 플레이 중: Ctrl/⌘+P 로 멈추고 스튜디오로 돌아간다 (Unity 의 Play 버튼과 같은 단축키)
-if (EMBED) addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.code === 'KeyP') { e.preventDefault(); parent.postMessage({ t: 'studio-stop' }, location.origin); } }, true);
+// ───── 접속 ─────
+// ?auto=이름 : 바로 빠른 매칭 (자동 테스트·스튜디오). ?draft=맵 : 스튜디오의 저장 안 한 맵으로 혼자 쓰는 방
+async function autoJoin() {
+  const name = params.get('auto');
+  if (!name) return;
+  localStorage.setItem('fd_name', name);
+  if (params.get('mode')) setMode(params.get('mode'));
+  const draft = params.get('draft');
+  if (draft) {
+    const def = await fetch(`/api/drafts/${draft}`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (def) setMapDef(def);
+  }
+  const wait = () => new Promise(res => { const t = setInterval(() => { if (lobby.me) { clearInterval(t); res(); } }, 50); });
+  await wait();
+  if (lobby.me.name !== name) net.send({ t: 'name', name });
+  const map = draft || params.get('map');
+  if (map) net.send({ t: 'rcreate', name: `맵 시험 · ${map}`, mode: MODE_CFG.id, map, pass: Math.random().toString(36).slice(2, 8), bots: params.get('bots') !== '0', minutes: 10 });
+  else net.send({ t: 'qm', mode: MODE_CFG.id });
+}
+connect();
+autoJoin();
+setDisplay($('menu'), true, 'flex');
+
+// 디버그 / 자동 테스트 훅 (tests/browser.test.mjs)
+window.__g = {
+  me, remotes, roster, game, lobby, net, netStats, inp, liveTargets, teleport, clock, loadout, equip, setSkill, minimapStats, vmGuns, fpArms, clipNames, localTP,
+  wear: { outfit, setOutfitChoice, equipOutfit, outfitState, dress, setOutfit, equip: equipWear, undress, wearableCacheSize, renderer },
+  get cur() { return wp.cur; }, get slot() { return me.ps.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; },
+  input(o) {
+    if ('fire' in o) inp.fireHeld = o.fire;
+    if ('ads' in o) inp.adsHeld = o.ads;
+    if (o.key) inp.keys.add(o.key);
+    if (o.keyUp) inp.keys.delete(o.keyUp);
+    if ('slot' in o) inp.wantSlot = o.slot;
+    if (o.skill !== undefined) inp.skillPress[o.skill] = true;
+    if (o.reload) inp.reloadPress = true;
+  },
+};

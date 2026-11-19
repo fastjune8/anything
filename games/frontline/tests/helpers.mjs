@@ -27,7 +27,7 @@ export const failed = () => failures;
 export async function startServer(extraEnv = {}) {
   const port = 3200 + Math.floor(Math.random() * 700);
   const child = spawn(process.execPath, ['server/index.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', HIT_CHECK: 'off', ...extraEnv } /* 서버 규칙 테스트는 아무 데서나 쏜 신고로 킬을 만든다. 실제 사격을 보는 테스트는 HIT_CHECK: 'on' */, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', PERSIST: 'off', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
   child.stdout.on('data', d => { log += d; });
@@ -41,32 +41,40 @@ export async function startServer(extraEnv = {}) {
   return { port, child, stop: () => child.kill() };
 }
 
-// 테스트 클라이언트가 들고 들어가는 무기 (명중 테스트가 AWM 과 M9 을 쓴다)
-// 무기 번호 (데이터 순서라 id 로 찾는다)
 export const W = id => WEAPONS.findIndex(w => w.id === id);
-export const TEST_LOADOUT = [{ id: 'awm', parts: {} }, { id: 'm9', parts: {} }];
 
-// 메시지를 모아 두고 조건을 기다릴 수 있는 클라이언트. 기본은 개인전. extra: join 메시지에 더할 값 (예: { loadout }, { mode })
-export function connect(port, name, extra = {}) {
+// 새 프로토콜 클라이언트: 연결하면 hello (손님 계정). 메시지를 모아 두고 조건을 기다릴 수 있다.
+//   c.events(e) = 받은 'ev' 묶음 안의 사건들 중 e 종류
+export function connect(port, name, token = undefined) {
   const ws = new WebSocket(`ws://localhost:${port}`);
-  const c = { ws, me: -1, msgs: [], players: new Map(), autoRespawn: true }; // autoRespawn: 죽으면 1.7초 뒤 부활 요청
+  const c = { ws, me: -1, msgs: [], seq: 0, acc: null };
   ws.on('message', raw => {
     const m = JSON.parse(raw);
     c.msgs.push(m);
-    if (m.t === 'welcome') { c.me = m.id; m.players.forEach(p => c.players.set(p.id, p)); }
-    if (m.t === 'pj') c.players.set(m.player.id, m.player);
-    if (m.t === 'pl') c.players.delete(m.id);
-    if (m.t === 'kill' && m.victim === c.me && c.autoRespawn) setTimeout(() => { if (ws.readyState === 1) c.send({ t: 'respawn' }); }, 1700);
+    if (m.t === 'hi') c.acc = m.me;
+    if (m.t === 'welcome') c.me = m.id;
   });
-  c.send = m => ws.send(JSON.stringify(m));
-  c.count = t => c.msgs.filter(m => m.t === t).length;
+  c.send = m => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
   c.find = (t, fn = () => true) => c.msgs.find(m => m.t === t && fn(m));
+  c.all = (t, fn = () => true) => c.msgs.filter(m => m.t === t && fn(m));
+  c.events = (e, fn = () => true) => c.msgs.filter(m => m.t === 'ev').flatMap(m => m.l).filter(x => x.e === e && fn(x));
   c.waitFor = async (t, fn = () => true, timeout = 8000) => {
     const end = Date.now() + timeout;
-    while (Date.now() < end) { const m = c.find(t, fn); if (m) return m; await sleep(50); }
+    while (Date.now() < end) { const m = c.find(t, fn); if (m) return m; await sleep(30); }
     return null;
   };
-  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'join', name, mode: 'ffa', loadout: TEST_LOADOUT, ...extra }); res(); }); ws.on('error', rej); });
+  c.waitEvent = async (e, fn = () => true, timeout = 8000) => {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) { const x = c.events(e, fn)[0]; if (x) return x; await sleep(30); }
+    return null;
+  };
+  // 1/60초 입력 n 개 보내기: [앞뒤, 좌우, 버튼, yaw, pitch, 자리, 화면 시각]
+  c.cmds = (list) => { c.send({ t: 'cmd', s: c.seq, c: list }); c.seq += list.length; };
+  // 브라우저처럼 실제 시간에 맞춰 1/30초마다 2개씩 (서버는 흐른 시간만큼만 입력을 받는다)
+  c.play = async (list) => { for (let i = 0; i < list.length; i += 2) { c.cmds(list.slice(i, i + 2)); await sleep(33); } };
+  c.open = new Promise((res, rej) => { ws.on('open', () => { c.send({ t: 'hello', name, token }); res(); }); ws.on('error', rej); });
+  c.ready = async () => { await c.open; await c.waitFor('hi'); return c; };
+  c.close = () => ws.close();
   return c;
 }
 

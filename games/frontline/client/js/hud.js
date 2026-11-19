@@ -1,170 +1,235 @@
-// 화면 표시(HUD): 체력/탄약/조준선/피격 표시, 킬 피드, 순위표, 종료 화면
+// 전투 화면 (기획 9장·6장·10장)
+//   위: 팀 점수 · 시간 · 거점별 소유 (점령전)       가운데: 조준선 · 맞힘 표시 · 점령/경합 알림
+//   아래: 체력 · 무기 · 탄약 · 스킬                  상황: 점령 진행도 · 경합 · 연장전 · 부활 보호
+//   킬피드(최근 처치가 위, 아이콘으로 헤드샷·일반·낙사 … 구분, 팀 색), 사망 화면, 승리 연출 → 결과 화면(재매치/로비), 점수판(Tab)
 import { WEAPONS } from '/shared/weapons.js';
-import { onLoadoutChange } from './loadout.js';
-import { camera, canvas } from './scene.js';
-import { sfx } from './sfx.js';
-import { me, inv, wp, game, roster, loadout, eff, currentSpread, isAlly } from './state.js';
-import { $, DEG, NOLOCK, MODE_CFG, clamp, esc } from './util.js';
+import { HEALTH } from '/shared/sim/config.js';
+import { spreadOf } from '/shared/sim/player.js';
 import { SKILL_KEYS } from '/shared/skills.js';
-import { sk, slotSkill, heatOf, grenadeMode, glSkill, chargeReady } from './skills.js';
-import { cache, setText, setDisplay, setClass } from './dom.js';
+import { CHARGED } from '/shared/sim/abilities.js';
+import { camera } from './scene.js';
+import { sfx } from './sfx.js';
+import { me, wp, game, roster, net, isAlly } from './state.js';
+import { $, DEG, MODE_CFG, clamp, esc } from './util.js';
+import { setText, setDisplay, setClass } from './dom.js';
 
 const hudEl = $('hud'), crossEl = $('cross'), hitEl = $('hitm'), vigEl = $('vig'), dirEl = $('dmgdir');
 const crossParts = { l: crossEl.querySelector('.l'), r: crossEl.querySelector('.r'), t: crossEl.querySelector('.t'), b: crossEl.querySelector('.b') };
-
 export const setHudOn = on => hudEl.classList.toggle('on', on);
 
-// 무기 슬롯(1·2번): 무기고에서 고른 두 자루
-const slotsEl = $('slots');
-let slotEls = [];
-function renderSlots() {
-  slotsEl.replaceChildren();
-  slotEls = loadout.slots.map((wi, n) => { const d = document.createElement('div'); d.innerHTML = `<span>${n + 1}</span>${WEAPONS[wi].name}`; slotsEl.appendChild(d); return d; });
-}
-renderSlots();
-onLoadoutChange(wi => { if (wi < 0) renderSlots(); });
+// ───── 이름 / 편 ─────
+export const nameOf = id => (id === me.id ? me.name : (roster.get(id) || {}).name || '?');
+export const sideOf = id => (id === me.id ? 'me' : MODE_CFG.teams && isAlly((roster.get(id) || {}).team) ? 'a' : 'e');
+export const rosterSet = p => roster.set(p.id, { id: p.id, name: p.name, bot: !!p.bot, team: p.team ?? -1, k: p.k | 0, d: p.d | 0, a: p.a | 0, lvl: p.lvl | 0, lo: p.lo || null });
+export function applyKD(kd) { for (const [id, k, d, a] of kd || []) { const p = roster.get(id); if (p) { p.k = k; p.d = d; p.a = a; } } }
 
-// 스킬 칸 (Q·E): 이름 + 상태(쿨타임 · 늘 켜짐 · 유탄 수 · 열) + 아래 막대
-const skillsEl = $('skills');
+// ───── 맞힘 / 맞음 ─────
+let hitT = 0, vigT = 0, dirT = 0, dirFrom = null, killT = 0;
+export function showHit(head, kill = false) { hitT = 0.22; setClass(hitEl, 'head', head); setClass(hitEl, 'kill', kill); if (kill) killT = 0.4; sfx.hitmarker(head); }
+export function hurt(dmg, from) { vigT = Math.min(1, 0.4 + dmg / 90); dirT = 1.4; dirFrom = from; }
+const dmgNums = $('dmgnums');
+export function damageNumber(d, head) {
+  const el = document.createElement('div'); el.className = 'dn' + (head ? ' h' : ''); el.textContent = d;
+  el.style.left = `calc(50% + ${(Math.random() - 0.5) * 40}px)`;
+  dmgNums.append(el); setTimeout(() => el.remove(), 700);
+}
+
+// ───── 킬피드 (기획 6.3: 처치자 · 사망자 · 처치 유형 아이콘, 최신이 위, 일정 시간 뒤 사라짐, 팀 색) ─────
+const HOW_ICON = { head: '◎', normal: '✕', fall: '⤓', melee: '⚔', blast: '✸', bleed: '♦', env: '☢' };
+const HOW_NAME = { head: '헤드샷', normal: '처치', fall: '낙사', melee: '근접', blast: '폭발', bleed: '출혈', env: '환경' };
+const feedEl = $('feed');
+export function killFeed(k, v, wi, how) {
+  const row = document.createElement('div'); row.className = 'kf';
+  const w = WEAPONS[wi];
+  const killer = k >= 0 ? `<span class="${sideOf(k)}">${esc(nameOf(k))}</span>` : '';
+  row.innerHTML = `${killer}<span class="wi" title="${w ? esc(w.name) : ''}">${w && k >= 0 ? esc(w.cls) : ''}</span><b class="how ${how}" title="${HOW_NAME[how] || ''}">${HOW_ICON[how] || '✕'}</b><span class="${sideOf(v)}">${esc(nameOf(v))}</span>`;
+  feedEl.prepend(row);
+  while (feedEl.children.length > 5) feedEl.lastChild.remove();
+  setTimeout(() => { row.classList.add('out'); setTimeout(() => row.remove(), 400); }, 6000);
+}
+export function feedNote(html) {
+  const row = document.createElement('div'); row.className = 'kf note'; row.innerHTML = html;
+  feedEl.prepend(row); setTimeout(() => row.remove(), 4000);
+}
+
+// ───── 가운데 알림 (점령·경합·연장전) ─────
+const bannerEl = $('banner');
+let bannerT = 0;
+export function banner(text, cls = '') { bannerEl.textContent = text; bannerEl.className = cls; bannerT = 2.2; }
+let skillFlash = '', skillFlashT = 0;
+export function flashSkill(text) { skillFlash = text; skillFlashT = 1.2; }
+
+// ───── 위: 점수 · 시간 · 거점 ─────
+const topEl = $('top'), zoneEls = [];
+const teamCss = t => (t < 0 ? 'n' : t === me.team ? 'a' : 'e');
+function renderZones() {
+  const box = $('zones'); box.replaceChildren(); zoneEls.length = 0;
+  for (const z of game.zones) {
+    const d = document.createElement('div'); d.className = 'zp n';
+    d.innerHTML = `<b>${esc(z.id)}</b><i></i>`; box.append(d); zoneEls.push(d);
+  }
+}
+export function setZones(zones) { game.zones = zones; renderZones(); }
+function fmt(s) { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+// ───── 아래: 체력 · 무기 · 탄약 · 스킬 ─────
 const skillEls = [0, 1].map(n => {
-  const d = document.createElement('div'); d.className = 'sk'; d.dataset.n = n;
+  const d = document.createElement('div'); d.className = 'sk';
   d.innerHTML = `<span class="k">${SKILL_KEYS[n]}</span><div class="n"></div><div class="s"></div><i class="cd"></i>`;
-  skillsEl.appendChild(d); return d;
+  $('skills').appendChild(d); return d;
 });
-function updateSkillHud() {
+const slotEls = [0, 1].map(n => { const d = document.createElement('div'); $('slots').appendChild(d); d.dataset.n = n; return d; });
+function updateSkills() {
+  const ps = me.ps;
   skillEls.forEach((el, n) => {
-    const { wi, skill } = slotSkill(n);
-    const nEl = el.children[1], sEl = el.children[2], bar = el.children[3];
-    setText(nEl, skill ? skill.name : '스킬 없음');
+    const l = me.lo[n], sk = l && l.skill, s = ps.sk[n];
+    setText(el.children[1], sk ? sk.name : '스킬 없음');
     let text = '', fill = 0, wait = false, on = false, hot = false;
-    if (skill) switch (skill.effect) {
-      case 'adrenaline': wait = sk.cd[n] > 0; on = sk.adrenT > 0; text = on ? `사용 중 ${sk.adrenT.toFixed(1)}` : wait ? `${Math.ceil(sk.cd[n])}초` : '준비'; fill = on ? sk.adrenT / skill.dur : wait ? 1 - sk.cd[n] / skill.cd : 1; break;
-      case 'dash': wait = me.dashCd > 0; text = wait ? `${Math.ceil(me.dashCd)}초` : '준비'; fill = wait ? 1 - me.dashCd / skill.cd : 1; break;
-      case 'grenade': { on = grenadeMode(); text = `${on ? '유탄 모드 · ' : ''}${sk.gl.ammo}/${skill.ammo}발`; fill = sk.gl.ammo >= skill.ammo ? 1 : sk.gl.t / skill.recharge; wait = !sk.gl.ammo; break; }
-      case 'shove': wait = sk.cd[n] > 0; on = sk.shoveArmed; text = on ? '다음 사격에 밀어냄' : wait ? `${Math.ceil(sk.cd[n])}초` : '준비'; fill = wait ? 1 - sk.cd[n] / skill.cd : 1; break;
-      case 'charge': { const ready = chargeReady(wi, skill), left = skill.wait - (sk.clock - (sk.lastShot[wi] ?? -Infinity)); on = ready && wp.cur === wi; text = ready ? '충전됨' : `충전 ${Math.ceil(left)}초`; fill = ready ? 1 : 1 - left / skill.wait; wait = !ready; break; }
-      case 'overheat': { const h = heatOf(wi); hot = h.over; on = wp.cur === wi; text = h.over ? '과열 — 식는 중' : on ? `열 ${Math.round(h.heat * 100)}%` : '늘 켜짐 (들면)'; fill = h.heat; break; }
-      default: on = wp.cur === wi; text = on ? '적용 중' : '늘 켜짐 (들면)'; fill = on ? 1 : 0;
+    if (sk && sk.type === 'active') {
+      if (CHARGED.has(sk.effect)) { text = `${s.ch}/${sk.charges}`; fill = s.ch >= sk.charges ? 1 : s.rech / sk.cd; wait = s.ch <= 0; }
+      else { wait = s.cd > 0; text = wait ? `${Math.ceil(s.cd)}초` : '준비'; fill = wait ? 1 - s.cd / sk.cd : 1; }
+      const st = ps.st;
+      if (sk.effect === 'adrenaline' && st.adren > 0) { on = true; text = `사용 중 ${st.adren.toFixed(1)}`; }
+      if (sk.effect === 'stealth' && st.stealth > 0) { on = true; text = `투명 ${st.stealth.toFixed(1)}`; }
+      if (sk.effect === 'shove' && st.shove > 0) { on = true; text = '다음 사격에 넉백'; }
+      if (sk.effect === 'backstep' && st.bs > 0) { on = true; text = '다음 사격 2배'; }
+      if (ps.qsk === n) { on = true; text = '꺼내는 중'; }
+    } else if (sk) {
+      const ws = ps.w[n], held = ps.cur === n;
+      on = held;
+      if (sk.effect === 'overheat') { hot = ws.over; text = ws.over ? '과열 — 식는 중' : held ? `열 ${Math.round(ws.heat * 100)}%` : '들면 켜짐'; fill = ws.heat; }
+      else if (sk.effect === 'charge' || sk.effect === 'quickdraw') { const ready = ws.idle >= sk.wait; text = ready ? '충전됨' : `${Math.ceil(sk.wait - ws.idle)}초`; fill = ready ? 1 : ws.idle / sk.wait; wait = !ready; }
+      else { text = held ? '적용 중' : '들면 켜짐'; fill = held ? 1 : 0; }
     }
-    if (sk.flashT[n] > 0) text = sk.flash[n];
-    setText(sEl, text); bar.style.width = `${clamp(fill, 0, 1) * 100}%`;
-    setClass(el, 'none', !skill); setClass(el, 'wait', wait); setClass(el, 'on', on); setClass(el, 'hot', hot);
+    if (skillFlashT > 0 && n === ps.cur) text = skillFlash;
+    setText(el.children[2], text); el.children[3].style.width = `${clamp(fill, 0, 1) * 100}%`;
+    setClass(el, 'none', !sk); setClass(el, 'wait', wait); setClass(el, 'on', on); setClass(el, 'hot', hot);
   });
+  slotEls.forEach((el, n) => { setText(el, `${n + 1}  ${me.lo[n].w.name}`); setClass(el, 'cur', ps.cur === n); });
 }
 
-// ───── 피격/명중 표시 ─────
-let hitT = 0, vigT = 0, dirT = 0, dirFrom = null;
-export function showHit(head) { hitT = 0.22; setClass(hitEl, 'head', head); sfx.hitmarker(head); } // 내가 맞혔을 때 X 표시
-export function hurt(dmg, from) { vigT = Math.min(1, 0.45 + dmg / 80); dirT = 1.4; dirFrom = from; } // 내가 맞았을 때 화면 붉게 + 방향
-
-// ───── 킬 피드 (html 문자열을 받으므로 이름은 호출하는 쪽에서 esc 해야 한다) ─────
-export function feed(html) {
-  const d = document.createElement('div'); d.innerHTML = html; $('feed').prepend(d);
-  setTimeout(() => d.remove(), 5200);
-  while ($('feed').children.length > 5) $('feed').lastChild.remove();
+// ───── 사망 화면 (기획 6.4) ─────
+const deadEl = $('dead');
+export function showDeath(info) { game.death = info; }
+function updateDeath() {
+  const d = game.death, on = !me.alive && game.matchState === 'playing' && !!d;
+  setDisplay(deadEl, on, 'flex');
+  if (!on) return;
+  const left = Math.max(0, (game.respawnAt - performance.now()) / 1000);
+  const w = WEAPONS[d.w];
+  const by = d.k >= 0 && d.k !== me.id ? `<b class="${sideOf(d.k)}">${esc(nameOf(d.k))}</b> 에게 처치됨` : d.how === 'fall' ? '떨어져서 사망' : '사망';
+  const cause = [d.how === 'head' ? '헤드샷' : null, d.how === 'fall' ? '낙사' : null, d.how === 'blast' ? '폭발' : null, d.how === 'bleed' ? '출혈' : null, d.how === 'melee' ? '근접 공격' : null].filter(Boolean).join(' · ');
+  const key = `${by}|${Math.ceil(left * 10)}|${game.teamScores}|${JSON.stringify(game.dom && game.dom.pts)}`;
+  if (deadEl.dataset.k === key) return;
+  deadEl.dataset.k = key;
+  const pts = MODE_CFG.rules === 'domination' && game.dom ? `<div class="dpts">${game.zones.map((z, i) => `<span class="zp ${teamCss(game.dom.pts[i][0])}"><b>${esc(z.id)}</b></span>`).join('')}</div>` : '';
+  const sc = MODE_CFG.teams ? `<div class="dsc"><span class="a">${game.teamScores[me.team] ?? 0}</span> : <span class="e">${game.teamScores[1 - me.team] ?? 0}</span></div>` : '';
+  deadEl.innerHTML = `<h2>전사</h2><p class="by">${by}</p><p class="cause">${w && d.k >= 0 ? esc(w.name) : ''}${cause ? ` · <em>${cause}</em>` : ''}</p>${sc}${pts}<p class="rs">부활까지 <b class="mono">${left.toFixed(1)}</b>초</p>`;
 }
 
-// ───── 명단 / 순위 ─────
-export const rosterSet = p => roster.set(p.id, { id: p.id, name: p.name, bot: !!p.bot, k: p.k | 0, d: p.d | 0, team: p.team ?? -1 });
-// 순위표/킬 피드에서 쓰는 색 구분: 나·아군 = 'a'(강조색), 그 외 = 'e'
-export const sideOf = id => (id === me.id || isAlly((roster.get(id) || {}).team) ? 'a' : 'e');
-export const nameOf = id => (roster.get(id) || {}).name || '?';
-export function applyScores(sc) { for (const [id, k, d] of sc) { const p = roster.get(id); if (p) { p.k = k; p.d = d; } } }
-const byRank = (a, b) => b.k - a.k || a.d - b.d;
-
-function updateScoreboard() {
-  const left = Math.max(0, game.matchEndsAt - performance.now());
-  setText($('timer'), game.matchState === 'ended' ? '종료' : `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`);
-  // 가운데 위: 개인전은 목표 킬, 팀전은 팀 점수 (점령전은 거점 점수)
-  const ts = game.teamScores, mt = me.team === 1 ? 1 : 0, unit = MODE_CFG.rules === 'zone' ? '점' : '킬';
-  setText($('goal'), MODE_CFG.teams ? `아군 ${ts[mt]} : ${ts[1 - mt]} 적군 · ${game.goalKills}${unit} 선승` : `${game.goalKills}킬 선승`);
-  const list = [...roster.values()].sort(byRank);
-  const rows = list.slice(0, 5);
-  const mine = roster.get(me.id);
-  if (mine && !rows.includes(mine)) rows.push(mine);
-  const html = rows.map(p => `<div class="${p.id === me.id ? 'me' : MODE_CFG.teams ? (isAlly(p.team) ? 'ally' : 'foe') : ''}"><span class="nm">${list.indexOf(p) + 1}. ${esc(p.name)}</span><span class="mono">${p.k}</span></div>`).join('');
-  const lb = $('lb');
-  if (cache.get(lb) !== html) { cache.set(lb, html); lb.innerHTML = html; }
+// ───── 점수판 (Tab) ─────
+const boardEl = $('board');
+function updateBoard(show) {
+  setDisplay(boardEl, show, 'block');
+  if (!show) return;
+  const list = [...roster.values()].sort((a, b) => (a.team - b.team) || b.k - a.k || a.d - b.d);
+  const row = p => `<tr class="${p.id === me.id ? 'me' : ''} ${MODE_CFG.teams ? (isAlly(p.team) || p.id === me.id ? 'a' : 'e') : ''}"><td>${esc(p.name)}${p.bot ? ' <small>봇</small>' : ''}</td><td>${p.k}</td><td>${p.d}</td><td>${p.a}</td></tr>`;
+  const html = `<table><thead><tr><th>이름</th><th>킬</th><th>데스</th><th>어시</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`;
+  if (boardEl.dataset.h !== html) { boardEl.dataset.h = html; boardEl.innerHTML = html; }
 }
 
-// winnerId: 개인전 우승자, winTeam: 팀전에서 이긴 팀 (-1 = 무승부)
-export function showEnd(winnerId, winTeam = -1) {
-  const list = [...roster.values()].sort(byRank);
-  const t = $('endT');
-  const mine = roster.get(me.id) || { k: 0, d: 0 };
-  if (MODE_CFG.teams) {
-    const win = winTeam === me.team, draw = winTeam < 0, ts = game.teamScores, mt = me.team === 1 ? 1 : 0;
-    t.textContent = draw ? '무승부' : win ? '승리' : '패배'; t.className = win ? 'win' : 'lose';
-    $('endS').textContent = `아군 ${ts[mt]} : ${ts[1 - mt]} 적군  ·  내 기록 ${mine.k}킬 ${mine.d}데스`;
-  } else {
-    const win = winnerId === me.id;
-    t.textContent = win ? '승리' : '경기 종료'; t.className = win ? 'win' : 'lose';
-    $('endS').textContent = `우승 ${nameOf(winnerId)}  ·  내 순위 ${list.findIndex(p => p.id === me.id) + 1}위 (${mine.k}킬 ${mine.d}데스)`;
-  }
-  $('endBoard').innerHTML = list.slice(0, 6).map((p, i) =>
-    `<div class="${p.id === me.id ? 'me' : MODE_CFG.teams ? (isAlly(p.team) ? 'ally' : 'foe') : ''}"><span>${i + 1}</span><span class="nm">${esc(p.name)}</span><span class="mono">${p.k} / ${p.d}</span></div>`).join('');
+// ───── 결과 화면 (기획 10장) ─────
+const endEl = $('endscr');
+export function showEnd(m) {
+  game.end = { ...m, at: performance.now() };
+  game.rematch = null;
+  const won = MODE_CFG.teams ? (m.wt < 0 ? 'draw' : m.wt === me.team ? 'win' : 'loss') : (m.top < 0 ? 'draw' : m.top === me.id ? 'win' : 'loss');
+  const title = { win: '승리', loss: '패배', draw: '무승부' }[won];
+  const mine = m.board.find(b => b.id === me.id) || { k: 0, d: 0, a: 0, w: [] };
+  const team = t => m.board.filter(b => b.team === t).sort((a, b) => b.k - a.k);
+  const rows = list => list.map(b => `<tr class="${b.id === me.id ? 'me' : ''}"><td>${esc(b.name)}${b.bot ? ' <small>봇</small>' : ''}</td><td>${b.k}</td><td>${b.d}</td><td>${b.a}</td>${MODE_CFG.rules === 'domination' ? `<td>${b.caps}</td>` : ''}<td class="wl">${b.w.map(id => esc((WEAPONS.find(w => w.id === id) || {}).name || id)).join(' · ')}</td></tr>`).join('');
+  const head = `<tr><th>이름</th><th>킬</th><th>데스</th><th>어시</th>${MODE_CFG.rules === 'domination' ? '<th>점령</th>' : ''}<th>무기</th></tr>`;
+  const tables = MODE_CFG.teams ? [me.team, 1 - me.team].map(t => `<div class="rt ${t === me.team ? 'a' : 'e'}"><h4>${t === me.team ? '우리 팀' : '상대 팀'} <b>${m.sc[t]}</b></h4><table>${head}${rows(team(t))}</table></div>`).join('')
+    : `<div class="rt"><table>${head}${rows([...m.board].sort((a, b) => b.k - a.k))}</table></div>`;
+  const xp = m.me && m.me.xp ? `<div class="xp">경험치 +${m.me.xp}${m.me.ups ? ` · <b>레벨 업!</b> Lv.${m.me.profile.level}` : ''}</div>` : '';
+  endEl.innerHTML = `<div class="vic ${won}"><h1>${title}</h1>${MODE_CFG.teams ? `<div class="vs"><span class="a">${m.sc[me.team]}</span> : <span class="e">${m.sc[1 - me.team]}</span></div>` : ''}</div>
+    <div class="res" hidden><h2>${title} <small>${fmt(m.dur)} 경기</small></h2>
+    <div class="mine">내 기록 · 킬 <b>${mine.k}</b> · 데스 <b>${mine.d}</b> · 어시스트 <b>${mine.a}</b> · 사용 무기 ${mine.w.map(id => esc((WEAPONS.find(w => w.id === id) || {}).name || id)).join(', ')}</div>${xp}
+    <div class="tables">${tables}</div>
+    <div class="choose"><button type="button" id="btnRematch">재매치</button><button type="button" id="btnLobby">로비로</button><span id="resT"></span></div></div>`;
+  $('btnRematch').onclick = () => { game.rematch = true; net.send({ t: 'rematch', v: true }); setClass($('btnRematch'), 'on', true); };
+  $('btnLobby').onclick = () => { net.send({ t: 'leave' }); };
+  if (won === 'win') sfx.kill();
+}
+function updateEnd() {
+  const e = game.end, on = !!e && (game.matchState === 'victory' || game.matchState === 'results');
+  setDisplay(endEl, on, 'flex');
+  if (!on) return;
+  const t = performance.now() - e.at;
+  const res = t >= e.victory;
+  endEl.querySelector('.vic').hidden = res; endEl.querySelector('.res').hidden = !res;
+  if (res) { if (game.matchState === 'victory') game.matchState = 'results'; setText($('resT'), game.rematch ? `재매치 대기 · ${Math.ceil((e.victory + e.results - t) / 1000)}초` : `${Math.ceil((e.victory + e.results - t) / 1000)}초 뒤 로비로`); if (document.pointerLockElement) document.exitPointerLock(); }
 }
 
-// ───── 매 프레임 갱신 ─────
-export function updateHud(dt) {
-  const w = eff[wp.cur], st = inv[wp.cur];
-  // 조준선: 탄퍼짐만큼 벌어진다
-  const gap = Math.max(4, Math.tan(currentSpread() * DEG) / Math.tan(camera.fov * DEG / 2) * innerHeight / 2);
-  crossParts.l.style.left = `${-gap - 9}px`; crossParts.r.style.left = `${gap}px`;
-  crossParts.t.style.top = `${-gap - 9}px`; crossParts.b.style.top = `${gap}px`;
-  crossEl.style.opacity = (!me.alive || wp.adsT > 0.35 || wp.sprintT > 0.6 || game.matchState === 'ended') ? 0 : 1;
-
-  hitT -= dt; hitEl.style.opacity = clamp(hitT / 0.12, 0, 1);
-  vigT = Math.max(0, vigT - dt * 1.2);
-  vigEl.style.opacity = Math.max(vigT, me.alive ? clamp((45 - me.hp) / 60, 0, 0.6) : 0);
-  dirT -= dt;
-  if (dirT > 0 && dirFrom) {
-    const dx = dirFrom.x - me.pos.x, dz = dirFrom.z - me.pos.z;
-    const f = -Math.sin(me.yaw) * dx - Math.cos(me.yaw) * dz, r = Math.cos(me.yaw) * dx - Math.sin(me.yaw) * dz;
-    dirEl.style.transform = `rotate(${Math.atan2(r, f)}rad)`;
-    dirEl.style.opacity = clamp(dirT / 0.5, 0, 1);
-  } else dirEl.style.opacity = 0;
-
-  setText($('hpV'), String(Math.max(0, Math.ceil(me.hp))));
-  const hb = $('hpB'); hb.style.width = `${clamp(me.hp, 0, 100)}%`;
-  hb.style.background = me.hp <= 30 ? 'var(--danger)' : me.hp <= 60 ? 'var(--accent)' : 'var(--ui)';
-
-  const gl = grenadeMode() ? glSkill() : null; // 유탄 모드: 탄약 칸에 유탄 수
-  setText($('amC'), String(gl ? sk.gl.ammo : st.ammo)); setText($('amR'), gl ? `/ ${gl.skill.ammo}` : `/ ${st.reserve}`);
-  setClass($('amC'), 'low', gl ? sk.gl.ammo === 0 : st.ammo <= Math.ceil(w.mag * 0.25));
-  setText($('wN'), w.name);
-  setText($('wC'), gl ? `유탄 모드 · [${SKILL_KEYS[loadout.slots.indexOf(gl.wi)]}] 총으로` : `${w.cls} · ${w.auto ? '연사' : w.bolt ? '볼트액션' : w.shell ? '펌프액션' : '단발'}`);
-  updateSkillHud();
-  slotEls.forEach((el, n) => { const i = loadout.slots[n]; setClass(el, 'on', i === wp.cur); setClass(el, 'empty', inv[i].ammo + inv[i].reserve === 0); });
-
-  let hint = '';
-  if (me.alive && !wp.reload) {
-    if (st.ammo === 0 && st.reserve === 0) hint = '탄약 없음 — 다른 무기로 교체하세요';
-    else if (st.ammo === 0) hint = '[R] 재장전';
-    else if (st.ammo <= Math.ceil(w.mag * 0.25) && st.reserve > 0) hint = '탄약 부족 · [R] 재장전';
-  }
-  const hintEl = $('hint'); setText(hintEl, hint || cache.get(hintEl) || ''); hintEl.style.opacity = hint ? 1 : 0;
-
-  const rb = $('rbar');
-  setDisplay(rb, !!wp.reload && me.alive);
-  if (wp.reload) rb.firstElementChild.style.width = `${clamp(wp.reload.t / wp.reload.total, 0, 1) * 100}%`;
-
-  // 스폰 무적 남은 시간
-  const invLeft = game.invUntil - performance.now();
-  setDisplay($('inv'), me.alive && invLeft > 0);
-  if (invLeft > 0) setText($('inv'), `무적 ${(invLeft / 1000).toFixed(1)}초 · 사격하면 해제`);
-
-  // 마우스 잠금이 풀렸는데 설정 창이 떠 있지 않으면, 클릭하라는 안내만 작게 보여 준다
-  const needClick = !NOLOCK && document.pointerLockElement !== canvas && $('pause').style.display !== 'flex' && game.matchState !== 'ended';
-  setDisplay($('banner'), needClick);
-  if (needClick) setText($('banner'), '화면을 클릭하면 계속합니다');
-
-  updateScoreboard();
-  setDisplay($('dead'), !me.alive && game.matchState === 'playing', 'flex');
-  if (!me.alive) {
-    const wait = (game.respawnAt - performance.now()) / 1000;
-    setText($('deadT'), wait > 0 ? `${wait.toFixed(1)}초 후 재투입 가능` : '아무 키나 누르거나 클릭하면 재투입');
-  }
-  setDisplay($('endscr'), game.matchState === 'ended', 'flex');
-  if (game.matchState === 'ended') setText($('endR'), `${Math.max(0, Math.ceil((game.endAt - performance.now()) / 1000))}초 후 다음 경기 시작`);
+// ───── 매 프레임 ─────
+export function updateHud(dt, showBoard) {
+  const ps = me.ps, slot = ps.cur, w = me.lo[slot].w, ws = ps.w[slot];
+  // 체력
+  const hp = Math.max(0, Math.ceil(me.hp));
+  setText($('hpV'), String(hp)); $('hpB').style.width = `${hp / HEALTH.max * 100}%`;
+  setClass($('hp'), 'low', hp < HEALTH.max * 0.35);
+  // 탄약
+  setText($('amC'), w.kind === 'melee' ? '∞' : String(ws.ammo)); setText($('amR'), w.kind === 'melee' ? '' : `/ ${w.mag}`);
+  setText($('wN'), w.name); setText($('wC'), `${w.cls}${ws.rl > 0 ? ' · 재장전' : ws.over ? ' · 과열' : ''}`);
+  setClass($('ammo'), 'low', w.kind !== 'melee' && ws.ammo <= Math.ceil(w.mag * 0.25));
+  $('rbar').style.display = ws.rl > 0 ? 'block' : 'none';
+  if (ws.rl > 0) $('rbar').firstChild.style.width = `${(1 - ws.rl / ws.rlT) * 100}%`;
+  updateSkills();
+  skillFlashT -= dt;
+  // 조준선: 실제 탄퍼짐 크기
+  const spread = spreadOf(ps, me.lo), px = Math.tan(spread * DEG) / Math.tan(camera.fov * DEG / 2) * (innerHeight / 2);
+  const gap = clamp(px, 3, 120) + 2;
+  crossParts.l.style.left = `${-gap - 9}px`; crossParts.r.style.left = `${gap}px`; crossParts.t.style.top = `${-gap - 9}px`; crossParts.b.style.top = `${gap}px`;
+  crossEl.style.opacity = me.alive && wp.adsT < 0.85 && wp.sprintT < 0.6 ? '1' : w.scope ? '0' : '0.35';
+  hitT -= dt; hitEl.style.opacity = hitT > 0 ? String(Math.min(1, hitT / 0.12)) : '0';
+  killT -= dt; setClass(hitEl, 'kill', killT > 0);
+  vigT = Math.max(0, vigT - dt * 1.2); vigEl.style.opacity = String(Math.max(vigT, hp < HEALTH.max * 0.3 && me.alive ? 0.35 : 0));
+  dirT = Math.max(0, dirT - dt);
+  if (dirFrom && dirT > 0) {
+    const a = Math.atan2(dirFrom.x - me.pos.x, dirFrom.z - me.pos.z) - me.yaw + Math.PI;
+    dirEl.style.transform = `rotate(${-a}rad)`; dirEl.style.opacity = String(Math.min(1, dirT));
+  } else dirEl.style.opacity = '0';
+  // 위: 점수·시간·거점
+  const left = (game.endsAt - performance.now()) / 1000;
+  setText($('timer'), game.overtime ? '연장전' : fmt(left));
+  setClass($('timer'), 'ot', game.overtime);
+  if (MODE_CFG.teams) { setText($('scA'), String(game.teamScores[me.team] ?? 0)); setText($('scE'), String(game.teamScores[1 - me.team] ?? 0)); }
+  else { const top = [...roster.values()].sort((a, b) => b.k - a.k)[0]; setText($('scA'), String((roster.get(me.id) || { k: 0 }).k)); setText($('scE'), String(top ? top.k : 0)); }
+  setText($('goal'), MODE_CFG.rules === 'domination' ? `${game.goal}점` : `${game.goal}킬`);
+  setClass(topEl, 'ffa', !MODE_CFG.teams);
+  const zbox = $('zonebox');
+  if (game.dom && zoneEls.length) {
+    let inside = -1;
+    game.zones.forEach((z, i) => {
+      const [o, t, p, c] = game.dom.pts[i];
+      const el = zoneEls[i];
+      el.className = `zp ${teamCss(o)}${c ? ' c' : ''}${t >= 0 ? ' cap' : ''}`;
+      el.children[1].style.width = `${p * 100}%`; el.children[1].className = teamCss(t);
+      if (Math.hypot(me.pos.x - z.x, me.pos.z - z.z) <= z.r && me.alive) inside = i;
+    });
+    if (inside >= 0) {
+      const [o, t, p, c] = game.dom.pts[inside], z = game.zones[inside];
+      setDisplay(zbox, true);
+      setText($('zoneName'), z.name || z.id);
+      setText($('zoneState'), c ? '경합 중' : t >= 0 ? (t === me.team ? '점령 중' : '적이 점령 중') : o === me.team ? '우리 거점' : o >= 0 ? '적 거점' : '중립');
+      setClass(zbox, 'c', !!c);
+      const bar = zbox.querySelector('.zbar i'); bar.style.width = `${(t >= 0 ? p : o >= 0 ? 1 : 0) * 100}%`; bar.className = teamCss(t >= 0 ? t : o);
+    } else setDisplay(zbox, false);
+  } else setDisplay(zbox, false);
+  // 상황 표시
+  const prot = ps.st.protect > 0 && me.alive;
+  setDisplay($('prot'), prot); if (prot) setText($('prot'), `부활 보호 ${ps.st.protect.toFixed(1)}초 · 공격하거나 스킬을 쓰면 풀립니다`);
+  setClass(hudEl, 'stealth', ps.st.stealth > 0);
+  bannerT -= dt; bannerEl.style.opacity = bannerT > 0 ? String(Math.min(1, bannerT * 2)) : '0';
+  updateDeath(); updateBoard(showBoard && game.matchState === 'playing'); updateEnd();
 }

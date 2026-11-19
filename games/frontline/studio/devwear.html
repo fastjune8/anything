@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FRONTIER dev — outfit tester (TEMPORARY)</title>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #20242b; color: #d8dde6; font: 12px/1.4 -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #panel { position: fixed; left: 8px; top: 8px; width: 330px; max-height: calc(100% - 16px); overflow: auto; background: rgba(16,18,22,.88); border: 1px solid #3a4150; border-radius: 6px; padding: 8px; }
+  #panel h3 { margin: 8px 0 4px; font-size: 12px; color: #7fd6cc; }
+  #panel h3:first-child { margin-top: 0; }
+  .row { display: flex; gap: 4px; align-items: center; margin: 2px 0; }
+  .row label { width: 54px; color: #9aa4b5; }
+  select, button { background: #2a303b; color: #d8dde6; border: 1px solid #454d5d; border-radius: 4px; padding: 2px 6px; font: inherit; }
+  button { cursor: pointer; } button:hover { background: #38404e; }
+  select { flex: 1; min-width: 0; }
+  #log { white-space: pre-wrap; font: 11px/1.35 ui-monospace, Menlo, monospace; color: #b9c2d2; margin-top: 4px; }
+  #tag { position: fixed; right: 10px; top: 8px; color: #e6b85c; font-weight: 600; }
+  .lbl { position: fixed; bottom: 8px; color: #9aa4b5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tag">DEV OUTFIT TESTER — temporary audit tool, not part of the game</div>
+<div class="lbl" style="left:350px">Third-person (drag = orbit, wheel = zoom)</div>
+<div class="lbl" style="right:10px" id="fplbl">First-person viewmodel (game camera)</div>
+<div id="panel"></div>
+<script type="module" src="/studio/devwear.js"></script>
+</body>
+</html>

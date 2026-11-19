@@ -1,204 +1,193 @@
-// 서버 통신: 접속, 받은 메시지 처리, 내 상태 주기 전송. 메시지 종류는 docs/PROTOCOL.md 참고.
-import { RESPAWN_MIN_MS, MAX_HP } from '/shared/constants.js';
+// 서버 통신: 연결 하나로 로비와 경기를 모두 (docs/PROTOCOL.md). 페이지를 열면 바로 접속해 손님 계정으로 로그인한다.
 import { WEAPONS } from '/shared/weapons.js';
-import { applyParts } from '/shared/parts.js';
-import { loadoutMessage } from './loadout.js';
+import { HEALTH } from '/shared/sim/config.js';
+import { me, wp, inp, game, roster, net, lobby } from './state.js';
+import { fromServer } from './loadout.js';
+import { makeLoadout } from '/shared/sim/player.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
 import { impact, addTracer, spawnGrenade, explode, clearGrenades } from './fx.js';
 import { playFx, vfx } from './vfx.js';
-import { feed, hurt, nameOf, sideOf, rosterSet, applyScores, showEnd, setHudOn } from './hud.js';
-import { remotes, addRemote, removeRemote, clearRemotes } from './remotes.js';
+import { killFeed, feedNote, hurt, showHit, damageNumber, rosterSet, applyKD, showEnd, showDeath, setHudOn, banner, setZones } from './hud.js';
+import { remotes, addRemote, removeRemote, clearRemotes, remoteFired, remoteReload, onSnapshot, remoteSpawn, remoteDied, remoteHook } from './remotes.js';
+import { onSound, clearSounds } from './minimap.js';
 import { loadMap } from './scene.js';
 import { sfx, audioAt } from './sfx.js';
-import { me, wp, inp, game, roster, net } from './state.js';
-import { $, V3, NOLOCK, MODE_CFG, setMode, lerp, esc, START_AT } from './util.js';
-import { setText, setDisplay } from './dom.js';
-import { placeMe } from './weapon.js';
-import { takeInputs, reconcile, resetPrediction, resetSession, teleport } from './player.js';
+import { clock } from './clock.js';
+import { takeCmds, reconcile, resetSession, placeMe, bindSend, teleport } from './predict.js';
+import { lobbyUpdate, lobbyNote, showLobby } from './lobby.js';
+import { $, V3, NOLOCK, setMode, START_AT, esc } from './util.js';
+import { setDisplay } from './dom.js';
 
-const _v = new V3();
-const QUIET = WEAPONS.map(w => applyParts(w, { barrel: 'suppressor' })); // 소음기를 단 상대의 총소리
+const _v = new V3(), _w = new V3();
+let retry = 0;
+bindSend(m => net.send(m));
 
-// opts: { mode } 빠른 시작 | { code } 친선전 코드로 입장 | { mode, create: { name, private, bots, minutes } } 친선전 방 만들기
-export function connect(name, opts = {}) {
+export function connect() {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   net.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, mode: MODE_CFG.id, loadout: loadoutMessage(), ...opts }));
+  ws.onopen = () => { retry = 0; net.open = true; ws.send(JSON.stringify({ t: 'hello', token: localStorage.getItem('fd_token') || undefined, name: localStorage.getItem('fd_name') || undefined })); };
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onMessage(m); };
   ws.onclose = () => {
     if (net.ws !== ws) return;
-    leaveToLobby(game.joined ? '서버와의 연결이 끊어졌습니다.' : '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.');
+    net.open = false;
+    if (game.joined) toLobbyScreen('서버와의 연결이 끊어졌습니다. 다시 연결하는 중…');
+    else lobbyNote('서버에 연결하는 중…');
+    setTimeout(connect, Math.min(5000, 800 * ++retry));
   };
 }
 
-// 방에서 나가 로비로 돌아간다 (연결 종료 + 화면/상태 정리). 새로고침이 필요 없다.
-export function leaveToLobby(message = '') {
-  const ws = net.ws; net.ws = null;
-  if (ws) ws.close();
-  game.joined = false; game.matchState = 'idle'; game.room = null;
-  clearRemotes(); roster.clear();
-  me.alive = true; me.team = -1; me.hp = 100; wp.reload = null;
-  inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false;
+// 경기 화면 → 로비 화면 (상태 정리)
+function toLobbyScreen(message = '') {
+  game.joined = false; game.matchState = 'idle'; game.room = null; game.end = null; game.death = null; game.dom = null;
+  clearRemotes(); roster.clear(); clearGrenades(); clearSounds(); vfx.clear();
+  me.alive = true; me.team = -1;
+  inp.keys.clear(); inp.fireHeld = inp.adsHeld = false;
   if (inp.chatOpen) closeChat();
   clearChat();
   if (document.pointerLockElement) document.exitPointerLock();
-  for (const id of ['pause', 'dead', 'endscr', 'inv', 'banner', 'roomtag']) setDisplay($(id), false);
-  setDisplay($('menu'), true, 'flex'); setHudOn(false);
-  $('join').disabled = false;
-  $('msg').textContent = message;
+  for (const id of ['pause', 'dead', 'endscr', 'banner', 'roomtag']) setDisplay($(id), false);
+  setHudOn(false);
+  showLobby(message);
 }
+export function leaveMatch() { net.send({ t: 'leave' }); }
 
-const DENIED = { not_found: '그 코드의 방을 찾을 수 없습니다. (방이 사라졌거나 코드가 틀렸습니다)', full: '방이 가득 찼습니다.', limit: '지금은 방을 더 만들 수 없습니다. 잠시 뒤에 다시 시도하세요.' };
+const DENIED = { not_found: '그 코드의 방이 없습니다.', full: '방이 가득 찼습니다.', limit: '지금은 방을 더 만들 수 없습니다.', password: '비밀번호가 틀렸습니다.' };
 
-// 서버가 보낸 메시지 종류별 처리
 function onMessage(m) {
   switch (m.t) {
+    // ───── 로비 ─────
+    case 'hi':
+      localStorage.setItem('fd_token', m.token);
+      lobby.me = m.me; me.name = m.me.name; fromServer(m.loadout);
+      lobbyUpdate('me'); lobbyNote('');
+      break;
+    case 'profile': lobby.me = m.me; me.name = m.me.name; lobbyUpdate('me'); break;
+    case 'friends': lobby.friends = m.list; lobby.inc = m.inc; lobbyUpdate('friends'); break;
+    case 'party': lobby.party = m.party; lobbyUpdate('party'); break;
+    case 'pinv': lobby.invites = [...lobby.invites.filter(i => i.party !== m.party), m]; lobbyUpdate('party'); break;
+    case 'note': lobbyNote(m.text); break;
+    case 'queue': lobbyNote('매치를 찾는 중…'); break;
+    case 'rooms': lobby.rooms = m.list; lobbyUpdate('rooms'); break;
+    case 'denied': lobbyNote(DENIED[m.reason] || '들어갈 수 없습니다.'); break;
+    case 'lo': break;
+    case 'lobby': lobby.me = m.me; toLobbyScreen(''); lobbyUpdate('me'); break;
+    case 'kicked': lobbyNote('다른 곳에서 같은 계정으로 접속해 연결을 끊었습니다.'); net.ws = null; break;
+    case 'chat':
+      if (m.ch === 'room') addChatLine(String(m.name), String(m.text), m.from === (lobby.me && lobby.me.id));
+      else { const list = lobby.chat[m.ch] || (lobby.chat[m.ch] = []); list.push(m); if (list.length > 60) list.shift(); lobbyUpdate('chat'); }
+      break;
+
+    // ───── 경기 ─────
     case 'welcome': {
-      game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.teamScores = m.ts || [0, 0]; game.room = m.room || null;
-      setMode(m.mode); loadMap(m.map || MODE_CFG.map); // 들어간 방의 모드/맵에 맞춘다 (새로고침 없이). 친선전은 맵을 따로 고를 수 있다
-      game.zone = m.zone || null;
-      resetSession(); // 서버에서 나는 새 플레이어 → 이동 예측 기록도 처음부터
-      clearRemotes(); roster.clear(); clearChat(); clearGrenades(); vfx.clear();
-      setText($('roomtag'), game.room ? `친선전 · ${game.room.name} · 코드 ${game.room.code}` : ''); setDisplay($('roomtag'), !!game.room);
-      setText($('pauseRoom'), game.room ? `친구에게 알려 주세요 → 방 코드 ${game.room.code}` : '');
-      game.goalKills = m.goal; game.matchState = m.state; game.matchEndsAt = performance.now() + m.left; game.endAt = performance.now() + 10000;
+      game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.room = m.room; game.mode = m.mode;
+      setMode(m.mode); loadMap(m.map);
+      me.lo = makeLoadout(m.lo); me.ps.id = m.id;
+      resetSession(); clock.reset(); clock.onTick(m.n);
+      clearRemotes(); roster.clear(); clearChat(); clearGrenades(); clearSounds(); vfx.clear();
+      startMatchState(m);
       for (const p of m.players) { rosterSet(p); if (p.id !== m.id) addRemote(p); }
+      rosterSet({ id: m.id, name: me.name, team: me.team });
+      setText('roomtag', game.room ? `커스텀 방 · ${game.room.name} · 코드 ${game.room.code}${game.room.locked ? ' 🔒' : ''}` : '');
       setDisplay($('menu'), false); setHudOn(true);
-      if (game.matchState === 'ended') showEnd(-1);
       if (!NOLOCK) setDisplay($('pause'), true, 'flex');
-      break;
-    }
-    case 'pj':
-      rosterSet(m.player); addRemote(m.player);
-      if (!m.player.bot) feed(`<span class="w">${esc(m.player.name)} 입장</span>`);
-      break;
-    case 'pl': {
-      const p = roster.get(m.id);
-      if (p && !p.bot) feed(`<span class="w">${esc(p.name)} 퇴장</span>`);
-      roster.delete(m.id); removeRemote(m.id);
+      if (m.state !== 'playing') { me.alive = false; }
       break;
     }
     case 'start':
-      game.matchState = 'playing'; game.goalKills = m.goal; game.matchEndsAt = performance.now() + m.left; game.teamScores = m.ts || [0, 0]; game.zone = m.zone || null;
-      roster.clear();
+      roster.clear(); rosterSet({ id: me.id, name: me.name, team: me.team });
       for (const p of m.players) { rosterSet(p); if (p.id !== me.id) addRemote(p); }
-      feed('<span class="w">새 경기 시작</span>');
+      startMatchState(m);
+      feedNote('<span class="w">새 경기 시작</span>');
       break;
+    case 'snap': clock.onTick(m.n); game.tick = m.n; onSnapshot(m.n, m.p); break;
+    case 'me': if (game.joined) { reconcile(m); if (!m.alive) me.hp = 0; } break;
+    case 'ev': clock.onTick(m.n); for (const e of m.l) onEvent(e); break;
+    case 'end': game.matchState = 'victory'; showEnd(m); if (m.me && m.me.profile) lobby.me = m.me.profile; break;
+  }
+}
+function startMatchState(m) {
+  game.matchState = 'playing'; game.goal = m.goal; game.teamScores = m.sc || [0, 0];
+  game.endsAt = performance.now() + (m.left || 0); game.overtime = !!m.ot; game.respawn = m.respawn || game.respawn;
+  game.end = null; game.death = null; game.rematch = null;
+  game.dom = m.dom ? { pts: m.dom.pts } : null;
+  setZones(m.dom ? m.dom.zones.map(([id, name, x, z, r]) => ({ id, name, x, z, r })) : []);
+}
+const setText = (id, v) => { $(id).textContent = v; setDisplay($(id), !!v); };
+
+function onEvent(e) {
+  switch (e.e) {
     case 'spawn':
-      if (m.id === me.id) {
-        placeMe(m.p); resetPrediction(); game.invUntil = performance.now() + (m.inv || 0);
-        // 스튜디오에서 "여기서 시작" 을 고르면 처음 한 번은 그 자리로 옮긴다 (개발 서버만 받아 준다)
-        if (START_AT.length === 2 && !game.startedAt) teleport(START_AT[0], 0, START_AT[1]);
+      if (e.id === me.id) {
+        placeMe(e.p, e.y); me.hp = HEALTH.max; game.death = null;
+        if (START_AT.length === 2 && !game.startedAt) teleport(START_AT[0], 0, START_AT[1]); // 스튜디오 "여기서 시작"
         game.startedAt = true;
-      }
-      else {
-        const r = remotes.get(m.id);
-        if (r) { r.alive = true; r.hasPos = true; r.deadT = 0; r.hp = MAX_HP; r.invUntil = performance.now() + (m.inv || 0); r.tpos.fromArray(m.p); r.pos.fromArray(m.p); }
-      }
+      } else remoteSpawn(e.id, e.p, e.y);
       break;
-    case 'me': // 서버가 계산한 내 이동 상태 → 맞추고 남은 입력을 다시 적용 (player.js)
-      if (game.joined) reconcile(m.q, m.st, m.k);
-      break;
-    case 's': { // 다른 사람의 위치/시선
-      const r = remotes.get(m.id);
-      if (!r) break;
-      r.tpos.fromArray(m.p); r.tyaw = m.y; r.tpitch = m.x; r.crouchT = m.c ? 1 : 0; r.weapon = m.w | 0; r.n = m.n | 0; // n: 서버 시각 번호 (명중 신고에 붙여 보낸다 → 랙 보정)
-      if (!r.hasPos) { r.hasPos = true; r.pos.copy(r.tpos); }
-      break;
-    }
+    case 'pj': rosterSet(e.p); if (e.p.id !== me.id) addRemote(e.p); if (!e.p.bot) feedNote(`<span class="w">${esc(e.p.name)} 입장</span>`); break;
+    case 'pl': { const p = roster.get(e.id); if (p && !p.bot) feedNote(`<span class="w">${esc(p.name)} 퇴장</span>`); roster.delete(e.id); removeRemote(e.id); break; }
     case 'shot': {
-      const w = WEAPONS[m.w]; if (!w) break;
-      const o = new V3().fromArray(m.o), a = audioAt(o);
-      sfx.shot(m.q ? QUIET[m.w] : w, a.dist, a.pan);
+      const w = WEAPONS[e.w]; if (!w) break;
+      _v.fromArray(e.o); const a = audioAt(_v);
+      sfx.shot(w, a.dist, a.pan);
       if (w.bolt) sfx.mech('bolt', a.att, a.pan, 0.5);
-      const r = remotes.get(m.id);
-      if (r) { r.rig.flash.position.copy(o); r.rig.flashT = 0.05; r.invUntil = 0; if (!m.q) r.shotAt = performance.now(); } // 쏜 사람은 무적이 풀리고, 미니맵에 잠깐 표시된다 (소음기 q 는 표시되지 않는다)
-      for (const e of m.e || []) {
-        const end = new V3(e[0], e[1], e[2]);
-        addTracer(o, end);
-        if (e[3] !== 6) { impact(end, e[3]); const ia = audioAt(end); if (ia.dist < 12) sfx.impact(ia.dist, ia.pan); }
-      }
+      const r = remotes.get(e.id);
+      if (r) { r.rig.flash.position.copy(_v); r.rig.flashT = 0.05; remoteFired(r); }
+      for (const l of e.l) { _w.set(l[0], l[1], l[2]); addTracer(_v, _w); impact(_w, l[3]); }
       break;
     }
-    case 'gl': // 유탄이 날아간다 (누가 쐈든 서버가 알려 준다)
-      if (Array.isArray(m.o) && Array.isArray(m.v)) spawnGrenade(m.id, m.o, m.v);
-      if (m.by !== me.id) { const a = audioAt(new V3().fromArray(m.o)); sfx.mech('pump', a.att, a.pan); }
-      break;
-    case 'boom': { // 유탄이 터졌다
-      explode(m.id, m.p, m.r);
-      const a = audioAt(new V3().fromArray(m.p)); sfx.boom(a.dist, a.pan);
-      break;
-    }
-    case 'shove': { // 밀어내기에 맞아 넘어졌다 (위치는 서버가 옮긴다)
-      if (m.id === me.id) { sfx.hurt(); wp.kickP += 0.05; wp.kickY += (Math.random() - 0.5) * 0.08; }
-      else { const r = remotes.get(m.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); playFx('skill_shove_hit', _v.copy(r.pos).setY(r.pos.y + 1.2)); } }
-      break;
-    }
-    case 'sk': { // 다른 사람이 누르는 스킬을 썼다 (지금은 아드레날린: 소리만)
-      const r = remotes.get(m.id);
-      if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); if (m.e === 'adrenaline') playFx('skill_adrenaline', r.pos); }
-      break;
-    }
-    case 'rl': {
-      const r = remotes.get(m.id);
-      if (!r) break;
-      const a = audioAt(r.pos); sfx.mech('magout', a.att, a.pan, 0.2); sfx.mech('magin', a.att, a.pan, 1.2);
-      break;
-    }
-    case 'dmg':
-      if (m.to === me.id) {
-        const src = remotes.get(m.from);
-        me.hp = m.hp; hurt(m.dmg, src ? src.pos : null);
+    case 'mel': { const r = remotes.get(e.id); if (r) { remoteFired(r); sfx.whoosh(audioAt(r.pos).pan); } break; }
+    case 'rl': { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.mech('magout', a.att, a.pan, 0.2); sfx.mech('magin', a.att, a.pan, 1.0); remoteReload(r, e.w); } break; }
+    case 'sk': { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); if (e.k === 'adrenaline') playFx('skill_adrenaline', r.pos); } break; }
+    case 'sw': { const r = remotes.get(e.id); if (r) { r.weapon = e.w; r.reload = null; } break; }
+    case 'hook': remoteHook(e.id, e.p); break;
+    case 'gl': spawnGrenade(e.id, e.o, e.v); if (e.by !== me.id) { const a = audioAt(_v.fromArray(e.o)); sfx.mech('pump', a.att, a.pan); } break;
+    case 'boom': { explode(e.id, e.p, e.r); const a = audioAt(_v.fromArray(e.p)); sfx.boom(a.dist, a.pan); break; }
+    case 'dmg': {
+      if (e.to === me.id) {
+        const src = remotes.get(e.from);
+        me.hp = e.hp; hurt(e.d, src ? src.pos : null); sfx.hurt();
         wp.kickP += (Math.random() - 0.3) * 0.02; wp.kickY += (Math.random() - 0.5) * 0.02;
-        sfx.hurt();
-        _v.copy(me.pos); _v.y += 1.2; impact(_v, -1);
       } else {
-        const r = remotes.get(m.to);
-        if (r) { r.hp = m.hp; _v.copy(r.pos); _v.y += lerp(1.25, 0.8, r.crouch); impact(_v, 6); }
+        const r = remotes.get(e.to);
+        if (r) { r.hp = e.hp; if (e.k !== 'bleed') { _v.copy(r.pos); _v.y += 1.1; impact(_v, 6); } }
       }
-      break;
-    case 'hp': me.hp = m.hp; break;
-    case 'rh': { const r = remotes.get(m.id); if (r) r.hp = m.hp; break; } // 다른 플레이어의 체력 회복
-    case 'denied': leaveToLobby(DENIED[m.reason] || '입장할 수 없습니다.'); break;
-    case 'chat': addChatLine(String(m.name), String(m.text), m.id === me.id); break;
-    case 'kill': {
-      applyScores(m.sc); if (m.ts) game.teamScores = m.ts;
-      const mine = m.killer === me.id, iDie = m.victim === me.id, w = WEAPONS[m.w];
-      const kn = nameOf(m.killer), vn = nameOf(m.victim);
-      feed(`<span class="${sideOf(m.killer)}">${esc(kn)}</span><span class="w">[${w ? w.name : '?'}]</span><span class="${sideOf(m.victim)}">${esc(vn)}</span>${m.head ? '<span class="hs">헤드샷</span>' : ''}`);
-      if (mine) sfx.kill();
-      if (iDie) {
-        me.alive = false; me.hp = 0; wp.reload = null; game.respawnAt = performance.now() + RESPAWN_MIN_MS; // 이 시각 이후 아무 입력이나 하면 부활
-        setText($('deadBy'), `${kn} 의 ${w ? w.name : ''}${m.head ? ' · 헤드샷' : ''}`);
-      } else {
-        const r = remotes.get(m.victim);
-        if (r) { r.alive = false; r.hp = 0; }
-      }
+      if (e.from === me.id && e.to !== me.id) { damageNumber(e.d, !!e.h); if (e.hp <= 0) showHit(!!e.h, true); }
       break;
     }
-    case 'zone': // 점령전 거점 상태 (바뀔 때만 온다)
-      game.zone = { o: m.o, ct: m.ct, p: m.p, c: m.c, n: m.n }; if (m.ts) game.teamScores = m.ts;
+    case 'blk': damageNumber('보호', false); break;
+    case 'kill': {
+      applyKD(e.kd); if (e.sc) game.teamScores = e.sc;
+      killFeed(e.k, e.v, e.w, e.how);
+      if (e.k === me.id && e.v !== me.id) sfx.kill();
+      if (e.v === me.id) { me.alive = false; me.hp = 0; game.respawnAt = performance.now() + (e.rs || game.respawn) * 1000; showDeath(e); }
+      else remoteDied(e.v);
       break;
-    case 'zcap': {
-      const ours = m.team === me.team;
-      feed(`<span class="${ours ? 'a' : 'e'}">${ours ? '아군이 거점을 점령했습니다' : '적이 거점을 점령했습니다'}</span>`);
+    }
+    case 'shove':
+      if (e.id === me.id) { sfx.hurt(); wp.kickP += 0.06; }
+      else { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); playFx('skill_shove_hit', _v.copy(r.pos).setY(r.pos.y + 1.2)); } }
+      break;
+    case 'bleed': if (e.id === me.id) banner('출혈!', 'e'); break;
+    case 'dom': game.dom = { pts: e.pts }; game.teamScores = e.sc; break;
+    case 'cap': {
+      const z = game.zones[e.z], ours = e.team === me.team;
+      banner(`${z ? z.id : ''} 거점 ${ours ? '점령!' : '을 빼앗겼다'}`, ours ? 'a' : 'e');
+      feedNote(`<span class="${ours ? 'a' : 'e'}">${ours ? '아군' : '적'}이 ${z ? esc(z.name || z.id) : '거점'} 을 점령</span>`);
       if (ours) sfx.kill();
       break;
     }
-    case 'end':
-      applyScores(m.sc); if (m.ts) game.teamScores = m.ts;
-      game.matchState = 'ended'; game.endAt = performance.now() + (m.restart || 10000);
-      showEnd(m.winner, m.wt);
-      break;
+    case 'contest': { const z = game.zones[e.z]; if (z && Math.hypot(me.pos.x - z.x, me.pos.z - z.z) < z.r + 12) banner(`${z.id} 거점 경합 중`, 'c'); break; }
+    case 'ot': game.overtime = true; banner('연장전 — 점수가 갈리는 순간 끝납니다', 'c'); break;
+    case 'snd': onSound(e); break;
   }
 }
 
-// 이동 입력을 0.05초마다 서버로 (한 번에 1/60초 입력 3개쯤). 위치는 서버가 계산한다
+// 입력을 0.033초마다 서버로 (1/60초 입력 2개쯤)
 let sendAcc = 0;
-export function sendState(dt) {
+export function sendInputs(dt) {
   sendAcc += dt;
-  if (!game.joined || sendAcc < 0.05) return;
+  if (!game.joined || sendAcc < 1 / 30) return;
   sendAcc = 0;
-  const m = takeInputs();
-  if (m) net.send({ t: 'in', ...m });
+  const m = takeCmds();
+  if (m) net.send({ t: 'cmd', ...m });
 }

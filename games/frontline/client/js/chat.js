@@ -1,5 +1,5 @@
-// 채팅 입력창과 메시지 표시
-// 채팅창이 열려 있는 동안 inp.chatOpen 이 true → input.js 의 isActive() 가 false → 이동/사격 입력이 꺼진다.
+// 경기 중 채팅 입력/표시 (방 전체). 로비·파티 채팅은 lobby.js.
+// 채팅창이 열려 있는 동안 inp.chatOpen 이 true → 이동·사격 입력이 꺼진다.
 import { inp, net } from './state.js';
 import { $ } from './util.js';
 
@@ -7,29 +7,25 @@ const MAX_LINES = 40;
 const chatEl = $('chat'), chatIn = $('chatIn'), chatLog = $('chatLog');
 
 export function openChat() {
-  inp.chatOpen = true; inp.keys.clear(); inp.fireHeld = inp.adsHeld = inp.fireFresh = false;
+  inp.chatOpen = true; inp.keys.clear(); inp.fireHeld = inp.adsHeld = false;
   chatEl.classList.add('open'); chatIn.value = ''; chatIn.focus();
 }
 export function clearChat() { chatLog.replaceChildren(); }
 export function closeChat() { inp.chatOpen = false; chatEl.classList.remove('open'); chatIn.blur(); }
-
 function sendChat() {
   const text = chatIn.value.trim();
-  if (text) net.send({ t: 'chat', text });
+  if (text) net.send({ t: 'chat', ch: 'room', text });
   closeChat();
 }
-
 export function addChatLine(name, text, mine) {
-  // textContent 계열만 사용해서 HTML 이 주입될 수 없게 한다
   const line = document.createElement('div'), who = document.createElement('b');
   who.textContent = name; if (mine) who.className = 'me';
   line.append(who, document.createTextNode(` ${text}`));
   chatLog.append(line);
-  while (chatLog.children.length > MAX_LINES) chatLog.firstChild.remove(); // 기록은 지우지 않고 유지 (닫힌 상태에서는 최근 몇 줄만 흐리게 보인다)
+  while (chatLog.children.length > MAX_LINES) chatLog.firstChild.remove();
 }
-
 chatIn.addEventListener('keydown', e => {
-  e.stopPropagation(); // 게임 단축키로 전달되지 않게
-  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(); } // 한글 조합 중 Enter 는 제외
+  e.stopPropagation();
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(); }
   else if (e.key === 'Escape') closeChat();
 });

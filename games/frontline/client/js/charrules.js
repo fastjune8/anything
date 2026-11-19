@@ -16,7 +16,7 @@ export const RIGS = {
     fingers: fingers(),
     sockets: { RightHandGrip: '오른손 무기 그립 (무기를 붙이는 곳)', LeftHandGrip: '왼손바닥 받침점', WeaponRoot: '무기 자체의 움직임', LeftHandIK: '애니메이션이 기록한 왼손 위치', BackWeaponSocket: '등에 멘 주무기', HipWeaponSocket: '허리 권총집' },
     grip: { right: 'RightHandGrip', left: 'LeftHandGrip' },
-    tris: { good: 20000, max: 40000 }, clipPrefix: 'tp_',
+    tris: { good: 20000, max: 40000 }, clipPrefix: 'TP_',
   },
   fp: {
     label: '1인칭 팔 (뷰모델)',
@@ -24,7 +24,7 @@ export const RIGS = {
     fingers: fingers(),
     sockets: { ViewmodelRightGrip: '오른손 무기 그립', ViewmodelLeftGrip: '왼손바닥 받침점', ViewmodelWeaponRoot: '무기 자체의 움직임', ViewmodelLeftHandIK: '애니메이션이 기록한 왼손 위치' },
     grip: { right: 'ViewmodelRightGrip', left: 'ViewmodelLeftGrip' },
-    tris: { good: 12000, max: 20000 }, clipPrefix: 'fp_',
+    tris: { good: 12000, max: 20000 }, clipPrefix: 'FP_',
   },
 };
 export const WEAPON_CLASSES = ['rifle', 'smg', 'shotgun', 'sniper', 'pistol', 'melee'];
@@ -111,8 +111,9 @@ export function checkCharacter(root, { bytes = 0, clips = [] } = {}) {
   // 클립
   if (!clips.length) ok(`애니메이션 클립 없음 — 따로 내보낸 애니메이션 파일(.glb)을 "애니메이션 불러오기" 로 붙여 볼 수 있습니다`);
   for (const c of clips) {
-    const re = new RegExp(`^${rig.clipPrefix}[a-z0-9_]+$`);
-    if (!re.test(c.name)) warn(`클립 이름 "${c.name}" — ${rig.clipPrefix}<동작>[_<무기종류>] 규칙과 다릅니다 (예: ${rig.clipPrefix}idle_rifle)`);
+    // 클립 이름: TP_<동작>[_<방향|무기종류>...] — 각 단어는 대문자로 시작 (예: TP_Walk_Left, FP_Reload_Rifle)
+    const re = new RegExp(`^${rig.clipPrefix}[A-Z][A-Za-z0-9]*(_[A-Z0-9][A-Za-z0-9]*)*$`);
+    if (!re.test(c.name)) warn(`클립 이름 "${c.name}" — ${rig.clipPrefix}<동작>[_<방향|무기종류>] 규칙과 다릅니다 (예: ${rig.clipPrefix}Walk_Left, ${rig.clipPrefix}Idle_Rifle)`);
     const unknown = [...new Set(c.tracks.map(t => t.name.split('.')[0]).filter(n => !bones.has(n) && !root.getObjectByName(n)))];
     if (unknown.length) warn(`클립 ${c.name}: 없는 뼈를 움직입니다 — ${unknown.slice(0, 5).join(', ')}`);
     if (c.tracks.some(t => t.name.endsWith('.scale'))) warn(`클립 ${c.name}: 크기(scale)에 키가 있습니다 — 규칙상 회전·(Root/Hips/WeaponRoot)이동만`);

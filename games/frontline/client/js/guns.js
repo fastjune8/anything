@@ -7,6 +7,21 @@ import { dressGun, dressGunLite, dressMaterial } from './gunmat.js';
 import { attachClips } from './gunanim.js';
 import { partModel } from './partmodels.js';
 
+// 무기 크기 (모든 총 공통 배율). 1.60 m 캐릭터에 맞춘 값 — 총 모델(.glb)·코드 모양은 그대로 두고 여기서만 줄인다.
+// 총 모양은 안쪽 그룹을 줄이고, 밖에서 쓰는 기준점(손잡이·가늠자·총구 위치 등)은 같은 배율로 줄인 값을 돌려준다.
+// 캐릭터 라이플 클립(build_animations_V.3.py 의 WEAPON_SCALE)도 같은 값으로 구웠다 — 바꾸면 클립도 다시 구워야 한다.
+export const WEAPON_SCALE = 0.9;
+const LEN_KEYS = ['muzzleZ', 'sightY', 'gripZ', 'gripY', 'supportZ', 'supportY', 'barrelY'];
+// 코드로 만든 총의 기준점을 배율에 맞춘다 (hip·adsZ 는 카메라 기준 자리라 그대로)
+function scaleSpec(spec, k) {
+  for (const key of LEN_KEYS) if (typeof spec[key] === 'number') spec[key] *= k;
+  for (const key of ['optic', 'grip', 'tube']) if (Array.isArray(spec[key])) spec[key] = spec[key].map(v => v * k);
+  spec.small = (spec.small || 1) * k;
+  return spec;
+}
+// 파츠의 코드 모양을 총 배율로 그리는 그룹 (좌표는 줄이기 전 단위)
+function scaled(a, k) { const g = new THREE.Group(); g.scale.setScalar(k); a.add(g); return g; }
+
 const M = {
   steel: new THREE.MeshStandardMaterial({ color: 0x1d1f22, metalness: 0.85, roughness: 0.42 }),
   polymer: new THREE.MeshStandardMaterial({ color: 0x141516, metalness: 0.1, roughness: 0.75 }),
@@ -111,7 +126,22 @@ const BUILD = {
     const mag = bx(g, 0.022, 0.1, 0.035, 0, -0.078, 0.042, M.steel, 0.2);
     return { mag, irons, muzzleZ: -0.14, sightY: 0.03, hip: [0.15, -0.15, -0.44], adsZ: -0.36, gripZ: 0.04, supportZ: 0.045, pistol: true, optic: [0.025, 0.03], barrelY: 0.01, small: 0.72 };
   },
+  revolver(g) { // 리볼버 (모델을 못 불러왔을 때)
+    cy(g, 0.011, 0.17, 0, 0.012, -0.1, M.steel);
+    cy(g, 0.024, 0.05, 0, 0.004, 0.005, M.steel);
+    bx(g, 0.026, 0.03, 0.08, 0, 0.008, 0.03, M.steel);
+    bx(g, 0.03, 0.1, 0.042, 0, -0.065, 0.065, M.wood, 0.35);
+    const irons = [bx(g, 0.004, 0.008, 0.004, 0, 0.026, -0.18, M.steel), ...rearSight(g, 0.026, 0.05)];
+    return { irons, muzzleZ: -0.19, sightY: 0.03, hip: [0.15, -0.15, -0.44], adsZ: -0.36, gripZ: 0.06, supportZ: 0.065, pistol: true, optic: [0.025, 0.0], barrelY: 0.012, small: 0.72 };
+  },
+  knife(g) { // 칼: 손잡이 + 날 (끝이 앞 −z)
+    bx(g, 0.022, 0.03, 0.11, 0, -0.01, 0.04, M.polymer);
+    bx(g, 0.05, 0.012, 0.016, 0, -0.005, -0.02, M.steel);
+    bx(g, 0.006, 0.032, 0.2, 0, 0.0, -0.13, M.steel);
+    return { muzzleZ: -0.23, sightY: 0.02, hip: [0.18, -0.2, -0.4], adsZ: -0.4, gripZ: 0.04, supportZ: 0.04, pistol: true, barrelY: 0, small: 0.8 };
+  },
 };
+BUILD.mp5 = BUILD.mp5 || BUILD.ar; BUILD.akimbo = BUILD.m9; // 아킴보 = 권총 두 자루
 
 // ───────── 파츠 모델 ─────────
 // 각 총의 BUILD 가 돌려주는 기준점: optic [윗면 높이, z], barrelY(총열 높이), grip [총열덮개 아랫면 높이, z], stock/mag/scope(크기를 바꿀 부품)
@@ -157,7 +187,7 @@ export function setGunParts(gun, parts = {}) {
 
   if (gun.scope) { // 저격소총: 달려 있는 스코프의 모양만 바뀐다
     gun.scope.scale.z = parts.optic === 'scope_lo' ? 0.72 : 1;
-    if (parts.optic === 'scope_hi') cy(a, 0.027, 0.1, 0, 0.065, -0.25, M.steel);
+    if (parts.optic === 'scope_hi') cy(scaled(a, WEAPON_SCALE), 0.027, 0.1, 0, 0.065, -0.25, M.steel);
   } else if (hasOptic) {
     const o = new THREE.Group(), s = gun.small || 1;
     o.position.set(0, gun.optic[0], gun.optic[1]); o.scale.setScalar(s); a.add(o);
@@ -173,8 +203,8 @@ export function setGunParts(gun, parts = {}) {
     gun.muzzleZ -= (pb.sockets.muzzle ? -pb.sockets.muzzle.position.z : 0.1) * s;
   } else if (BARREL[parts.barrel]) gun.muzzleZ -= BARREL[parts.barrel](a, gun.barrelY, b.muzzleZ, gun.small || 1);
   const pg = gun.grip && GRIP[parts.grip] && partModel(parts.grip);
-  if (pg) { pg.root.position.set(0, gun.grip[0], gun.grip[1]); a.add(pg.root); } // 앞 손잡이 모델: 원점 = 총열 덮개 아랫면
-  else if (gun.grip && GRIP[parts.grip]) GRIP[parts.grip](a, gun.grip[0], gun.grip[1]);
+  if (pg) { pg.root.position.set(0, gun.grip[0], gun.grip[1]); pg.root.scale.setScalar(WEAPON_SCALE); a.add(pg.root); } // 앞 손잡이 모델: 원점 = 총열 덮개 아랫면
+  else if (gun.grip && GRIP[parts.grip]) GRIP[parts.grip](scaled(a, WEAPON_SCALE), gun.grip[0] / WEAPON_SCALE, gun.grip[1] / WEAPON_SCALE);
 
   const ms = MAG_SCALE[parts.mag] || 1;
   if (gun.mag) { // 탄창: 윗부분은 그대로 두고 아래로 길어지거나 짧아진다 (Blender 모델은 원점이 탄창 윗면이라 그냥 늘리면 된다)
@@ -182,12 +212,12 @@ export function setGunParts(gun, parts = {}) {
     const h = !gun.magPivotTop && prm ? prm.height : 0;
     gun.mag.scale.y = ms; gun.mag.position.copy(b.magPos); gun.mag.position.y -= h * (ms - 1) / 2;
     gun.magRest = gun.mag.position.clone();
-  } else if (gun.tube && parts.mag === 'ext') cy(a, 0.012, 0.1, 0, gun.tube[0], gun.tube[1] - 0.045, M.steel); // 산탄총: 연장 튜브
+  } else if (gun.tube && parts.mag === 'ext') cy(scaled(a, WEAPON_SCALE), 0.012, 0.1, 0, gun.tube[0] / WEAPON_SCALE, gun.tube[1] / WEAPON_SCALE - 0.045, M.steel); // 산탄총: 연장 튜브
 
   if (gun.stock) {
     const st = gun.stock, p = st.geometry && st.geometry.parameters; // p: 코드로 만든 총의 상자 크기 (Blender 모델은 없음)
     if (parts.stock === 'light') st.scale.set(0.5, 0.62, 1);
-    else if (parts.stock === 'heavy') { st.scale.set(1.22, 1.12, 1.05); if (p) bx(a, 0.034, 0.02, p.depth * 0.6, 0, st.position.y + p.height * 0.56 + 0.008, st.position.z, M.polymer, st.rotation.x); }
+    else if (parts.stock === 'heavy') { st.scale.set(1.22, 1.12, 1.05); if (p) bx(scaled(a, WEAPON_SCALE), 0.034, 0.02, p.depth * 0.6, 0, st.position.y + p.height * 0.56 + 0.008, st.position.z, M.polymer, st.rotation.x); }
     else st.scale.set(1, 1, 1);
   }
 }
@@ -215,12 +245,15 @@ export function wrapGun(group, spec, parts, detail = true) {
 // 등록된 모델(.glb)로 총 만들기. 부착 지점이 모자라면 null (→ 코드로 만든 총)
 function buildFromModel(src, modelId, withArms, parts, detail) {
   const group = new THREE.Group(), root = src.clone(true);
+  root.scale.setScalar(WEAPON_SCALE); // 총 크기 배율 → gunSpec 의 기준점도 줄어든 자리로 나온다
   group.add(root); group.updateMatrixWorld(true);
   const spec = gunSpec(group);
   if (!spec) return null;
+  spec.small = (spec.small || 1) * WEAPON_SCALE; // 조준경·총구 장치 파츠도 같은 배율
   const armL = withArms ? attachArms(group, spec) : null;
   const gun = wrapGun(group, spec, parts, detail);
   gun.model = modelId; // 어떤 모델로 만들었는지 (확인·테스트용)
+  gun.modelScale = WEAPON_SCALE;
   return attachClips(gun, root, root.animations, armL); // 모션 클립 (재장전 등, docs/GUN_MODELING.md 11). anim_hand_l = 왼손 목표
 }
 
@@ -230,8 +263,8 @@ function buildFromModel(src, modelId, withArms, parts, detail) {
 export function buildGun(id, withArms, parts, detail = true) {
   const src = modelFor(id);
   if (src) { const g = buildFromModel(src, modelIdFor(id), withArms, parts, detail); if (g) return g; }
-  const group = new THREE.Group();
-  const spec = (BUILD[id] || BUILD.ar)(group); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
+  const group = new THREE.Group(), body = scaled(group, WEAPON_SCALE); // 총 모양은 줄인 그룹 안에
+  const spec = scaleSpec((BUILD[id] || BUILD.ar)(body), WEAPON_SCALE); // 모델도 코드 모양도 없는 무기(모델을 못 불러온 새 무기)는 소총 모양으로
   const armL = withArms ? attachArms(group, spec) : null;
   const gun = wrapGun(group, spec, parts, detail);
   gun.armL = armL;

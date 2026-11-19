@@ -11,7 +11,7 @@ import { reachGrip, socketWorld, elbowPole } from '/js/charik.js';
 import { gunSpec } from '/js/modelrules.js';
 import { dressGun } from '/js/gunmat.js';
 import { buildSoldier } from '/js/guns.js';
-import { el, html } from '../util.js';
+import { el, html, tabifyTools } from '../util.js';
 
 const VM_FOV = 52; // 게임의 1인칭 카메라 시야각
 const LOWER = new Set(['Root', 'Hips', 'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot', 'LeftToe', 'RightUpperLeg', 'RightLowerLeg', 'RightFoot', 'RightToe']); // 하체 마스크
@@ -45,9 +45,8 @@ export async function createCharacterDoc(ctx, id, opts = {}) {
   const tools = html('div', '', sec('보기', `<div class="seg" data-r="views"><button type="button" data-view="orbit" class="on" title="돌려 보기">살펴보기</button><button type="button" data-view="eye" title="${kind === 'fp' ? '게임 1인칭 카메라 그대로' : '캐릭터 눈높이에서 정면'}">${kind === 'fp' ? '1인칭' : '눈높이'}</button></div>`)
     + sec('표시', `<label class="tog"><input type="checkbox" data-r="showMesh" checked> 몸 (메시)</label><label class="tog"><input type="checkbox" data-r="showBones" checked> 뼈대</label>
       <label class="tog"><input type="checkbox" data-r="showSockets" checked> 부착 지점</label><label class="tog"><input type="checkbox" data-r="showWire"> 와이어프레임</label>
-      <label class="tog" title="고른 뼈가 몸을 얼마나 움직이는지 (파랑 0 → 빨강 1)"><input type="checkbox" data-r="showWeights"> 웨이트 (고른 뼈)</label>
       ${kind === 'tp' ? '<label class="tog" title="지금 게임의 상자 병사와 크기 비교"><input type="checkbox" data-r="showGhost"> 게임 병사 비교</label>' : ''}`)
-    + sec('뼈', '<input type="search" data-r="boneFind" placeholder="뼈 찾기 (예: Hand)"><div class="bonetree" data-r="boneTree"></div>')
+    + sec('뼈', '<label class="tog" title="고른 뼈가 몸을 얼마나 움직이는지 (파랑 0 → 빨강 1)"><input type="checkbox" data-r="showWeights"> 웨이트 색으로 보기 (고른 뼈)</label><input type="search" data-r="boneFind" placeholder="뼈 찾기 (예: Hand)"><div class="bonetree" data-r="boneTree"></div>')
     + sec('무기 쥐기', `<label class="kv">무기<select data-r="gunSel"><option value="">없음</option></select></label>
       <label class="kv">방식<select data-r="holdMode"><option value="hold">들기 (양손 IK)</option><option value="hand">손에 붙이기 (그립 그대로)</option></select></label>
       <label class="tog"><input type="checkbox" data-r="leftIK" checked> 왼손 IK (socket_hand_l)</label>
@@ -57,6 +56,7 @@ export async function createCharacterDoc(ctx, id, opts = {}) {
     + sec('애니메이션', `<div data-r="clipBox"></div><button type="button" data-r="loadAnim" title="같은 뼈대로 만든 애니메이션 .glb (클립만 있어도 된다)">애니메이션 불러오기</button><input type="file" accept=".glb" data-r="animFile" hidden>`)
     + '<p class="note">규칙: docs/CHARACTER_MODELING.md · 조작법은 ? (F1)</p>');
   for (const h of tools.querySelectorAll('.tbx-h')) h.addEventListener('click', () => h.classList.toggle('shut'));
+  tabifyTools(tools, [['보기', ['보기', '표시']], ['뼈', ['뼈']], ['무기 · 동작', ['무기 쥐기', '애니메이션']]]); // 한 번에 한 묶음만 보인다
   const toolbar = html('div', '', `<span class="grp"><span class="gl">파일</span><span class="status" data-r="fname"></span><span class="pill">${rig.label}</span></span><span class="grow"></span>
     <span class="grp"><button type="button" data-r="resetAll" title="모든 뼈를 레스트(T-포즈)로">레스트 자세</button></span>
     <span class="grp"><span class="gl">캐릭터 id</span><input type="text" data-r="charId" placeholder="예: base_body" size="14" title="영문 소문자·숫자·_ (content/characters/<id>.glb)">

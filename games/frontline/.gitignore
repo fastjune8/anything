@@ -4,3 +4,6 @@ deploy/targets.env
 *.pem
 *.log
 .DS_Store
+archive/pre-overhaul-*/
+tests/.last-browser.png
+data/

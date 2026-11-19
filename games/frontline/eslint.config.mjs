@@ -13,7 +13,7 @@ const common = {
 };
 
 export default [
-  { ignores: ['node_modules/**', 'deploy/**'] },
+  { ignores: ['node_modules/**', 'deploy/**', 'archive/**', 'data/**'] },
   // 브라우저에서 도는 코드
   { files: ['client/**/*.js', 'studio/**/*.js'], ...common, languageOptions: { ...common.languageOptions, globals: { ...globals.browser } } },
   // 서버와 브라우저가 같이 쓰는 코드: 둘 다에서 동작해야 하므로 전역 객체를 쓰지 않는다

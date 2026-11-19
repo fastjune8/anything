@@ -19,103 +19,96 @@
   <div id="scope"><b></b></div>
   <div id="cross"><i class="h l"></i><i class="h r"></i><i class="v t"></i><i class="v b"></i><i class="c"></i></div>
   <div id="hitm"></div>
+  <div id="dmgnums"></div>
   <div id="dmgdir"></div>
   <div id="rbar"><i></i></div>
 
-  <div id="score"><span id="timer" class="mono">5:00</span><span id="goal">20킬 선승</span></div>
+  <!-- 위: 점수 · 시간 · 거점 -->
+  <div id="top"><span class="sc a mono" id="scA">0</span><div class="mid"><span id="timer" class="mono">10:00</span><span id="goal"></span><div id="zones"></div></div><span class="sc e mono" id="scE">0</span></div>
   <div id="zonebox"><div class="zt"><b id="zoneName">거점</b><span id="zoneState"></span></div><div class="zbar"><i></i></div></div>
-  <div id="zmark"><b>A</b><span>0m</span></div>
+  <div id="zmarks"></div>
   <div id="roomtag"></div>
-  <div id="lb"></div>
   <canvas id="minimap" width="170" height="170"></canvas>
+  <canvas id="tactical"></canvas>
   <div id="banner"></div>
-  <div id="inv"></div>
+  <div id="prot"></div>
   <div id="feed"></div>
+  <div id="board"></div>
   <div id="chat"><div id="chatLog"></div><input id="chatIn" type="text" maxlength="120" placeholder="메시지 입력 · Enter 전송 · Esc 취소" autocomplete="off"></div>
 
-  <div id="hp">
-    <div class="row"><span class="v mono" id="hpV">100</span><span class="l">HP</span></div>
-    <div class="bar"><i id="hpB"></i></div>
-  </div>
+  <!-- 아래: 체력 · 무기 · 탄약 · 스킬 -->
+  <div id="hp"><div class="row"><span class="v mono" id="hpV">150</span><span class="l">HP</span></div><div class="bar"><i id="hpB"></i></div></div>
   <div id="slots"></div>
   <div id="skills"></div>
-  <div id="ammo">
-    <div><span class="cur mono" id="amC">30</span><span class="res mono" id="amR">/ 120</span></div>
-    <div class="wn" id="wN">M4A1</div>
-    <div class="wc" id="wC">돌격소총 · 연사</div>
-  </div>
-  <div id="hint"></div>
+  <div id="ammo"><div><span class="cur mono" id="amC">30</span><span class="res mono" id="amR">/ 30</span></div><div class="wn" id="wN"></div><div class="wc" id="wC"></div></div>
 
-  <div id="dead"><h2>전사</h2><p id="deadBy"></p><p id="deadT"></p></div>
-  <div id="endscr"><h1 id="endT">승리</h1><div class="fs" id="endS" style="font-size:20px"></div><div id="endBoard"></div><p id="endR"></p></div>
+  <div id="dead"></div>
+  <div id="endscr"></div>
 </div>
 
+<!-- 로비 -->
 <div class="overlay" id="menu">
-  <div class="card">
-    <h1>FRONT<em>IER</em></h1>
-    <div class="sub">사람이 모자라면 봇이 채워서 바로 시작됩니다</div>
-    <input type="text" id="name" maxlength="14" placeholder="콜사인 (이름)" autocomplete="off">
-    <button type="button" id="armoryBtn"><span class="at">무기고</span><span id="loadoutSum"></span><span class="ag">무기 · 파츠 변경 ›</span></button>
-    <div id="tabs"><button type="button" data-tab="quick" class="on">빠른 시작</button><button type="button" data-tab="custom">친선전 (방 만들기)</button></div>
-
-    <div id="paneQuick">
-      <div id="modes"></div>
-      <button id="join">전장 입장</button>
-    </div>
-
-    <div id="paneCustom" hidden>
-      <div class="phead"><b>열린 방</b><span id="roomEmpty">열린 방이 없습니다</span></div>
-      <div id="roomList"></div>
-      <div class="codejoin"><input type="text" id="codeIn" maxlength="4" placeholder="입장 코드 (4글자)" autocomplete="off" spellcheck="false"><button type="button" id="codeJoin">코드로 입장</button></div>
-      <div class="phead"><b>방 만들기</b></div>
-      <form id="createForm">
-        <input type="text" id="roomName" maxlength="20" placeholder="방 이름 (비우면 내 이름의 방)" autocomplete="off">
-        <div class="seg" id="createMode"></div>
-        <div class="opts">
-          <label><input type="checkbox" id="optPrivate"> 비공개 (코드로만 입장)</label>
-          <label><input type="checkbox" id="optBots"> 부족한 인원을 봇으로 채우기</label>
-          <label>제한 시간 <select id="optMinutes"><option value="3">3분</option><option value="5" selected>5분</option><option value="10">10분</option></select></label>
+  <div class="lobby">
+    <header>
+      <h1>FRONT<em>IER</em></h1>
+      <div class="me">
+        <div class="who"><b id="meName">…</b><small id="meTag"></small><span id="meLv" class="lv"></span></div>
+        <div class="xpbar"><i id="meXp"></i></div><small id="meXpT"></small> · <small id="meSum"></small>
+      </div>
+      <div class="mebtn"><button type="button" id="meEdit" class="small ghost">이름 변경</button><button type="button" id="meCopy" class="small ghost">친구 코드 복사</button><button type="button" id="meStats" class="small">전적</button></div>
+    </header>
+    <div class="cols">
+      <section class="play">
+        <div id="tabs"><button type="button" data-tab="quick" class="on">빠른 매칭</button><button type="button" data-tab="custom">커스텀 방</button></div>
+        <div id="paneQuick">
+          <div id="modes"></div>
+          <button id="join" type="button">빠른 매칭</button>
+          <p class="dim small">사람이 모자라면 봇이 채워서 바로 시작됩니다</p>
         </div>
-        <button type="submit" id="createBtn">방 만들고 입장</button>
-      </form>
+        <div id="paneCustom" hidden>
+          <div class="phead"><b>열린 방</b><span id="roomEmpty">열린 방이 없습니다</span><button type="button" id="roomRefresh" class="small ghost">새로고침</button></div>
+          <div id="roomList"></div>
+          <div class="codejoin"><input type="text" id="codeIn" maxlength="4" placeholder="방 코드" autocomplete="off" spellcheck="false"><input type="password" id="passIn" maxlength="16" placeholder="비밀번호 (있으면)" autocomplete="off"><button type="button" id="codeJoin">입장</button></div>
+          <div class="phead"><b>방 만들기</b></div>
+          <form id="createForm">
+            <input type="text" id="cName" maxlength="20" placeholder="방 이름" autocomplete="off">
+            <div class="row2"><label>모드 <select id="cMode"></select></label><label>맵 <select id="cMap"></select></label></div>
+            <div class="row2"><label>시간 <select id="cMin"><option value="5">5분</option><option value="8">8분</option><option value="10" selected>10분</option><option value="15">15분</option></select></label>
+              <label>인원 <select id="cMax"><option value="2">2명</option><option value="4">4명</option><option value="6">6명</option><option value="8">8명</option><option value="10" selected>10명</option></select></label></div>
+            <div class="row2"><input type="password" id="cPass" maxlength="16" placeholder="비밀번호 (비우면 공개)" autocomplete="off"><label class="chk"><input type="checkbox" id="cBots" checked> 봇으로 채우기</label></div>
+            <button type="submit">방 만들고 입장</button>
+          </form>
+        </div>
+        <div id="msg"></div>
+      </section>
+      <section class="kit">
+        <div class="ktabs"><button type="button" data-lt="loadout" class="on">출전 무기 · 스킬</button><button type="button" data-lt="outfit">외형</button></div>
+        <div id="ltLoadout"><div id="slot0" class="slotbox"></div><div id="slot1" class="slotbox"></div></div>
+        <div id="ltOutfit" hidden><div id="outfitBox"></div></div>
+      </section>
+      <section class="social">
+        <h3>파티</h3><div id="partyBox"></div>
+        <h3>친구</h3>
+        <form id="frAdd"><input type="text" id="frTag" placeholder="이름#1234" autocomplete="off" spellcheck="false"><button type="submit" class="small">추가</button></form>
+        <div id="friendList"></div>
+        <div id="chatTabs"><button type="button" data-ch="lobby" class="on">로비 채팅</button><button type="button" data-ch="party">파티 채팅</button></div>
+        <div id="lobbyLog"></div>
+        <form id="lobbyChat"><input type="text" id="lobbyChatIn" maxlength="120" placeholder="메시지" autocomplete="off"></form>
+      </section>
     </div>
-
-    <div id="msg"></div>
-    <div class="keys">
-      <div><span>이동</span><kbd>W A S D</kbd></div>
-      <div><span>사격</span><kbd>마우스 좌클릭</kbd></div>
-      <div><span>정조준 / 스코프</span><kbd>우클릭 · T</kbd></div>
-      <div><span>재장전</span><kbd>R</kbd></div>
-      <div><span>무기 교체</span><kbd>1 · 2 · 휠</kbd></div>
-      <div><span>스킬 (주무기 · 보조무기)</span><kbd>Q · E</kbd></div>
-      <div><span>달리기</span><kbd>Shift</kbd></div>
-      <div><span>앉기</span><kbd>C</kbd></div>
-      <div><span>점프 · 넘어가기</span><kbd>Space</kbd></div>
-      <div><span>채팅</span><kbd>Enter</kbd></div>
-    </div>
+    <footer class="keys">
+      <span><kbd>WASD</kbd> 이동</span><span><kbd>Shift</kbd> 달리기</span><span><kbd>C</kbd> 슬라이딩(달리며)·앉기</span><span><kbd>Space</kbd> 점프·넘어가기</span>
+      <span><kbd>좌클릭</kbd> 사격</span><span><kbd>우클릭·T</kbd> 정조준</span><span><kbd>R</kbd> 재장전</span><span><kbd>1·2·휠</kbd> 무기 교체</span>
+      <span><kbd>Q·E</kbd> 스킬</span><span><kbd>M</kbd> 전술 지도</span><span><kbd>Tab</kbd> 점수판</span><span><kbd>V</kbd> 3인칭</span><span><kbd>Enter</kbd> 채팅</span>
+    </footer>
   </div>
-</div>
-
-<div id="armory">
-  <div id="arTop"><h2>무기고</h2><span>벽에 걸린 무기를 클릭해 살펴보세요 · 전장에는 두 자루를 들고 갑니다</span></div>
-  <div id="arLabels"></div>
-  <aside id="arPanel">
-    <div class="ar-head"><h3 id="arName"></h3><span id="arCls"></span></div>
-    <div id="arEquip"><button type="button" data-slot="0"></button><button type="button" data-slot="1"></button></div>
-    <div id="arStats"></div>
-    <div class="ar-sec">스킬 <small>자리마다 하나 · Q = 1번(주무기), E = 2번(보조무기)</small></div>
-    <div id="arSkills"></div>
-    <div class="ar-sec">파츠 <small>마우스를 올리면 성능 변화를 미리 봅니다</small></div>
-    <div id="arParts"></div>
-    <div class="ar-foot"><div id="arSum"></div><button type="button" id="arClose">완료</button></div>
-  </aside>
+  <div id="stats" class="modal" hidden><div class="mbox"><h3>전적</h3><div id="statsBody"></div><button type="button" id="statsClose">닫기</button></div></div>
 </div>
 
 <div class="overlay" id="pause">
   <div class="card">
     <h2>일시정지</h2>
     <div class="sub" style="margin-bottom:0">화면을 클릭하면 전투로 돌아갑니다 (경기는 계속 진행 중)</div>
-    <div id="pauseRoom"></div>
     <div class="opt" id="optSens"><span>마우스 감도</span><input type="range" id="sens" min="0.2" max="3" step="0.05" value="1"><output id="sensV">1.00</output></div>
     <div class="opt" id="optVol"><span>음량</span><input type="range" id="vol" min="0" max="1" step="0.05" value="0.6"><output id="volV">0.60</output></div>
     <button type="button" id="leave">로비로 나가기</button>

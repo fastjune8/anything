@@ -199,7 +199,7 @@ export async function createDataDoc(ctx, id) {
     } else {
       page.append(el('p', 'lead', '로비에 보이는 순서대로. 모드의 점수·승리 규칙 자체는 server/modes/ 코드에 있고, 여기서는 수치를 고친다.'), itemButtons());
       page.append(table(['모드', '규칙', '맵', '인원', '봇 채움', '팀', '목표', '점령 시간'], data.map((m, i) => ({
-        on: i === cur, cells: [m.name, m.rules, m.map, m.max, m.fill, m.teams || '개인전', m.goal, m.zone ? `${m.zone.capture}s` : '—'],
+        on: i === cur, cells: [m.name, m.rules, m.map, m.max, m.fill, m.teams || '개인전', m.goal, m.dom ? `${m.dom.capture}s` : '—'],
       })), i => { cur = i; render(); renderInspector(); }));
     }
     if (errors.length) {
