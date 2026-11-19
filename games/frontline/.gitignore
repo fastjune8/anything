@@ -7,3 +7,4 @@ deploy/targets.env
 archive/pre-overhaul-*/
 tests/.last-browser.png
 data/
+tests/.last-netbrowser.png

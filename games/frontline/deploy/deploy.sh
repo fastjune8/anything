@@ -49,7 +49,7 @@ fi
 if [ "$ROLLBACK" = 1 ]; then
   remote "[ -d ~/$DIR.prev ]" || { echo "백업(~/$DIR.prev)이 없어 되돌릴 수 없습니다."; exit 1; }
   if [ "$YES" != 1 ]; then read -r -p "[$TARGET] 직전 버전으로 되돌립니다. 접속자는 연결이 끊깁니다. 계속할까요? (yes) " ans; [ "$ans" = yes ] || { echo "취소"; exit 1; }; fi
-  remote "sudo systemctl stop $SERVICE; rsync -a --delete ~/$DIR.prev/ ~/$DIR/; sudo systemctl start $SERVICE; sleep 2; systemctl is-active $SERVICE"
+  remote "sudo systemctl stop $SERVICE; rsync -a --delete --exclude /data ~/$DIR.prev/ ~/$DIR/; sudo systemctl start $SERVICE; sleep 2; systemctl is-active $SERVICE"
   echo "되돌리기 완료. 현재 상태: $(live_status)"
   exit 0
 fi
@@ -100,7 +100,7 @@ echo "== 이전 버전 백업 (~/$DIR.prev)"
 remote "mkdir -p ~/$DIR && rm -rf ~/$DIR.prev && cp -a ~/$DIR ~/$DIR.prev"
 
 echo "== 파일 전송"
-rsync -az --delete --exclude node_modules --exclude deploy --exclude tests --exclude studio --exclude tools --exclude .git --exclude '*.log' \
+rsync -az --delete --exclude node_modules --exclude deploy --exclude tests --exclude studio --exclude tools --exclude .git --exclude '*.log' --exclude /data --exclude /archive \
   -e "ssh ${SSH_BASE[*]}" ./ "$SSH_USER@$HOST:~/$DIR/"
 
 echo "== 설치 및 서비스 재시작"
@@ -134,7 +134,7 @@ else
   remote "journalctl -u $SERVICE -n 15 --no-pager" || true
   if [ -n "$TARGET" ]; then
     echo "!! 라이브이므로 직전 버전으로 자동 복구합니다."
-    remote "sudo systemctl stop $SERVICE; rsync -a --delete ~/$DIR.prev/ ~/$DIR/; sudo systemctl start $SERVICE"
+    remote "sudo systemctl stop $SERVICE; rsync -a --delete --exclude /data ~/$DIR.prev/ ~/$DIR/; sudo systemctl start $SERVICE"
     sleep 3; echo "복구 후 상태: $(live_status)"
   fi
   exit 1

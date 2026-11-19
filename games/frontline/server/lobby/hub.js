@@ -9,6 +9,7 @@ import { sanitizeChat, allowChat } from '../chat.js';
 import { login, rename, getAccount, byTag, profile, publicCard, saveSoon, recordMatch } from './accounts.js';
 import { Room } from '../game/room.js';
 import { matchMsFor } from '../config.js';
+import { perf } from '../perf.js';
 
 const PARTY_MAX = 5;
 const MAX_CUSTOM = 30;
@@ -218,6 +219,8 @@ function refreshParty(p) {
   const members = [...p.members].map(id => { const o = sessionOf(id); return o ? { ...publicCard(o.acc), status: statusOf(o) } : null; }).filter(Boolean);
   for (const id of p.members) send(sessionOf(id), { t: 'party', party: { id: p.id, leader: p.leader, members } });
 }
+
+perf.setProbe(() => ({ players: [...rooms].reduce((n, r) => n + r.players.size, 0), rooms: rooms.size }));
 
 // 상태 확인 (/status)
 export function hubStats() {

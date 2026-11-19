@@ -21,5 +21,5 @@ export default [
   // 서버, 테스트: Node
   { files: ['server/**/*.js', 'tests/**/*.mjs', 'eslint.config.mjs'], ...common, languageOptions: { ...common.languageOptions, globals: { ...globals.node } } },
   // 테스트 안의 page.evaluate(() => ...) 는 브라우저 안에서 실행되므로 window/document 사용을 허용
-  { files: ['tests/browser.test.mjs', 'tests/studio.test.mjs'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
+  { files: ['tests/browser.test.mjs', 'tests/studio.test.mjs', 'tests/netbrowser.test.mjs'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
 ];

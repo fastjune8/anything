@@ -7,6 +7,7 @@ import { eyeY, hSpeed } from '../../shared/sim/movement.js';
 import { skillReady } from '../../shared/sim/abilities.js';
 import { rayWorld } from '../../shared/collision.js';
 import { BTN, HEALTH } from '../../shared/sim/config.js';
+import { perf } from '../perf.js';
 
 const PAIRS = [['ar', 'revolver'], ['mp5', 'knife'], ['m870', 'akimbo'], ['awm', 'mp5'], ['m249', 'revolver'], ['ar', 'm870'], ['akimbo', 'knife'], ['revolver', 'mp5'], ['awm', 'akimbo'], ['ar', 'knife']];
 // 무기 종류별 좋아하는 거리 [가까이, 멀리] · 조준 오차(도) · 반응 시간(초)
@@ -143,7 +144,9 @@ export class Brain {
     }
     if (!g) { const p = nav.randomReachablePoint(); g = [p[0], p[1], 2]; }
     this.goal = g; this.repath = 2.5 + Math.random() * 2;
+    const t0 = performance.now();
     this.path = nav.findPath(ps.x, ps.z, g[0], g[1]) || [[g[0], g[1]]];
+    perf.path(performance.now() - t0);
   }
   // 스킬: 상황에 맞으면 Q/E
   useSkills(cmd, T, dist) {

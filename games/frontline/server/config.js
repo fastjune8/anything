@@ -24,7 +24,10 @@ export const RESULTS_MS = process.env.RESULTS_SECONDS ? Number(process.env.RESUL
 export const VICTORY_MS = process.env.VICTORY_SECONDS ? Number(process.env.VICTORY_SECONDS) * 1000 : 3500;  // 승리 연출
 export const botFillFor = cfg => (process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : cfg.fill);
 export const respawnFor = cfg => (process.env.RESPAWN_SECONDS ? Number(process.env.RESPAWN_SECONDS) : cfg.respawn);
-export const PERSIST = process.env.PERSIST !== 'off';   // 테스트는 계정 파일을 쓰지 않는다
+export const PERSIST = process.env.PERSIST !== 'off';
+// 입력 큐 (기본 켜짐): 받은 입력을 바로 몰아서 처리하지 않고 한 tick 에 1~2개씩 처리한다. 끄면 예전 방식 (시험 비교용)
+export const INPUT_QUEUE = process.env.INPUT_QUEUE !== 'off';
+export const PERF_LOG = process.env.PERF_LOG === '1'; // 1초마다 서버 성능 요약을 로그로 (개발·측정용)   // 테스트는 계정 파일을 쓰지 않는다
 
 export function lanAddresses() {
   const out = [];

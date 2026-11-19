@@ -24,6 +24,7 @@ import { clipNames, wearableCacheSize } from './charassets.js';
 import { buildGun } from './guns.js';
 import { dress, setOutfit, outfitState, equip as equipWear, undress } from './outfit.js';
 import { clock } from './clock.js';
+import { diag } from './netdiag.js';
 import { BODY } from '/shared/sim/config.js';
 import './lobby.js';
 
@@ -68,7 +69,10 @@ function frame(now) {
   const dt = Math.min(0.05, real);
   const active = isActive();
   let cam = camera;
+  diag.frame(real * 1000);
   if (game.joined) {
+    clock.update(real); // 서버 시계·보간 재생 위치를 먼저 갱신 (입력의 vt 와 원격 플레이어 그리기가 같은 값을 쓴다)
+    diag.buffer(clock.delay, clock.delay / 60 * 1000);
     updatePrediction(real, active);
     updateRecoil(dt);
     const w = eff[wp.cur];
@@ -113,6 +117,17 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
+// F3: 네트워크 진단 (RTT·수신 간격·버퍼·튐·보정·FPS). 4번/초 갱신
+const diagEl = $('netdiag');
+addEventListener('keydown', e => { if (e.code === 'F3' && !e.repeat) { e.preventDefault(); diagEl.style.display = diagEl.style.display === 'block' ? 'none' : 'block'; } });
+setInterval(() => {
+  if (diagEl.style.display !== 'block') return;
+  const s = diag.summary(), f = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : '-';
+  diagEl.textContent = [`RTT ${f(s.rtt.avg)}ms (지터 ${f(s.rtt.jitter)}, 최대 ${f(s.rtt.max)})`, `스냅샷 ${f(s.snap.avg, 1)}ms ±${f(s.snap.jitter, 1)} · p99 ${f(s.snap.p99)} · 최대 ${f(s.snap.maxGap)} · 100ms↑ ${s.snap.gaps100}회`,
+    `보간 버퍼 ${f(s.buffer.ms)}ms (${f(s.buffer.ticks, 1)}tick) · 예측으로 그린 ${f(s.remote.underPct, 1)}%`, `원격 튐 ${s.remote.jumps}회 (최대 한 프레임 ${f(s.remote.maxStep, 2)}m)`,
+    `내 위치 보정 ${s.correction.n}회 · 최대 ${f(s.correction.max, 2)}m`, `FPS ${f(s.fps.avg)} (최저 ${f(s.fps.min)})`, `수신 ${f(s.rate.kbps, 1)}KB/s · ${Object.entries(s.rate.counts).map(([k, v]) => `${k} ${v}`).join(' ')}`].join('\n');
+}, 250);
+
 // 로비로 나가기 (스튜디오 시험 플레이 중이면 스튜디오로)
 $('leave').addEventListener('click', () => { if (EMBED) { parent.postMessage({ t: 'studio-stop' }, location.origin); return; } leaveMatch(); });
 if (EMBED) addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.code === 'KeyP') { e.preventDefault(); parent.postMessage({ t: 'studio-stop' }, location.origin); } }, true);
@@ -148,7 +163,7 @@ setDisplay($('menu'), true, 'flex');
 
 // 디버그 / 자동 테스트 훅 (tests/browser.test.mjs)
 window.__g = {
-  me, remotes, roster, game, lobby, net, netStats, inp, liveTargets, teleport, clock, loadout, equip, setSkill, minimapStats, vmGuns, fpArms, clipNames, localTP,
+  netdiag: diag, me, remotes, roster, game, lobby, net, netStats, inp, liveTargets, teleport, clock, loadout, equip, setSkill, minimapStats, vmGuns, fpArms, clipNames, localTP,
   wear: { outfit, setOutfitChoice, equipOutfit, outfitState, dress, setOutfit, equip: equipWear, undress, wearableCacheSize, renderer },
   get cur() { return wp.cur; }, get slot() { return me.ps.cur; }, get state() { return game.matchState; }, get joined() { return game.joined; }, get map() { return currentMap; }, get colliderCount() { return colliders.length; },
   input(o) {

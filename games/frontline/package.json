@@ -7,14 +7,15 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch-path=server --watch-path=shared --watch-path=content/weapons.json --watch-path=content/skills.json --watch-path=content/modes.json --watch-path=content/models.json server/index.js",
-    "test": "node tests/engine.test.mjs && node tests/cosmetics.test.mjs && node tests/garment.test.mjs && node tests/server.test.mjs",
-    "test:browser": "node tests/browser.test.mjs && node tests/studio.test.mjs",
-    "test:all": "eslint . && npm test && node tests/browser.test.mjs && node tests/studio.test.mjs",
+    "test": "node tests/engine.test.mjs && node tests/net.test.mjs && node tests/cosmetics.test.mjs && node tests/garment.test.mjs && node tests/server.test.mjs",
+    "test:browser": "node tests/browser.test.mjs && node tests/netbrowser.test.mjs && node tests/studio.test.mjs",
+    "test:all": "eslint . && npm test && node tests/browser.test.mjs && node tests/netbrowser.test.mjs && node tests/studio.test.mjs",
     "deploy:prod": "./deploy/deploy.sh prod",
     "rollback:prod": "./deploy/deploy.sh prod --rollback",
     "lint": "eslint .",
     "check": "eslint . && npm test",
-    "test:unit": "node tests/engine.test.mjs"
+    "test:unit": "node tests/engine.test.mjs",
+    "netsim": "node tools/netsim/run.mjs"
   },
   "dependencies": {
     "three": "0.170.0",

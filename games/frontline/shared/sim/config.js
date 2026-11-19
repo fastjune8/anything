@@ -6,7 +6,7 @@ export const TICK_HZ = 60;            // 시뮬레이션 주기. 입력(cmd) 1�
 export const DT = 1 / TICK_HZ;
 export const SNAP_EVERY = 2;          // 다른 플레이어 상태는 2 tick 마다(30Hz) 보낸다
 export const HISTORY_TICKS = 60;      // 랙 보정용 자세 기록 (1초)
-export const MAX_REWIND_TICKS = 18;   // 최대 0.3초까지 되감아 판정 (favor-the-shooter 한도)
+export const MAX_REWIND_TICKS = 22;   // 최대 0.37초까지 되감아 판정 (favor-the-shooter 한도). 보간 버퍼 최대 14tick + 편도 지연 약 8tick(RTT 270ms)까지 맞는다
 export const INTERP_TICKS = 6;        // 브라우저가 다른 플레이어를 그리는 지연 (0.1초)
 
 // ───── 몸 ─────

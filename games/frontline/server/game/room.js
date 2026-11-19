@@ -21,9 +21,12 @@ import { createRules } from './modes/index.js';
 import { record, poseAt, clampVt, crouchOf } from './lagcomp.js';
 import { launch, tickProjectiles } from './projectiles.js';
 import { allowChat } from '../chat.js';
-import { goalFor, matchMsFor, botFillFor, respawnFor, RESULTS_MS, VICTORY_MS, APP_ENV, lanAddresses, PORT } from '../config.js';
+import { perf } from '../perf.js';
+import { goalFor, matchMsFor, botFillFor, respawnFor, RESULTS_MS, VICTORY_MS, APP_ENV, lanAddresses, PORT, INPUT_QUEUE } from '../config.js';
 
 const BURST = 30, MAX_PER_MSG = 120;
+// 입력 큐: 한 tick 에 1개, 쌓인 게 CATCHUP_AT 를 넘으면 2개씩 따라잡는다 (남에게는 최대 2배속으로 보일 뿐 순간이동하지 않는다). MAX_QUEUE 를 넘으면 오래된 것부터 버린다 (0.6초)
+const CATCHUP_AT = 3, MAX_QUEUE = 36;
 const r3 = v => Math.round(v * 1000) / 1000;
 const r2 = v => Math.round(v * 100) / 100;
 
@@ -76,8 +79,8 @@ export class Room {
   freeId() { for (let i = 0; i < 32; i++) if (!this.players.has(i)) return i; return -1; }
 
   // ───── 보내기 ─────
-  send(P, m) { const ws = P.sess && P.sess.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
-  broadcast(m) { const s = JSON.stringify(m); for (const P of this.players.values()) { const ws = P.sess && P.sess.ws; if (ws && ws.readyState === 1) ws.send(s); } }
+  send(P, m) { const ws = P.sess && P.sess.ws; if (ws && ws.readyState === 1) { const s = JSON.stringify(m); perf.out(s.length); ws.send(s); } }
+  broadcast(m) { const s = JSON.stringify(m); for (const P of this.players.values()) { const ws = P.sess && P.sess.ws; if (ws && ws.readyState === 1) { perf.out(s.length); ws.send(s); } } }
   // 사건: tick 끝에 한 묶음으로 (filter(P) 가 true 인 사람에게만)
   emit(e, filter = null) { for (const P of this.players.values()) if (!P.bot && (!filter || filter(P))) P.out.push(e); }
 
@@ -86,7 +89,7 @@ export class Room {
     const P = {
       id, name, team, lo, outfit, bot: null, sess: null, hp: HEALTH.max, alive: false, kills: 0, deaths: 0, assists: 0, caps: 0,
       respawnAt: 0, lastHurt: -99, contrib: new Map(), hitBy: null, hist: [], out: [], meDirty: true, rematch: null,
-      budget: BURST, budgetAt: Date.now(), lastSeq: -1, tpn: 0, bleed: null, bleedHits: new Map(), slashHit: null, stepAcc: 0, sndKey: 0,
+      budget: BURST, budgetAt: Date.now(), lastSeq: -1, doneSeq: -1, inq: [], starve: 0, tpn: 0, bleed: null, bleedHits: new Map(), slashHit: null, stepAcc: 0, sndKey: 0,
       m: { weapons: {} }, joinedAt: this.time, killedBy: null,
     };
     P.ps = newPlayerSim(id, lo, 0, -500, 0, 0); P.ps.alive = false;
@@ -225,15 +228,55 @@ export class Room {
   refill(P) { const now = Date.now(); P.budget = Math.min(BURST, P.budget + ((now - P.budgetAt) / 1000) * TICK_HZ); P.budgetAt = now; }
   onCmds(P, m) {
     if (!Array.isArray(m.c) || !Number.isInteger(m.s)) return;
+    if (!INPUT_QUEUE) return this.onCmdsDirect(P, m);
+    const list = m.c.slice(0, MAX_PER_MSG);
+    for (let k = 0; k < list.length; k++) {
+      const seq = m.s + k;
+      if (seq <= P.lastSeq || !Array.isArray(list[k])) continue;
+      P.lastSeq = seq;
+      P.inq.push({ seq, cmd: decodeCmd(list[k]) });
+    }
+    while (P.inq.length > MAX_QUEUE) P.doneSeq = P.inq.shift().seq; // 너무 많이 밀렸다: 오래된 것은 버린다 (브라우저는 서버 상태로 맞춘다)
+  }
+  // 예전 방식 (INPUT_QUEUE=off): 도착하는 대로 바로 처리 — 입력이 몰려 오면 그 자리에서 전부 계산한다
+  onCmdsDirect(P, m) {
     this.refill(P);
     const list = m.c.slice(0, MAX_PER_MSG);
     for (let k = 0; k < list.length; k++) {
       const seq = m.s + k;
       if (seq <= P.lastSeq || !Array.isArray(list[k])) continue;
-      P.lastSeq = seq; P.meDirty = true;
-      if (P.budget < 1) continue; // 시간보다 많이 보냄 → 버린다 (브라우저는 서버 상태로 되돌아간다)
+      P.lastSeq = seq; P.doneSeq = seq; P.meDirty = true;
+      if (P.budget < 1) continue; // 시간보다 많이 보냄 → 버린다 (속도 핵)
       P.budget -= 1; P.starve = 0;
       this.runCmd(P, decodeCmd(list[k]));
+    }
+  }
+  starveCheck(P) { // (INPUT_QUEUE=off) 예전 방식의 입력 끊김 처리
+    if (!P.alive) return;
+    P.starve = (P.starve || 0) + 1;
+    if (P.starve <= 20) return;
+    this.refill(P);
+    if (P.budget < 1) return;
+    P.budget -= 1; P.meDirty = true;
+    this.runCmd(P, { fwd: 0, side: 0, btn: 0, yaw: P.ps.yaw, pitch: P.ps.pitch, slot: P.ps.cur, vt: this.tickN });
+  }
+  // 입력 큐에서 이번 tick 에 처리할 만큼 꺼내 계산한다 (속도 핵 방지: 실제 시간이 허락한 만큼만)
+  consume(P) {
+    this.refill(P);
+    const L = P.inq.length;
+    if (!L) { // 입력이 안 온다 (렉·창 내림): 0.33초 넘으면 서버가 빈 입력으로 시간을 진행한다 (부활 보호·넘어짐·낙하가 멈추지 않게)
+      if (!P.alive || ++P.starve <= 20 || P.budget < 1) return;
+      P.budget -= 1; P.meDirty = true;
+      this.runCmd(P, { fwd: 0, side: 0, btn: 0, yaw: P.ps.yaw, pitch: P.ps.pitch, slot: P.ps.cur, vt: this.tickN });
+      return;
+    }
+    P.starve = 0;
+    for (let k = L > CATCHUP_AT ? 2 : 1; k > 0 && P.inq.length; k--) {
+      const e = P.inq.shift();
+      P.doneSeq = e.seq; P.meDirty = true;
+      if (P.budget < 1) continue;
+      P.budget -= 1;
+      this.runCmd(P, e.cmd);
     }
   }
   runCmd(P, cmd) {
@@ -381,7 +424,7 @@ export class Room {
     this.scores = [0, 0]; this.grenades = [];
     this.rules.reset();
     this.spawnUse.clear();
-    for (const P of this.players.values()) { P.kills = P.deaths = P.assists = P.caps = 0; P.m = { weapons: {} }; P.rematch = null; P.joinedAt = this.time; }
+    for (const P of this.players.values()) { P.kills = P.deaths = P.assists = P.caps = 0; P.m = { weapons: {} }; P.rematch = null; P.joinedAt = this.time; P.inq = []; }
     if (!first) {
       this.broadcast({ t: 'start', n: this.tickN, left: this.matchMs, goal: this.goal, sc: this.scores, players: [...this.players.values()].map(Q => this.info(Q)), ...this.rules.snapshot() });
       for (const P of this.players.values()) this.spawn(P);
@@ -413,27 +456,29 @@ export class Room {
   }
 
   tick() {
+    const t0 = performance.now();
+    if (this.lastTickAt) perf.interval(t0 - this.lastTickAt);
+    this.lastTickAt = t0;
+    this.tick0();
+    perf.tick(performance.now() - t0);
+  }
+  tick0() {
     this.tickN++; this.time += DT;
     if (this.state === 'victory' && this.time >= this.resultAt) this.state = 'results';
     if (this.state === 'results' && this.time >= this.restartAt) { this.finishResults(); if (!this.players.size) return; }
     if (this.state === 'playing') this.simulate();
     for (const P of this.players.values()) record(P, this.tickN);
+    const b0 = performance.now();
     if (this.tickN % SNAP_EVERY === 0) this.sendSnapshots();
     this.flush();
+    perf.bcast(performance.now() - b0);
   }
   simulate() {
     // 봇 생각 → cmd
     for (const P of this.players.values()) if (P.bot) this.runCmd(P, P.bot.think(DT));
-    // 입력이 0.33초 넘게 안 오는 사람(렉·창 내림): 서버가 빈 입력으로 시간을 진행한다 (부활 보호·넘어짐·낙하가 멈추지 않게).
-    // 이 빈 입력도 시간 예산을 쓰므로, 늦게 몰려온 입력은 그만큼 버려지고 브라우저는 서버 상태로 맞춘다
     for (const P of this.players.values()) {
-      if (P.bot || !P.alive) continue;
-      P.starve = (P.starve || 0) + 1;
-      if (P.starve <= 20) continue;
-      this.refill(P);
-      if (P.budget < 1) continue;
-      P.budget -= 1; P.meDirty = true;
-      this.runCmd(P, { fwd: 0, side: 0, btn: 0, yaw: P.ps.yaw, pitch: P.ps.pitch, slot: P.ps.cur, vt: this.tickN });
+      if (P.bot) continue;
+      if (INPUT_QUEUE) this.consume(P); else this.starveCheck(P);
     }
     if (this.state !== 'playing') return;
     tickProjectiles(this, DT);
@@ -496,7 +541,7 @@ export class Room {
     for (const P of this.players.values()) {
       if (P.bot) continue;
       this.send(P, { t: 'snap', n: this.tickN, p: rows.filter(r => r[0] !== P.id) });
-      if (P.meDirty) { P.meDirty = false; this.send(P, { t: 'me', q: P.lastSeq, k: P.tpn, n: this.tickN, hp: Math.ceil(P.hp), alive: P.alive, ps: P.ps }); }
+      if (P.meDirty) { P.meDirty = false; this.send(P, { t: 'me', q: P.doneSeq, k: P.tpn, n: this.tickN, hp: Math.ceil(P.hp), alive: P.alive, ps: P.ps }); }
     }
   }
   flush() {

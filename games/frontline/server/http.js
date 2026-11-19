@@ -5,6 +5,7 @@ import path from 'node:path';
 import { APP_ENV, CLIENT_DIR, CONTENT_DIR, STUDIO_DIR, SHARED_DIR, STARTED_AT, THREE_DIR, VERSION } from './config.js';
 import { hubStats, rooms } from './lobby/hub.js';
 import { DEV_TOOLS, handleDevApi } from './devtools.js';
+import { last as perfLast, history as perfHistory } from './perf.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -33,7 +34,14 @@ export function createHttpServer() {
     // 상태 확인 (배포 전에 접속 중인 유저가 있는지 보는 용도)
     if (url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ env: APP_ENV, version: VERSION, editor: DEV_TOOLS, uptime: Math.round((Date.now() - STARTED_AT) / 1000), ...hubStats() }));
+      res.end(JSON.stringify({ env: APP_ENV, version: VERSION, editor: DEV_TOOLS, uptime: Math.round((Date.now() - STARTED_AT) / 1000), ...hubStats(), perf: perfLast }));
+      return;
+    }
+
+    // 서버 성능 (최근 2분, 1초 단위) — 계측용
+    if (url === '/perf') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ last: perfLast, history: perfHistory }));
       return;
     }
 

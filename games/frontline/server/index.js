@@ -3,6 +3,7 @@ import { MODES } from '../shared/modes.js';
 import { PORT, lanAddresses } from './config.js';
 import { createHttpServer } from './http.js';
 import { attachWebSocket } from './net.js';
+import './chaos.js';
 
 const server = createHttpServer();
 attachWebSocket(server);

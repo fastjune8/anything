@@ -8,13 +8,15 @@ import { MAX_PLAYERS } from '/shared/modes.js';
 import { WEAPONS } from '/shared/weapons.js';
 import { PF } from '/shared/sim/config.js';
 import { clock } from './clock.js';
+import { sample } from './interp.js';
+import { diag } from './netdiag.js';
 import { buildGun, buildSoldier } from './guns.js';
 import { TPAnimator, RIFLE_WEAPONS, newCharState } from './charanim.js';
 import { scene, camera } from './scene.js';
 import { flashTex } from './textures.js';
 import { sfx, audioAt } from './sfx.js';
 import { isAlly } from './state.js';
-import { V3, MODE_CFG, lerp, smooth, angLerp } from './util.js';
+import { V3, MODE_CFG, lerp, smooth } from './util.js';
 import { dress, setOutfit, setTeamColor } from './outfit.js';
 import { unpackOutfit } from '/shared/cosmetics.js';
 
@@ -153,21 +155,6 @@ export function remoteReload(r, wi) { const w = WEAPONS[wi]; if (!w || w.shell) 
 export function remoteHook(id, p) { const r = remotes.get(id); if (r) r.hook = new V3().fromArray(p); }
 export const RIFLE_INDEX = new Set(WEAPONS.map((w, i) => (RIFLE_WEAPONS.has(w.id) ? i : -1)).filter(i => i >= 0));
 
-// 두 스냅샷 사이를 잇는다 (없으면 마지막 것을 속도로 조금 앞서 본다)
-function sample(r, rt) {
-  const b = r.buf;
-  if (!b.length) return null;
-  let i = b.length - 1;
-  while (i > 0 && b[i - 1].n > rt) i--;
-  const B = b[i], A = i > 0 ? b[i - 1] : null;
-  if (A && A.n <= rt && B.n > A.n) {
-    const k = Math.min(1, (rt - A.n) / (B.n - A.n));
-    return { x: A.x + (B.x - A.x) * k, y: A.y + (B.y - A.y) * k, z: A.z + (B.z - A.z) * k, yaw: angLerp(A.yaw, B.yaw, k), pitch: A.pitch + (B.pitch - A.pitch) * k, c: A.c + (B.c - A.c) * k, vx: B.vx, vy: B.vy, vz: B.vz, f: k < 0.5 ? A.f : B.f, w: B.w, hp: B.hp };
-  }
-  const ex = Math.max(0, Math.min(3, rt - B.n)) / 60; // 마지막 이후: 최대 3 tick 까지만 앞서 본다
-  return { x: B.x + B.vx * ex, y: B.y + B.vy * ex, z: B.z + B.vz * ex, yaw: B.yaw, pitch: B.pitch, c: B.c, vx: B.vx, vy: B.vy, vz: B.vz, f: B.f, w: B.w, hp: B.hp };
-}
-
 // ───── 내가 쏠 때 예측 판정용: 지금 화면에 보이는 적 ─────
 export function liveTargets() {
   const out = [];
@@ -229,12 +216,14 @@ function finish(e, dt) {
   if (rig.rope.visible) { const p = rig.rope.geometry.attributes.position; p.setXYZ(0, e.pos.x, e.pos.y + 1.3, e.pos.z); p.setXYZ(1, e.hook.x, e.hook.y, e.hook.z); p.needsUpdate = true; }
 }
 
+let lastFrameAt = 0;
 export function updateRemotes(dt) {
   const rt = clock.render();
+  const nowT = performance.now(), realDt = lastFrameAt ? Math.min(0.25, (nowT - lastFrameAt) / 1000) : dt; lastFrameAt = nowT; // 진단용: 잘라내지 않은 실제 프레임 시간
   for (const e of remotes.values()) {
     const rig = e.rig, s = rig.soldier;
     if (!e.hasPos) { s.root.visible = false; rig.bar.visible = false; continue; }
-    const p = sample(e, rt);
+    const p = sample(e.buf, rt);
     const px = e.pos.x, pz = e.pos.z;
     if (p && e.alive) {
       if (e.pos.distanceToSquared(new V3(p.x, p.y, p.z)) > 64) e.pos.set(p.x, p.y, p.z); // 순간이동·부활
@@ -252,6 +241,8 @@ export function updateRemotes(dt) {
     s.root.position.copy(e.pos); s.root.rotation.y = e.yaw;
     animateBody(e, dt);
     finish(e, dt);
+    // 진단: 이번 프레임에 이만큼 움직였는데 실제 속도로 갈 거리는 이만큼 (F3 의 "튐")
+    if (p && e.alive) diag.remote(Math.hypot(e.pos.x - px, e.pos.z - pz), p.vs * realDt, p.under); // 앞뒤 스냅샷 중 빠른 쪽 속도 (대쉬가 끝나는 구간이 튐으로 오판되지 않게)
     // 발소리
     const moved = Math.hypot(e.pos.x - px, e.pos.z - pz);
     if (e.alive && moved > 0.001 && !(e.flags & (PF.air | PF.crouch | PF.slide)) && !stealth) {

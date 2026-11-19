@@ -17,6 +17,7 @@ import { showHit, flashSkill } from './hud.js';
 import { liveTargets } from './remotes.js';
 import { guns } from './viewmodel.js';
 import { clock } from './clock.js';
+import { diag } from './netdiag.js';
 import { me, wp, inp, game, PITCH_MAX } from './state.js';
 import { DEG, clamp, lerp } from './util.js';
 
@@ -183,6 +184,7 @@ export function reconcile(m) {
   for (const p of pending) stepPlayer(me.ps, p.cmd, me.lo, colliders, DT); // 사건은 이미 연출했으므로 버린다
   me.hp = m.hp; me.alive = m.alive;
   const err = _a.distanceTo(_b.set(me.ps.x, me.ps.y, me.ps.z));
+  diag.correction(err);
   netStats.acks++; netStats.lastErr = err; netStats.maxErr = Math.max(netStats.maxErr, err);
   if (err > 0.01) netStats.corrections++;
   if (err > 0.002 && err < 3) corr.add(_a.sub(_b)); // 작은 어긋남은 화면에서 부드럽게 (큰 것은 그냥 맞춘다: 넉백·순간이동)

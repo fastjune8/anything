@@ -13,6 +13,7 @@ import { onSound, clearSounds } from './minimap.js';
 import { loadMap } from './scene.js';
 import { sfx, audioAt } from './sfx.js';
 import { clock } from './clock.js';
+import { diag } from './netdiag.js';
 import { takeCmds, reconcile, resetSession, placeMe, bindSend, teleport } from './predict.js';
 import { lobbyUpdate, lobbyNote, showLobby } from './lobby.js';
 import { $, V3, NOLOCK, setMode, START_AT, esc } from './util.js';
@@ -22,11 +23,18 @@ const _v = new V3(), _w = new V3();
 let retry = 0;
 bindSend(m => net.send(m));
 
+// ?ws=포트 : 같은 컴퓨터의 다른 포트로 접속 (네트워크 장애 재현 프록시 시험용. 다른 호스트는 안 된다 → 토큰이 엉뚱한 곳으로 가지 않는다)
+const WS_PORT = /^\d{2,5}$/.test(new URLSearchParams(location.search).get('ws') || '') ? new URLSearchParams(location.search).get('ws') : null;
+let pingTimer = 0;
 export function connect() {
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_PORT ? `${location.hostname}:${WS_PORT}` : location.host}`);
   net.ws = ws;
-  ws.onopen = () => { retry = 0; net.open = true; ws.send(JSON.stringify({ t: 'hello', token: localStorage.getItem('fd_token') || undefined, name: localStorage.getItem('fd_name') || undefined })); };
-  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onMessage(m); };
+  ws.onopen = () => {
+    retry = 0; net.open = true;
+    clearInterval(pingTimer); pingTimer = setInterval(() => net.send({ t: 'ping', c: performance.now() }), 1000); // RTT 측정 (F3)
+    ws.send(JSON.stringify({ t: 'hello', token: localStorage.getItem('fd_token') || undefined, name: localStorage.getItem('fd_name') || undefined }));
+  };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } diag.msg(m.t, e.data.length); onMessage(m); };
   ws.onclose = () => {
     if (net.ws !== ws) return;
     net.open = false;
@@ -82,7 +90,7 @@ function onMessage(m) {
       game.joined = true; me.id = m.id; me.team = m.team ?? -1; game.room = m.room; game.mode = m.mode;
       setMode(m.mode); loadMap(m.map);
       me.lo = makeLoadout(m.lo); me.ps.id = m.id;
-      resetSession(); clock.reset(); clock.onTick(m.n);
+      resetSession(); clock.reset(); clock.onTick(m.n, true);
       clearRemotes(); roster.clear(); clearChat(); clearGrenades(); clearSounds(); vfx.clear();
       startMatchState(m);
       for (const p of m.players) { rosterSet(p); if (p.id !== m.id) addRemote(p); }
@@ -99,9 +107,10 @@ function onMessage(m) {
       startMatchState(m);
       feedNote('<span class="w">새 경기 시작</span>');
       break;
-    case 'snap': clock.onTick(m.n); game.tick = m.n; onSnapshot(m.n, m.p); break;
+    case 'snap': clock.onTick(m.n, true); diag.snap(); game.tick = m.n; onSnapshot(m.n, m.p); break;
+    case 'pong': diag.pong(performance.now() - m.c); break;
     case 'me': if (game.joined) { reconcile(m); if (!m.alive) me.hp = 0; } break;
-    case 'ev': clock.onTick(m.n); for (const e of m.l) onEvent(e); break;
+    case 'ev': clock.onTick(m.n, false); for (const e of m.l) onEvent(e); break;
     case 'end': game.matchState = 'victory'; showEnd(m); if (m.me && m.me.profile) lobby.me = m.me.profile; break;
   }
 }
