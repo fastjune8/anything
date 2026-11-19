@@ -21,8 +21,11 @@ export function botLoadout(id) {
 }
 const wrap = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
+const BOT_SKILL_ADJ = Number(process.env.BOT_SKILL_ADJ) || 0;
+
 export class Brain {
-  constructor(P, room) { this.P = P; this.room = room; this.skill = 0.75 + ((P.id * 37) % 25) / 100; this.reset(); }
+  // 봇 실력 0.3~0.54 (처음 0.75~0.99 는 너무 잘 맞혔다). 환경변수 BOT_SKILL_ADJ(예: -0.1, +0.1)로 더 쉽게/어렵게
+  constructor(P, room) { this.P = P; this.room = room; this.skill = Math.max(0.1, 0.3 + ((P.id * 37) % 25) / 100 + BOT_SKILL_ADJ); this.reset(); }
   reset() {
     const ps = this.P.ps;
     this.yaw = ps.yaw; this.pitch = 0; this.target = null; this.react = 0; this.track = 0; this.seenT = 0;
@@ -55,7 +58,7 @@ export class Brain {
       const score = d - (this.target === Q ? 8 : 0);
       if (score < bd) { bd = score; best = Q; }
     }
-    if (best !== this.target) { this.target = best; this.react = best ? this.style()[3] * (1.3 - this.skill * 0.4) : 0; this.track = 0; this.offX = (Math.random() - 0.5) * 2; this.offY = (Math.random() - 0.5) * 2; }
+    if (best !== this.target) { this.target = best; this.react = best ? this.style()[3] * (3 - this.skill * 1.2) : 0; this.track = 0; this.offX = (Math.random() - 0.5) * 2; this.offY = (Math.random() - 0.5) * 2; }
     if (best) this.seenT = this.room.time;
   }
 
@@ -72,9 +75,9 @@ export class Brain {
       const tp = T.ps, dist = Math.hypot(tp.x - ps.x, tp.z - ps.z);
       this.track += dt; this.react -= dt;
       // 조준: 가슴(잘하는 봇·저격은 가끔 머리) + 움직임을 조금 앞서 본다 + 오차(오래 볼수록 줄어든다)
-      const lead = Math.min(0.12, dist / 300);
+      const lead = Math.min(0.05, dist / 600);
       const ax = tp.x + tp.vx * lead, az = tp.z + tp.vz * lead, ay = tp.y + tp.h * (this.skill > 0.9 ? 0.85 : 0.65);
-      const e = errDeg * (Math.PI / 180) * (1.6 - this.skill) / (1 + this.track * 1.8);
+      const e = errDeg * (Math.PI / 180) * (3.2 - this.skill * 1.2) / (1 + this.track * 0.7);
       wantYaw = Math.atan2(-(ax - ps.x), -(az - ps.z)) + this.offX * e;
       wantPitch = Math.atan2(ay - eyeY(ps), Math.max(0.1, dist)) + this.offY * e * 0.6;
       // 거리 유지 + 좌우 무빙
@@ -91,7 +94,7 @@ export class Brain {
       const aimErr = Math.abs(wrap(wantYaw - this.yaw)) + Math.abs(wantPitch - this.pitch);
       const w = P.lo[ps.cur].w;
       const inRange = w.kind === 'melee' ? dist < w.range + 0.4 : dist < w.range;
-      if (this.react <= 0 && inRange && aimErr < 0.06 + (w.pellets > 1 ? 0.06 : 0) + (w.kind === 'melee' ? 0.3 : 0)) {
+      if (this.react <= 0 && inRange && aimErr < 0.04 + (w.pellets > 1 ? 0.06 : 0) + (w.kind === 'melee' ? 0.3 : 0)) {
         this.firePulse++;
         if (w.auto || this.firePulse % 6 < 3) cmd.btn |= BTN.fire;
       }
@@ -125,7 +128,7 @@ export class Brain {
     }
     if (sprint && !(cmd.btn & BTN.ads)) cmd.btn |= BTN.sprint;
     // 시선을 부드럽게 (초당 최대 회전 + 지수 감쇠)
-    const turn = Math.min(1, dt * (T ? 9 + this.skill * 6 : 6));
+    const turn = Math.min(1, dt * (T ? 3 + this.skill * 4 : 6));
     this.yaw = wrap(this.yaw + wrap(wantYaw - this.yaw) * turn);
     this.pitch += (wantPitch - this.pitch) * turn;
     cmd.yaw = this.yaw; cmd.pitch = Math.max(-1.4, Math.min(1.4, this.pitch)); cmd.slot = this.slot;
