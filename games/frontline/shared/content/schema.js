@@ -44,10 +44,11 @@ export const OBJECT_SCHEMAS = {
   wall: { label: '벽', fields: {
     axis: AXIS, at: num('고정 좌표 (axis 가 x 면 z 값)', { step: 0.1 }), from: num('시작', { step: 0.1 }), to: num('끝', { step: 0.1 }),
     h: num('높이', { min: 0.3, max: 20, step: 0.1 }), t: num('두께', opt({ min: 0.1, max: 3, step: 0.05 })), mat: oneOf('재질', MATERIALS), ops: OPENINGS, y: Y,
+    plain: bool('건축 장식 없음 (틀·기단·머리돌·기둥)', opt()), face: oneOf('장식 면 (비우면 양쪽)', ['+', '-'], opt({ hint: '+ = axis 가 x 면 z+ 쪽, z 면 x+ 쪽. 한쪽만 보이는 바깥 벽에 쓴다' })),
   } },
   building: { label: '건물', fields: {
     x: X, z: Z, w: num('너비 (x)', { min: 2, max: 100, step: 0.1 }), d: num('깊이 (z)', { min: 2, max: 100, step: 0.1 }), h: num('높이', { min: 1, max: 20, step: 0.1 }),
-    mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()), y: Y,
+    mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()), y: Y, plain: bool('건축 장식 없음 (틀·기단·모서리·지붕 띠)', opt()),
     ops: obj('문·창문 (위치 = 벽을 따라가는 절대 좌표)', { n: sideOpenings('북쪽 벽 (z+)'), s: sideOpenings('남쪽 벽 (z−)'), e: sideOpenings('동쪽 벽 (x+)'), w: sideOpenings('서쪽 벽 (x−)') }, opt()),
   } },
   container: { label: '컨테이너', fields: { x: X, z: Z, axis: AXIS, tint: color('색', opt()), y: num('바닥 높이 (2단 = 2.59)', opt({ min: 0, step: 0.01 })) } },
@@ -161,10 +162,10 @@ export function checkModels(list) {
 }
 
 // ───────── 분위기 (content/looks.json): 빛·하늘·안개 + 재질(맵 물체 겉모습) 묶음. 맵마다 하나를 고른다 ─────────
-export const MAT_STYLES = ['classic', 'plain', 'panel', 'blocks', 'corrugated', 'crate', 'planks', 'plate', 'stripe', 'ground'];
+export const MAT_STYLES = ['classic', 'plain', 'panel', 'blocks', 'corrugated', 'crate', 'planks', 'plate', 'stripe', 'ground', 'bag'];
 export const LOOK_MATERIALS = ['ground', ...MATERIALS];
 const MAT_LOOK = obj('재질', {
-  style: oneOf('무늬', MAT_STYLES, { hint: 'classic = 예전 사실적 무늬, panel = 칠한 패널, blocks = 큰 블록, corrugated = 골판 금속, crate = 상자, planks = 판자, plate = 금속판, stripe = 띠, ground = 땅' }),
+  style: oneOf('무늬', MAT_STYLES, { hint: 'classic = 예전 사실적 무늬, panel = 칠한 패널, blocks = 큰 블록, corrugated = 골판 금속, crate = 상자, planks = 판자, plate = 금속판, stripe = 띠, bag = 모래주머니 한 개, ground = 땅' }),
   base: color('바탕 색', opt()), line: color('선·이음새 색', opt()), accent: color('포인트 색', opt()), trim: color('아래 띠 색 (패널)', opt()),
   cells: int('패널 칸 수 (한 장 안에)', opt({ min: 1, max: 8 })), rows: int('블록 줄 수', opt({ min: 1, max: 16 })), cols: int('블록 칸 수', opt({ min: 1, max: 8 })),
   grime: num('때·얼룩 (0~1)', opt({ min: 0, max: 1, step: 0.05 })),

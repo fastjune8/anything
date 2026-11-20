@@ -14,6 +14,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.62;
 renderer.autoClear = false;
+renderer.info.autoReset = false; // 한 프레임에 렌더가 두 번(맵 + 1인칭 무기)이라 main.js 프레임 시작에서 직접 초기화한다 (F3 진단용 통계)
 
 export const scene = new THREE.Scene();
 export const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.08, 1500);

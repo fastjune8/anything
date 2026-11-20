@@ -417,7 +417,7 @@ export async function createMapDoc(ctx, id, opts = {}) {
   }
   // 흩뿌리기: 끄는 길을 따라 일정 간격으로 (크기·방향은 조금씩 다르게)
   const SCATTER = { crate: '상자', barrel: '드럼통', tree: '나무', sandbags: '모래주머니', barrier: '콘크리트 방벽' };
-  const TINTS = ['#7a2a1e', '#35506b', '#4a5a32', '#596066'];
+  const TINTS = ['#7a2a1e', '#56645a', '#4a5a32', '#596066'];
   function scatterAt(p) {
     const rnd = (a, b) => r2(a + Math.random() * (b - a)), axis = Math.random() < 0.5 ? 'x' : 'z', [x, z] = p;
     const o = { crate: { type: 'crate', x, z, s: rnd(0.9, 1.4) }, barrel: { type: 'barrel', x, z, tint: TINTS[(Math.random() * TINTS.length) | 0] },

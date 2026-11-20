@@ -18,6 +18,8 @@ import { formatContent } from '../../shared/content/format.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const objects = [];
 const add = o => objects.push(o);
+// 환경 색 (팀 색과 겹치지 않게 — tests/envcolor.test.mjs 가 검사한다. 아군 파랑·적 빨강 색조는 환경에 쓰지 않는다)
+const TINT = { containerGreen: '#3f6a58', containerKhaki: '#7d6a4a', containerGray: '#596066', containerOlive: '#4f5d3a', containerOchre: '#7a5b2a', barrelAmber: '#b8862e' };
 // 남북 반대편에도 (z → −z)
 function mirror(o) {
   const m = { ...o };
@@ -37,10 +39,11 @@ const both = o => { add(o); add(mirror(o)); };
 
 const H = 56;
 // ───── 바깥 벽 ─────
-add({ type: 'box', x: 0, y: 0, z: H + 0.5, w: 2 * H + 2, h: 5, d: 1, mat: 'concrete' });
-add({ type: 'box', x: 0, y: 0, z: -H - 0.5, w: 2 * H + 2, h: 5, d: 1, mat: 'concrete' });
-add({ type: 'box', x: H + 0.5, y: 0, z: 0, w: 1, h: 5, d: 2 * H, mat: 'concrete' });
-add({ type: 'box', x: -H - 0.5, y: 0, z: 0, w: 1, h: 5, d: 2 * H, mat: 'concrete' });
+// 충돌 박스는 예전 박스와 똑같다 (벽 하나 = 박스 하나). 안쪽 면에만 틀·기단·기둥·머리돌(장식)이 붙는다
+add({ type: 'wall', axis: 'x', at: H + 0.5, from: -H - 1, to: H + 1, h: 5, t: 1, mat: 'concrete', face: '-' });
+add({ type: 'wall', axis: 'x', at: -H - 0.5, from: -H - 1, to: H + 1, h: 5, t: 1, mat: 'concrete', face: '+' });
+add({ type: 'wall', axis: 'z', at: H + 0.5, from: -H, to: H, h: 5, t: 1, mat: 'concrete', face: '-' });
+add({ type: 'wall', axis: 'z', at: -H - 0.5, from: -H, to: H, h: 5, t: 1, mat: 'concrete', face: '+' });
 
 // ───── 스폰 (북쪽, 남쪽은 대칭) ─────
 both({ type: 'wall', axis: 'x', at: 38, from: -20, to: 20, h: 3.4, t: 0.5, mat: 'concreteDark', ops: [{ at: -13, w: 3.6, type: 'door' }, { at: 0, w: 4.2, type: 'door' }, { at: 13, w: 3.6, type: 'door' }] });
@@ -50,19 +53,19 @@ both({ type: 'barrier', x: -6.5, z: 41.5, axis: 'x' });
 both({ type: 'barrier', x: 6.5, z: 41.5, axis: 'x' });
 both({ type: 'crate', x: -16.5, z: 52, s: 1.4 });
 both({ type: 'crate', x: 16.5, z: 52, s: 1.4 });
-both({ type: 'container', x: -14, z: 32, axis: 'x', tint: '#3d5a73' });
-both({ type: 'container', x: 14, z: 32, axis: 'x', tint: '#3d5a73' });
+both({ type: 'container', x: -14, z: 32, axis: 'x', tint: TINT.containerGreen });
+both({ type: 'container', x: 14, z: 32, axis: 'x', tint: TINT.containerGreen });
 
 // ───── 연결 골목 (z = ±22) ─────
-both({ type: 'container', x: -22, z: 22, axis: 'z', tint: '#6b4a33' });
-both({ type: 'container', x: 22, z: 22, axis: 'z', tint: '#596066' });
-both({ type: 'container', x: -38, z: 26, axis: 'x', tint: '#4f5d3a' });
-both({ type: 'container', x: 38, z: 26, axis: 'x', tint: '#6b4a33' });
+both({ type: 'container', x: -22, z: 22, axis: 'z', tint: TINT.containerKhaki });
+both({ type: 'container', x: 22, z: 22, axis: 'z', tint: TINT.containerGray });
+both({ type: 'container', x: -38, z: 26, axis: 'x', tint: TINT.containerOlive });
+both({ type: 'container', x: 38, z: 26, axis: 'x', tint: TINT.containerKhaki });
 both({ type: 'sandbags', x: 0, z: 25, len: 5, axis: 'x' });
 both({ type: 'barrier', x: -8, z: 17, axis: 'x' });
 both({ type: 'barrier', x: 8, z: 17, axis: 'x' });
 both({ type: 'barrel', x: -25.5, z: 18 });
-both({ type: 'barrel', x: 25.5, z: 18.5, tint: '#7a3a2a' });
+both({ type: 'barrel', x: 25.5, z: 18.5, tint: TINT.barrelAmber });
 
 // ───── 가장자리 우회로 (x = ±50) ─────
 both({ type: 'wall', axis: 'z', at: -46, from: 8, to: 30, h: 3, t: 0.4, mat: 'brick', ops: [{ at: 14, w: 1.8, type: 'window' }, { at: 24, w: 1.8, type: 'door' }] });
@@ -85,7 +88,7 @@ both({ type: 'crate', x: -25.5, z: 4, s: 1.2 });
 both({ type: 'crate', x: -25.5, z: 5.3, s: 1.0, y: 0 });
 both({ type: 'barrier', x: -30, z: 13.5, axis: 'x' });
 add({ type: 'barrel', x: -36.5, z: -0.8 });
-add({ type: 'barrel', x: -36, z: 0.4, tint: '#7a3a2a' });
+add({ type: 'barrel', x: -36, z: 0.4, tint: TINT.barrelAmber });
 both({ type: 'tree', x: -43, z: 14, s: 1.2 });
 
 // ───── B: 높은 광장 (가운데) ─────
@@ -111,7 +114,7 @@ add({ type: 'building', x: 31, z: 0, w: 20, d: 16, h: 4.2, mat: 'concrete', roof
   w: [{ at: -3.5, w: 1.8, type: 'window' }, { at: 0, w: 2.4, type: 'door' }, { at: 3.5, w: 1.8, type: 'window' }],
   e: [{ at: 0, w: 2.4, type: 'door' }],
 } });
-add({ type: 'container', x: 31, z: 0, axis: 'x', tint: '#7a5b2a' });
+add({ type: 'container', x: 31, z: 0, axis: 'x', tint: TINT.containerOchre });
 both({ type: 'crate', x: 26, z: 4.6, s: 1.2 });
 both({ type: 'crate', x: 36.5, z: 4.2, s: 1.1 });
 both({ type: 'box', x: 31, y: 0, z: 5.2, w: 2.2, h: 1.1, d: 0.5, mat: 'metal' });
@@ -119,7 +122,7 @@ both({ type: 'sandbags', x: 41.5, z: 11, len: 3, axis: 'x' });
 both({ type: 'barrel', x: 22.5, z: 9.5 });
 
 const def = {
-  id: 'outpost', name: '전초기지', half: H, look: 'sunlit',
+  id: 'outpost', name: '전초기지', half: H, look: 'outpost',
   spawns: {
     team: [
       [[-8, 47], [-4, 49.5], [0, 47], [4, 49.5], [8, 47], [-12, 50], [12, 50]],

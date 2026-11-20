@@ -1,11 +1,11 @@
 // 시작점: 모듈을 불러오고 매 프레임 루프를 돈다.
 //   입력(input.js) → 예측(predict.js: 1/60초 시뮬레이션) → 카메라 → 화면 갱신(remotes/hud/minimap/fx) → 그리기
 import * as THREE from 'three';
-import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap } from './scene.js';
+import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap, world } from './scene.js';
 import { updateTracers, updateParts, updateGrenades } from './fx.js';
 import { vfx } from './vfx.js';
 import { updateDashFx, dashView } from './dashfx.js';
-import { updateRemotes, remotes, liveTargets } from './remotes.js';
+import { updateRemotes, remotes, liveTargets, cullRemoteShadows } from './remotes.js';
 import { updateViewmodel, guns as vmGuns, arms as fpArms } from './viewmodel.js';
 import { updatePrediction, updateRecoil, rpos, teleport, netStats } from './predict.js';
 import { updateHud } from './hud.js';
@@ -110,8 +110,10 @@ function frame(now) {
   updateDashFx(dt);
   updateObjective(dt);
   if (game.joined) { updateHud(dt, inp.board); updateMinimap(); }
+  renderer.info.reset();
   renderer.clear();
   if (localTP.anim) localTP.anim.root.visible = game.joined && cam === tpCam && me.alive;
+  world.beginShadowCull(cam, cullRemoteShadows); // 시야에 그림자가 보일 수 없는 물체는 그림자 맵에서 뺀다
   renderer.render(scene, cam);
   if (vm.visible && cam === camera) { renderer.clearDepth(); renderer.render(vmScene, vmCam); }
 }
@@ -123,9 +125,11 @@ addEventListener('keydown', e => { if (e.code === 'F3' && !e.repeat) { e.prevent
 setInterval(() => {
   if (diagEl.style.display !== 'block') return;
   const s = diag.summary(), f = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : '-';
+  const ri = renderer.info; // 개발·테스트 서버에서만 (envtag 가 보일 때): 마지막 프레임의 렌더 통계
+  const renderLine = $('envtag').style.display === 'block' ? [`렌더 draw call ${ri.render.calls} · 삼각형 ${ri.render.triangles} · 지오메트리 ${ri.memory.geometries} · 텍스처 ${ri.memory.textures} · 그림자 ${renderer.shadowMap.enabled ? 'ON' : 'OFF'}`] : [];
   diagEl.textContent = [`RTT ${f(s.rtt.avg)}ms (지터 ${f(s.rtt.jitter)}, 최대 ${f(s.rtt.max)})`, `스냅샷 ${f(s.snap.avg, 1)}ms ±${f(s.snap.jitter, 1)} · p99 ${f(s.snap.p99)} · 최대 ${f(s.snap.maxGap)} · 100ms↑ ${s.snap.gaps100}회`,
     `보간 버퍼 ${f(s.buffer.ms)}ms (${f(s.buffer.ticks, 1)}tick) · 예측으로 그린 ${f(s.remote.underPct, 1)}%`, `원격 튐 ${s.remote.jumps}회 (최대 한 프레임 ${f(s.remote.maxStep, 2)}m)`,
-    `내 위치 보정 ${s.correction.n}회 · 최대 ${f(s.correction.max, 2)}m`, `FPS ${f(s.fps.avg)} (최저 ${f(s.fps.min)})`, `수신 ${f(s.rate.kbps, 1)}KB/s · ${Object.entries(s.rate.counts).map(([k, v]) => `${k} ${v}`).join(' ')}`].join('\n');
+    `내 위치 보정 ${s.correction.n}회 · 최대 ${f(s.correction.max, 2)}m`, `FPS ${f(s.fps.avg)} (최저 ${f(s.fps.min)})`, `수신 ${f(s.rate.kbps, 1)}KB/s · ${Object.entries(s.rate.counts).map(([k, v]) => `${k} ${v}`).join(' ')}`, ...renderLine].join('\n');
 }, 250);
 
 // 로비로 나가기 (스튜디오 시험 플레이 중이면 스튜디오로)

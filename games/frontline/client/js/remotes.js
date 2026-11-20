@@ -217,6 +217,30 @@ function finish(e, dt) {
 }
 
 let lastFrameAt = 0;
+// 그림자 대상 줄이기 (world.beginShadowCull 이 부른다): 그림자가 화면에 보일 수 없는 캐릭터는 이번 프레임 그림자 맵에서 뺀다.
+// 모델·애니메이션·재질은 그대로이고 castShadow 만 껐다 켠다 (꺼진 것은 userData.csOff 로 기억해 정확히 되돌린다)
+const _cb = new THREE.Box3();
+function setCasting(rig, on) {
+  if (rig.casting === on) return;
+  rig.casting = on;
+  const apply = o => {
+    if (!o.isMesh) return;
+    if (on) { if (o.userData.csOff) { o.castShadow = true; o.userData.csOff = false; } }
+    else if (o.castShadow) { o.castShadow = false; o.userData.csOff = true; }
+  };
+  rig.soldier.root.traverse(apply);
+  for (const g of rig.guns) g.group.traverse(apply);
+}
+export function cullRemoteShadows(casts) {
+  for (const e of remotes.values()) {
+    const root = e.rig.soldier.root;
+    if (!root.visible) continue;
+    const p = root.position; // 발 위치. 자세·총 길이를 넉넉히 덮는 상자
+    _cb.min.set(p.x - 1.6, p.y - 0.5, p.z - 1.6); _cb.max.set(p.x + 1.6, p.y + 2.8, p.z + 1.6);
+    setCasting(e.rig, casts(_cb));
+  }
+}
+
 export function updateRemotes(dt) {
   const rt = clock.render();
   const nowT = performance.now(), realDt = lastFrameAt ? Math.min(0.25, (nowT - lastFrameAt) / 1000) : dt; lastFrameAt = nowT; // 진단용: 잘라내지 않은 실제 프레임 시간

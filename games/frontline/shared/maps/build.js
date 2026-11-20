@@ -13,18 +13,18 @@ export const OBJECT_TYPES = {
     anchor: o => [o.x, o.z],
   },
   wall: { // 문·창문을 낼 수 있는 일자 벽. axis = 벽이 뻗는 방향, at = 고정 좌표, from~to = 뻗는 구간
-    build: (B, o) => wallRun(B, alongX(o), o.at, o.from, o.to, o.h, o.t ?? 0.35, o.ops || [], o.mat || 'brick'),
+    build: (B, o) => wallRun(B, alongX(o), o.at, o.from, o.to, o.h, o.t ?? 0.35, o.ops || [], o.mat || 'brick', o.plain ? false : { face: o.face === '+' ? 1 : o.face === '-' ? -1 : 0 }),
     anchor: o => (alongX(o) ? [(o.from + o.to) / 2, o.at] : [o.at, (o.from + o.to) / 2]),
   },
   building: { // 네 벽 + (지붕). ops = { n, s, e, w: [{ at, w, type: door|window }] }, at 은 벽을 따라가는 절대 좌표
-    build: (B, o) => building(B, o.x, o.z, o.w, o.d, o.h, o.mat || 'brick', { n: [], s: [], e: [], w: [], ...(o.ops || {}) }, !!o.roof),
+    build: (B, o) => building(B, o.x, o.z, o.w, o.d, o.h, o.mat || 'brick', { n: [], s: [], e: [], w: [], ...(o.ops || {}) }, !!o.roof, !!o.plain),
     anchor: o => [o.x, o.z],
   },
   container: { build: (B, o) => container(B, o.x, o.z, alongX(o), tintNum(o.tint ?? '#596066'), o.y || 0), anchor: o => [o.x, o.z] },
   crate: { build: (B, o) => crate(B, o.x, o.z, o.s ?? 1.2, o.y || 0), anchor: o => [o.x, o.z] },
   sandbags: { build: (B, o) => sandbags(B, o.x, o.z, o.len ?? 4, alongX(o), o.h ?? 1.0), anchor: o => [o.x, o.z] },
   barrier: { build: (B, o) => barrier(B, o.x, o.z, alongX(o)), anchor: o => [o.x, o.z] },
-  barrel: { build: (B, o) => barrel(B, o.x, o.z, tintNum(o.tint ?? '#35506b')), anchor: o => [o.x, o.z] },
+  barrel: { build: (B, o) => barrel(B, o.x, o.z, tintNum(o.tint ?? '#56645a')), anchor: o => [o.x, o.z] },
   tower: { build: (B, o) => tower(B, o.x, o.z), anchor: o => [o.x, o.z] }, // 감시탑 (계단은 서쪽, rot 으로 돌린다)
   tree: { build: (B, o, T) => T(o.x, o.z, o.s ?? 1), anchor: o => [o.x, o.z] },
 
