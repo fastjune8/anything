@@ -27,7 +27,17 @@ check(['smg', 'shotgun'].every(k => sf(k).sprintFire && sf(k).slideFire) && ['ar
 const draws = ['smg', 'shotgun', 'ar', 'sniper'].map(k => sf(k).draw);
 check(draws.every((d, i) => i === 0 || d > draws[i - 1]) && sf('lmg').draw > sf('ar').draw, '무기 교체 속도: SMG < 산탄 < AR < 저격·LMG', draws.join(','));
 check(SKILLS.length >= 19 && MODES.dom.rules === 'domination' && MODES.dom.goal === 100 && MODES.dom.minutes === 10, '스킬 · 점령전 모드(100점, 10분)');
-check(MAP_IDS.includes('outpost') && getMap('outpost').zones.length === 3, '대표 맵: 전초기지 거점 3개');
+check(MAP_IDS.includes('outpost') && getMap('outpost').zones.length === 3, '보관 맵: 전초기지 거점 3개');
+check(MAP_IDS[0] === 'courtyard' && Object.values(MODES).every(m => m.map === 'courtyard'), '대표 맵: 골목극장 (맵 목록 첫 번째 · 모든 모드 기본 맵)');
+check(['courtyard', 'aster', 'shiftcore'].every(id => MAP_IDS.includes(id) && getMap(id).zones.map(z => z.id).join('') === 'ABC'), '레벨 디자인 v2.0 세 맵: 거점 A·B·C');
+{ // 대칭 맵: 두 팀 스폰·거점 A/B 가 반대편 짝 (01 좌우 반사, 02·03 180° 회전)
+  const flip = { courtyard: ([x, z]) => [-x, z], aster: ([x, z]) => [-x, -z], shiftcore: ([x, z]) => [-x, -z] };
+  for (const [id, f] of Object.entries(flip)) {
+    const m = getMap(id), [a, b] = m.spawns.team, A = m.zones.find(z => z.id === 'A'), B = m.zones.find(z => z.id === 'B');
+    const same = (p, q) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
+    check(a.every((p, i) => same(f(p), b[i])) && same(f([A.x, A.z]), [B.x, B.z]), `${id}: 두 팀 스폰·거점이 대칭`);
+  }
+}
 
 console.log('[이동]');
 {

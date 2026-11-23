@@ -22,7 +22,7 @@ try {
   await page.goto(`http://localhost:${srv.port}/?auto=NetTester&nolock&mode=ffa&ws=${proxy.port}`); // 페이지는 서버에서, WebSocket 은 프록시로
   await page.waitForFunction(() => window.__g && window.__g.joined && window.__g.me.alive && window.__g.remotes.size >= 3, null, { timeout: 40000 });
   await sleep(2500);
-  const move = () => page.evaluate(() => { const g = window.__g; g.teleport(48.7, 0, -20, Math.PI); g.input({ key: 'KeyW' }); g.input({ key: 'ShiftLeft' }); });
+  const move = () => page.evaluate(() => { const g = window.__g; g.teleport(-46, 0, -22, Math.PI); /* 골목극장 서쪽 길, 북쪽으로 */ g.input({ key: 'KeyW' }); g.input({ key: 'ShiftLeft' }); });
   const measure = async (label, profile, secs) => {
     proxy.setProfile(profile);
     await sleep(3500); // 장애 속에서 시계가 적응할 시간

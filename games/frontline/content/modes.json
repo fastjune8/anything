@@ -1,5 +1,5 @@
 [
-  {"id":"dom","name":"점령전 5 대 5","desc":"세 거점을 차지해 점수를 쌓는다 · 100점 선승","map":"outpost","rules":"domination","max":10,"fill":10,"teams":2,"goal":100,"minutes":10,"respawn":5,"spawn":"team","dom":{"capture":8,"speedup":[1,1.5,1.8,2],"scoreRate":0.25,"height":4,"overtimeMax":180}},
-  {"id":"tdm","name":"팀 데스매치 5 대 5","desc":"두 팀 · 팀 합계 50킬 선승","map":"outpost","rules":"deathmatch","max":10,"fill":10,"teams":2,"goal":50,"minutes":8,"respawn":4,"spawn":"dynamic"},
-  {"id":"ffa","name":"개인전","desc":"모두가 적 · 20킬 선승","map":"outpost","rules":"deathmatch","max":8,"fill":6,"teams":0,"goal":20,"minutes":8,"respawn":2.5,"spawn":"dynamic"}
+  {"id":"dom","name":"점령전 5 대 5","desc":"세 거점을 차지해 점수를 쌓는다 · 100점 선승","map":"courtyard","rules":"domination","max":10,"fill":10,"teams":2,"goal":100,"minutes":10,"respawn":5,"spawn":"team","dom":{"capture":8,"speedup":[1,1.5,1.8,2],"scoreRate":0.25,"height":4,"overtimeMax":180}},
+  {"id":"tdm","name":"팀 데스매치 5 대 5","desc":"두 팀 · 팀 합계 50킬 선승","map":"courtyard","rules":"deathmatch","max":10,"fill":10,"teams":2,"goal":50,"minutes":8,"respawn":4,"spawn":"dynamic"},
+  {"id":"ffa","name":"개인전","desc":"모두가 적 · 20킬 선승","map":"courtyard","rules":"deathmatch","max":8,"fill":6,"teams":0,"goal":20,"minutes":8,"respawn":2.5,"spawn":"dynamic"}
 ]

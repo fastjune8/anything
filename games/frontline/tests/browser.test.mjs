@@ -38,13 +38,13 @@ try {
   check(await page.isVisible('#hud') && !(await page.isVisible('#menu')), '경기 화면 (HUD)');
   check(await page.locator('#zones .zp').count() === 3, '위쪽: 거점 A·B·C 소유 표시');
   await sleep(800);
-  // 이동 (예측): 동쪽 가장자리 길로 옮겨 달린다
-  await g(page, () => window.__g.teleport(50, 0, -30, Math.PI));
+  // 이동 (예측): 골목극장 서쪽 길(상점·카페와 큰 건물 사이)로 옮겨 북쪽으로 달린다
+  await g(page, () => window.__g.teleport(-46, 0, -22, Math.PI));
   await sleep(300);
   await g(page, () => { window.__g.input({ key: 'KeyW' }); window.__g.input({ key: 'ShiftLeft' }); });
   await sleep(1200);
   const run = await g(page, () => ({ z: window.__g.me.pos.z, sprint: window.__g.me.ps.sprinting }));
-  check(run.z > -28.5 && run.sprint, `달리기 (예측 이동, z=${run.z.toFixed(1)})`);
+  check(run.z > -20.5 && run.sprint, `달리기 (예측 이동, z=${run.z.toFixed(1)})`);
   await g(page, () => window.__g.input({ key: 'KeyC' }));
   await page.waitForFunction(() => window.__g.me.ps.slide > 0, null, { timeout: 2000 }).catch(() => {});
   check(await g(page, () => window.__g.me.ps.slide > 0), '달리다 C = 슬라이딩');

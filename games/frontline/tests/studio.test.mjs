@@ -63,9 +63,9 @@ try {
   }));
   check(shell.home && shell.tabs === 1, '처음엔 홈 탭 하나', JSON.stringify(shell));
   check(['maps', 'models', 'weapons', 'parts', 'modes', 'effects'].every(c => shell.cats.includes(c)) && shell.cards.includes('map:frontline') && shell.cards.includes('map:warehouse'), '종류(맵·모델·무기·파츠·모드·효과)와 맵 카드가 보인다', JSON.stringify(shell));
-  await page.click('[data-asset="map:outpost"]');
+  await page.click('[data-asset="map:courtyard"]');
   const det = await page.evaluate(() => ({ title: document.querySelector('#homeDetail h2').textContent, rel: [...document.querySelectorAll('#homeDetail .rel button')].map(b => b.textContent), thumb: !!document.querySelector('#homeDetail .big canvas') }));
-  check(det.title === '전초기지' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
+  check(det.title === '골목극장' && det.thumb && det.rel.some(r => r.includes('점령전')), '카드를 누르면 자세히(미리보기·정보·이 맵을 쓰는 모드)가 나온다', JSON.stringify(det));
   await page.click('[data-cat="effects"]');
   check((await page.textContent('#homeCards')).includes('유탄 폭발'), '효과 종류에 효과 카드가 있다 (효과 에디터)');
   await page.click('[data-cat="maps"]');

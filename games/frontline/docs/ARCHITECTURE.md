@@ -49,7 +49,8 @@ games/frontline/
 │   └── (그리기·자산: scene · world · guns · gunmat · gunanim · charassets · charanim · charik · outfit · fx · vfx · effects · dashfx · audio · sfx · textures — 스튜디오와 공용)
 ├── content/                게임 데이터 (스튜디오가 쓴다): maps/ · weapons · skills · modes · models · looks · cosmetics …
 ├── studio/                 FRONTIER Studio (개발 서버의 /studio/)
-├── tools/maps/gen_outpost.mjs   대표 맵 "전초기지" 생성기
+├── tools/maps/gen_v2_maps.mjs   레벨 디자인 v2.0 세 맵 생성기 (골목극장 = 대표 맵 · 아스테르 항만 · 교차 동력실)
+├── tools/maps/gen_outpost.mjs   예전 대표 맵 "전초기지" 생성기 (보관)
 ├── tests/                  engine(단위) · server(통합) · browser · studio · cosmetics · garment
 └── archive/                예전 버전 (pre-overhaul-2026-11-19 = 엔진 개편 직전 코드, git 에는 안 올라감)
 ```
@@ -86,7 +87,7 @@ games/frontline/
 | 체력·회복·부활 보호 | `shared/sim/config.js` 의 `HEALTH`·`SPAWN`, 모드별 부활 대기는 `content/modes.json` |
 | 점령 시간·인원별 속도·점수 속도·연장전 | 스튜디오 → 모드 (`content/modes.json` 의 `dom`) |
 | 거점 개수·위치 | 맵 데이터의 `zones` (스튜디오 맵 에디터) |
-| 맵 수정·새 맵 | 스튜디오(`/studio/`) → `content/maps/<id>.json`. 대표 맵은 `tools/maps/gen_outpost.mjs` 로 만들었다 |
+| 맵 수정·새 맵 | 스튜디오(`/studio/`) → `content/maps/<id>.json`. 대표 맵 셋은 `tools/maps/gen_v2_maps.mjs` 로 만들었다 (다시 돌리면 덮어쓴다) |
 | 스폰 고르는 기준 | `shared/sim/spawn.js` |
 | 소리 탐지 거리 | `shared/sim/noise.js` |
 | 랙 보정 한도·보간 지연 | `shared/sim/config.js` 의 `MAX_REWIND_TICKS`·`INTERP_TICKS` |
