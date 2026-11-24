@@ -46,9 +46,15 @@ export const OBJECT_SCHEMAS = {
     h: num('높이', { min: 0.3, max: 20, step: 0.1 }), t: num('두께', opt({ min: 0.1, max: 3, step: 0.05 })), mat: oneOf('재질', MATERIALS), ops: OPENINGS, y: Y,
     plain: bool('건축 장식 없음 (틀·기단·머리돌·기둥)', opt()), face: oneOf('장식 면 (비우면 양쪽)', ['+', '-'], opt({ hint: '+ = axis 가 x 면 z+ 쪽, z 면 x+ 쪽. 한쪽만 보이는 바깥 벽에 쓴다' })),
   } },
+  asset: { label: '시각 모델 (.glb)', fields: {
+    id: str('모델 id (content/assets/<id>.glb)'), x: X, z: Z, y: Y,
+    w: num('선택 상자 너비 (x) — 에디터에서 집는 용도', opt({ min: 0.5, max: 300, step: 0.1 })), d: num('선택 상자 깊이 (z)', opt({ min: 0.5, max: 300, step: 0.1 })), h: num('선택 상자 높이', opt({ min: 0.5, max: 60, step: 0.1 })),
+    s: num('크기 배율', opt({ min: 0.1, max: 10, step: 0.05 })), shadow: oneOf('그림자', ['all', 'none'], opt({ hint: 'none = 이 모델은 그림자를 던지지 않는다 (받기는 한다). 모델 안의 NS_ 로 시작하는 메쉬는 항상 던지지 않는다' })),
+  } },
   building: { label: '건물', fields: {
     x: X, z: Z, w: num('너비 (x)', { min: 2, max: 100, step: 0.1 }), d: num('깊이 (z)', { min: 2, max: 100, step: 0.1 }), h: num('높이', { min: 1, max: 20, step: 0.1 }),
     mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()), y: Y, plain: bool('건축 장식 없음 (틀·기단·모서리·지붕 띠)', opt()),
+    replacedBy: str('눈에 보이는 모양을 대신할 시각 모델 id', opt({ hint: '충돌은 이 건물 그대로. 같은 자리에 asset 물체를 두면 박스 대신 그 모델이 보이고, 모델을 못 불러오면 박스가 보인다' })),
     ops: obj('문·창문 (위치 = 벽을 따라가는 절대 좌표)', { n: sideOpenings('북쪽 벽 (z+)'), s: sideOpenings('남쪽 벽 (z−)'), e: sideOpenings('동쪽 벽 (x+)'), w: sideOpenings('서쪽 벽 (x−)') }, opt()),
   } },
   container: { label: '컨테이너', fields: { x: X, z: Z, axis: AXIS, tint: color('색', opt()), y: num('바닥 높이 (2단 = 2.59)', opt({ min: 0, step: 0.01 })) } },

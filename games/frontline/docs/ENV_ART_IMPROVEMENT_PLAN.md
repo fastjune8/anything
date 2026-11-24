@@ -234,3 +234,14 @@
 | 충돌/게임플레이 | 콜라이더 233개 동일, 불변 |
 | 테스트 | `npm test` ✗ 0건 |
 | 미검증 | 보이는 창 FPS, 저사양 GPU, 서버 재시작 후 looks.json 반영(서버가 looks.json을 감시하지 않음) |
+
+## 9차 작업 결과 (P3-0 에셋 파이프라인 + P3-1 창고, 2026-11-23)
+| 항목 | 결과 |
+|---|---|
+| P3-0 | 맵 데이터 `asset`(id·x·z·y·rot·s·shadow·sym) + 건물 `replacedBy`, `client/js/mapassets.js` 로더, `world.js` 연결. 서버·충돌 무관, 실패 시 박스 폴백 |
+| P3-1 | `tools/blender/warehouse/*` → `content/assets/warehouse.glb` (삼각형 9 156, 1.6 MB, 재질 5) |
+| 충돌 보존 | 충돌 박스 233개 byte 동일(테스트), 시각-충돌 맞춤 4검사 통과(`check_fit.py`) |
+| 성능 | 프레임 시간 ±0.1 ms, Draw Call −5~+5, Tri +11~12.5k, FPS 미측정 |
+| 테스트 | `tests/assets.test.mjs` 추가 (npm test 에 포함) |
+| 미검증 | 보이는 창 FPS, 저사양 GPU, 스튜디오 맵 에디터에서 asset 편집(브라우저 테스트 미실행), 다른 맵 확장 |
+| 다음 | 같은 파이프라인으로 나머지 건물(벽돌 건물 A 안뜰 등)을 하나씩. 한 번에 일괄 교체하지 않는다 |

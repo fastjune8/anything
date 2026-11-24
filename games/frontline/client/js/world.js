@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { assetModel } from './mapassets.js';
 
 // ───────── 절차적 텍스처 ─────────
 function rng(seed) {
@@ -482,7 +483,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
   // 충돌·총알은 layout.colliders 만 쓰므로 여기(눈에 보이는 모양)와 무관하다. 칸 단위로 합쳐서 칸 단위 프러스텀 컬링이 유지된다.
   // MERGE_CELL 보다 긴 물체(외곽 벽 등)는 합치면 컬링 범위만 넓어지므로 따로 둔다.
   const MERGE_CELL = 40;
-  const mapStats = { sources: 0, meshes: 0, merged: 0, unmerged: 0 };
+  const mapStats = { sources: 0, meshes: 0, merged: 0, unmerged: 0, assetMeshes: 0, assetTris: 0 };
 
   // 지면 꼭짓점 색: ① 아주 큰 얼룩(밝기·따뜻함이 수십 m 마다 조금씩 달라진다) ② 플레이 공간 바깥은 어둡고 채도를 뺀다 (싸우는 곳과 배경을 가른다)
   // half = 플레이 공간 반지름(외곽 벽 안쪽 면). 값은 1 주변이라 재질 색을 거의 안 바꾼다
@@ -513,7 +514,25 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     shadowFloor = 0;
     for (const b of layout.boxes) if (!b.invisible && b.y < shadowFloor) shadowFloor = b.y; // 그림자를 받을 수 있는 가장 낮은 면
     const groups = new Map(); // key → { mat, cast, recv, geoms }
-    mapStats.sources = 0; mapStats.meshes = 0; mapStats.merged = 0; mapStats.unmerged = 0;
+    mapStats.sources = 0; mapStats.meshes = 0; mapStats.merged = 0; mapStats.unmerged = 0; mapStats.assetMeshes = 0; mapStats.assetTris = 0;
+    // 시각 모델(.glb): 불러온 것만. replacedBy 가 가리키는 모델이 있으면 그 박스의 눈에 보이는 모양은 건너뛴다 (충돌 박스는 layout.colliders 가 따로 갖는다)
+    const placed = new Set(), _am = new THREE.Matrix4(), _aq = new THREE.Quaternion(), _ae = new THREE.Euler();
+    for (const a of layout.assets || []) {
+      const model = assetModel(a.id);
+      if (!model) continue;
+      placed.add(a.id);
+      _am.compose(_sv.set(a.x, a.y, a.z), _aq.setFromEuler(_ae.set(0, -THREE.MathUtils.degToRad(a.rot || 0), 0)), new THREE.Vector3(a.s || 1, a.s || 1, a.s || 1));
+      model.traverse(o => {
+        if (!o.isMesh) return;
+        const mats = [].concat(o.material);
+        for (const m of mats) for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap']) if (m[k] && m[k].anisotropy < aniso) { m[k].anisotropy = aniso; m[k].needsUpdate = true; }
+        const geo = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(_am, o.matrixWorld)); // 위치를 구워 넣어야 그림자 컬이 박스를 바로 쓴다
+        const cast = a.shadow !== 'none' && !/^NS_/.test(o.name) && !mats.some(m => m.transparent);
+        const mesh = new THREE.Mesh(geo, o.material);
+        mesh.castShadow = cast; mesh.receiveShadow = !mats.some(m => m.transparent); mesh.userData.cs = cast; mesh.name = o.name;
+        mapGroup.add(mesh); mapStats.assetMeshes++; mapStats.assetTris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+      });
+    }
     // 모양(위치까지 구워 넣은 지오메트리)을 내놓는다. big 이면 합치지 않고 바로 메쉬로
     const emit = (geo, mat, x, z, cast, recv, big) => {
       mapStats.sources++;
@@ -529,7 +548,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     };
     const r = rng(99);
     for (const b of layout.boxes) {
-      if (b.invisible) continue;
+      if (b.invisible || (b.swap && placed.has(b.swap))) continue;
       const d = MAT_DEF[b.mat] || MAT_DEF.concrete;
       let geo;
       if (b.shape === 'cyl') geo = new THREE.CylinderGeometry(b.w / 2, b.w / 2, b.h, 18);

@@ -108,12 +108,14 @@ both({ type: 'crate', x: 12.5, z: 4.5, s: 1.3 });
 both({ type: 'crate', x: -12.5, z: 5.5, s: 1.1 });
 
 // ───── C: 창고 내부 (동쪽) ─────
-add({ type: 'building', x: 31, z: 0, w: 20, d: 16, h: 4.2, mat: 'concrete', roof: true, ops: {
+add({ type: 'building', x: 31, z: 0, w: 20, d: 16, h: 4.2, mat: 'concrete', roof: true, replacedBy: 'warehouse', ops: {
   n: [{ at: 25, w: 2.6, type: 'door' }, { at: 37, w: 2.6, type: 'door' }, { at: 31, w: 1.8, type: 'window' }],
   s: [{ at: 25, w: 2.6, type: 'door' }, { at: 37, w: 2.6, type: 'door' }, { at: 31, w: 1.8, type: 'window' }],
   w: [{ at: -3.5, w: 1.8, type: 'window' }, { at: 0, w: 2.4, type: 'door' }, { at: 3.5, w: 1.8, type: 'window' }],
   e: [{ at: 0, w: 2.4, type: 'door' }],
 } });
+// 창고 시각 모델 (Blender → content/assets/warehouse.glb). 충돌은 위 건물 그대로. 모델을 못 불러오면 위 건물 박스가 보인다
+add({ type: 'asset', id: 'warehouse', x: 31, z: 0, w: 20.6, d: 16.6, h: 5 });
 add({ type: 'container', x: 31, z: 0, axis: 'x', tint: TINT.containerOchre });
 both({ type: 'crate', x: 26, z: 4.6, s: 1.2 });
 both({ type: 'crate', x: 36.5, z: 4.2, s: 1.1 });

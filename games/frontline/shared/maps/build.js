@@ -16,6 +16,10 @@ export const OBJECT_TYPES = {
     build: (B, o) => wallRun(B, alongX(o), o.at, o.from, o.to, o.h, o.t ?? 0.35, o.ops || [], o.mat || 'brick', o.plain ? false : { face: o.face === '+' ? 1 : o.face === '-' ? -1 : 0 }),
     anchor: o => (alongX(o) ? [(o.from + o.to) / 2, o.at] : [o.at, (o.from + o.to) / 2]),
   },
+  asset: { // Blender 로 만든 시각 모델(.glb, content/assets). 충돌은 없다 — 충돌은 같은 자리의 박스·건물이 맡는다. 에디터에서 집을 수 있게 안 보이는 선택 박스만 낸다
+    build: (B, o) => B(o.x, o.y || 0, o.z, o.w || 2, o.h || 2, o.d || 2, 'none', { noCollide: true, invisible: true }),
+    anchor: o => [o.x, o.z],
+  },
   building: { // 네 벽 + (지붕). ops = { n, s, e, w: [{ at, w, type: door|window }] }, at 은 벽을 따라가는 절대 좌표
     build: (B, o) => building(B, o.x, o.z, o.w, o.d, o.h, o.mat || 'brick', { n: [], s: [], e: [], w: [], ...(o.ops || {}) }, !!o.roof, !!o.plain),
     anchor: o => [o.x, o.z],
@@ -96,13 +100,16 @@ const sideways = rot => ((((rot % 360) + 360) % 360) / 90) % 2 === 1;
 // 물체 하나 → 박스·나무 목록. rot: 제자리 회전(90 단위), sym: 맵 중심 기준 반대편(180° 회전)에도 하나 더
 export function expandObject(o) {
   const t = OBJECT_TYPES[o.type];
-  if (!t) return { boxes: [], trees: [] };
-  const boxes = [], trees = [];
+  if (!t) return { boxes: [], trees: [], assets: [] };
+  const boxes = [], trees = [], assets = [];
   t.build((x, y, z, w, h, d, mat, extra) => boxes.push({ x, y, z, w, h, d, mat, ...(extra || {}) }), o, (x, z, s) => trees.push({ x, z, s }));
   if (o.y && LIFT.has(o.type)) for (const b of boxes) b.y += o.y; // 공중·2층에 놓기
   // 재질·색 바꾸기 (스튜디오에서 고른 것): 자기 모양 함수가 안 쓰는 종류는 모든 박스에 덮어쓴다
   if (o.mat && !OWN_MAT.has(o.type)) for (const b of boxes) b.mat = o.mat;
   if (o.tint !== undefined && !OWN_TINT.has(o.type)) for (const b of boxes) b.tint = tintNum(o.tint);
+  // replacedBy: 이 물체의 눈에 보이는 모양을 같은 id 의 시각 모델(content/assets)이 대신한다. 충돌 박스는 그대로이고, 모델을 못 불러오면 박스가 그대로 보인다
+  if (o.replacedBy) for (const b of boxes) b.swap = o.replacedBy;
+  if (o.type === 'asset') assets.push({ id: o.id, x: o.x, y: o.y || 0, z: o.z, rot: 0, s: o.s || 1, shadow: o.shadow || 'all' });
   const rot = o.rot || 0;
   if (rot) {
     const [cx, cz] = t.anchor(o);
@@ -112,20 +119,22 @@ export function expandObject(o) {
       if (b.ramp) b.ramp = turnRamp(b.ramp, rot);
     }
     for (const tr of trees) [tr.x, tr.z] = turn(tr.x, tr.z, cx, cz, rot);
+    for (const a of assets) { [a.x, a.z] = turn(a.x, a.z, cx, cz, rot); a.rot = rot; }
   }
   if (o.sym) {
     boxes.push(...boxes.map(b => ({ ...b, x: -b.x, z: -b.z, ...(b.ramp ? { ramp: { ...b.ramp, up: -b.ramp.up } } : {}) }))); // 반대편: 경사도 반대로
     trees.push(...trees.map(tr => ({ ...tr, x: -tr.x, z: -tr.z })));
+    assets.push(...assets.map(a => ({ ...a, x: -a.x, z: -a.z, rot: (a.rot + 180) % 360 })));
   }
-  return { boxes, trees };
+  return { boxes, trees, assets };
 }
 
-// 맵 데이터 전체 → { boxes, trees, colliders }
+// 맵 데이터 전체 → { boxes, trees, colliders, assets }
 export function buildLayout(def) {
-  const boxes = [], trees = [];
+  const boxes = [], trees = [], assets = [];
   for (const o of def.objects || []) {
     const r = expandObject(o);
-    boxes.push(...r.boxes); trees.push(...r.trees);
+    boxes.push(...r.boxes); trees.push(...r.trees); assets.push(...r.assets);
   }
-  return finishLayout(boxes, trees);
+  return { ...finishLayout(boxes, trees), assets }; // assets = 시각 모델 배치 목록 (서버는 안 쓴다)
 }
