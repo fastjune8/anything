@@ -8,6 +8,7 @@ import { newMove, copyMove, stepMove, applyImpulse, eyeY, hSpeed } from './movem
 import { resetSkillState, tickSkills, skillReady, activate, NEEDS_HELD, aimDir } from './abilities.js';
 import { mulberry32, shotSeed } from './rng.js';
 import { BTN, SPAWN, clamp, lerp } from './config.js';
+import { stepKunai, resetKunai, copyKunai, isKunai, KUNAI } from './kunai.js';
 
 const DEG = Math.PI / 180;
 
@@ -45,9 +46,10 @@ export function respawnSim(ps, lo, x, y, z, yaw) {
   Object.assign(ps, newMove(x, y, z, yaw));
   ps.alive = true; ps.cur = 0; ps.drawT = lo[0].w.draw; ps.adsT = 0; ps.bloom = 0; ps.fireN = ps.fireN | 0; ps.btn = 0; ps.qsk = -1;
   ps.w = lo.map(l => ({ ammo: l.w.mag, rl: 0, rlT: 0, cd: 0, heat: 0, over: false, heatT: 9, idle: 99, burst: 0, burstCd: 0 }));
-  ps.st = { protect: SPAWN.protect, intro: SPAWN.intro, invuln: 0, stealth: 0, dr: 0, adren: 0, shove: 0, bs: 0 };
+  ps.st = { protect: SPAWN.protect, intro: SPAWN.intro, invuln: 0, stealth: 0, dr: 0, adren: 0, shove: 0, bs: 0, slow: 0 }; // slow = 쿠나이 와이어에 걸려 느려짐
   ps.adrenRate = 0; ps.drMul = 1; ps.bsMul = 1; ps.shove = null; ps.fanSpread = 0; ps.fanGap = 0.07;
   resetSkillState(ps, lo);
+  resetKunai(ps);
   return ps;
 }
 // 깊은 복사 (예측 보정에서 서버 상태를 받아 덮어쓸 때)
@@ -56,6 +58,7 @@ export function copySim(dst, src) {
   for (const k of ['id', 'alive', 'cur', 'drawT', 'adsT', 'bloom', 'fireN', 'btn', 'qsk', 'adrenRate', 'drMul', 'bsMul', 'fanSpread', 'fanGap']) dst[k] = src[k];
   dst.w = src.w.map(w => ({ ...w })); dst.sk = src.sk.map(s => ({ ...s })); dst.st = { ...src.st };
   dst.shove = src.shove ? { ...src.shove } : null;
+  copyKunai(dst, src);
   return dst;
 }
 
@@ -157,15 +160,19 @@ export function stepPlayer(ps, cmd, lo, cs, dt) {
   if (ps.qsk >= 0 && act && ps.cur === ps.qsk && ps.drawT <= 0) { const q = ps.qsk; ps.qsk = -1; if (skillReady(ps, lo, q)) activate(ps, lo, q, cs, ev, cmd); }
   else if (ps.qsk >= 0 && cmd.slot !== ps.qsk) ps.qsk = -1;
 
+  // 쿠나이: 던지기·회수·모드 전환 (들고 있을 때) + 비행·앵커·와이어 수명 (늘)
+  const kunai = isKunai(curW(ps, lo));
+  stepKunai(ps, lo, cs, dt, ev, kunai, act, press);
+
   // 이동
   const w = curW(ps, lo), s = ps.w[ps.cur];
-  const wantAds = !!(btn & BTN.ads) && !isMelee(w) && act;
+  const wantAds = !!(btn & BTN.ads) && !isMelee(w) && !kunai && act; // 쿠나이는 우클릭 = 오른손
   const fireHeld = !!(btn & BTN.fire);
   const sprintFire = canSprintFire(lo, ps.cur);
   const sprint = !!(btn & BTN.sprint) && !wantAds && !(fireHeld && !sprintFire);
   ev.move = stepMove(ps, {
     fwd: cmd.fwd, side: cmd.side, jump: !!(btn & BTN.jump), crouch: !!(btn & BTN.crouch), sprint,
-    speedMul: w.move * (1 - 0.35 * ps.adsT), airSprint: !!passive(lo, ps.cur, 'sprint'),
+    speedMul: w.move * (1 - 0.35 * ps.adsT) * (ps.st.slow > 0 ? KUNAI.wire.slow : 1), airSprint: !!passive(lo, ps.cur, 'sprint'),
   }, cs, dt);
   if (ev.move.vaultStart) { s.rl = 0; }
 
@@ -179,6 +186,8 @@ export function stepPlayer(ps, cmd, lo, cs, dt) {
   ps.bloom = Math.max(0, ps.bloom - dt * (w.bloomMax || 1) * 3.2);
   const adsOk = wantAds && ps.drawT <= 0 && !(s.rl > 0 && !w.shell) && !ps.sprinting && !ps.mo;
   ps.adsT = clamp(ps.adsT + (adsOk ? dt : -dt) / w.adsTime, 0, 1);
+
+  if (kunai) return ev; // 쿠나이는 탄창·재장전·사격이 없다 (위의 stepKunai 가 맡는다)
 
   // 재장전
   if (act && press(BTN.reload) && startReload(ps, lo, ps.cur)) ev.reload = true;

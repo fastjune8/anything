@@ -25,11 +25,12 @@ export const wp = {
   kickP: 0, kickY: 0, vmKick: 0, flashT: 0, swing: 0,
   bobPhase: 0, swayX: 0, swayY: 0, stepDist: 0, sprinting: false,
   burstN: 0, burstSeed: 0, sinceShot: 9, shots: 0, side: 0, // side: 아킴보 — 이번에 쏜 손 (0 오른손, 1 왼손)
+  kThrow: [0, 0],                            // 쿠나이: 왼손·오른손이 던지며 앞으로 나간 정도 (1 → 0)
 };
 
 export const inp = {
   keys: new Set(), fireHeld: false, adsHeld: false, mdx: 0, mdy: 0, chatOpen: false, tactical: false, board: false,
-  sens: Number(localStorage.getItem('fd_sens')) || 1, wantSlot: 0, skillPress: [false, false], reloadPress: false,
+  sens: Number(localStorage.getItem('fd_sens')) || 1, wantSlot: 0, skillPress: [false, false], reloadPress: false, modePress: false, nodePress: false,
 };
 
 // matchState: idle | playing | victory | results

@@ -8,8 +8,8 @@ const servers = [];
 const cmd = (o = {}) => [o.fwd || 0, o.side || 0, o.btn || 0, o.yaw || 0, o.pitch || 0, o.slot || 0, o.vt || 0];
 const lastMe = c => c.all('me').pop();
 // 두 사람이 서로 마주 보게: a 는 (0, z0) 에서 −z 를, b 는 (0, z0 − d) 에 선다
-async function face(a, b, z0, d) { // 동쪽 가장자리 길 (x = 50): 사이에 막는 물체가 없다
-  a.send({ t: 'tp', p: [50, 0, z0], y: 0 }); b.send({ t: 'tp', p: [50, 0, z0 - d], y: Math.PI });
+async function face(a, b, z0, d) { // 골목극장 서쪽 길 (x = −46, 큰 건물과 상점·카페 사이): 사이에 막는 물체가 없다
+  a.send({ t: 'tp', p: [-46, 0, z0], y: 0 }); b.send({ t: 'tp', p: [-46, 0, z0 - d], y: Math.PI });
   await sleep(150);
 }
 
@@ -47,12 +47,12 @@ try {
 
   console.log('[서버 권한 이동]');
   await sleep(300);
-  A2.send({ t: 'tp', p: [50, 0, -30], y: Math.PI }); await sleep(100);
+  A2.send({ t: 'tp', p: [-46, 0, -22], y: Math.PI }); await sleep(100);
   await A2.play(Array.from({ length: 60 }, () => cmd({ fwd: 1, yaw: Math.PI })));
   await sleep(200);
   const m1 = lastMe(A2);
   check(m1 && m1.q === 59, '서버가 입력 번호를 확인해 준다 (보정용)');
-  const moved = Math.hypot(m1.ps.x - 50, m1.ps.z + 30);
+  const moved = Math.hypot(m1.ps.x + 46, m1.ps.z + 22);
   check(moved > 3 && moved < 5.2, `1초 걷기 → ${moved.toFixed(2)}m (서버 계산)`);
   const before = lastMe(A2).ps;
   A2.cmds(Array.from({ length: 600 }, () => cmd({ fwd: 1, btn: BTN.sprint })));
@@ -77,7 +77,7 @@ try {
 
   console.log('[사격 판정 · 부활 보호 · 처치 · 부활]');
   C.send({ t: 'lo' }); // (경기 중 lo 는 방에 영향 없음)
-  await face(C, D, 32, 12);
+  await face(C, D, 2, 12);
   // C 가 D 를 쏜다: D 는 아직 부활 보호 중 → 막힌다
   const n0 = C.all('snap').pop().n;
   await C.play([...Array.from({ length: 40 }, () => cmd({ btn: BTN.ads, vt: n0 })), cmd({ btn: BTN.ads | BTN.fire, vt: n0 + 40 })]);
@@ -85,7 +85,7 @@ try {
   check(!!blk, '부활 보호 중인 적은 피해를 받지 않는다');
   await sleep(3200); // 보호 시간이 끝난다
   const fire = async (n) => { const t = C.all('snap').pop().n; await C.play([cmd({ btn: BTN.ads, vt: t }), ...Array.from({ length: n }, (_, i) => cmd({ btn: BTN.ads | (i % 8 === 0 ? BTN.fire : 0), vt: t + i }))]); };
-  await face(C, D, 32, 12);
+  await face(C, D, 2, 12);
   await fire(60);
   const dmg = await C.waitEvent('dmg', e => e.to === D.me && e.from === C.me, 3000);
   check(!!dmg && dmg.d > 0, `서버가 판정한 명중: 피해 ${dmg && dmg.d} (${dmg && dmg.k})`);
@@ -97,14 +97,14 @@ try {
   console.log('[랙 보정: 쏜 사람이 보던 순간으로 되감는다]');
   await sleep(3200);
   // D 가 옆으로 달린다. C 는 0.15초 전(9 tick) D 가 있던 곳을 쏘고, 그때 화면 시각(vt)을 붙인다
-  C.send({ t: 'tp', p: [50, 0, 32], y: 0 }); D.send({ t: 'tp', p: [47, 0, 22], y: -Math.PI / 2 });
+  C.send({ t: 'tp', p: [0, 0, 28], y: 0 }); D.send({ t: 'tp', p: [-3, 0, 18], y: -Math.PI / 2 }); // 문화마당 (공연장 앞 광장)
   await sleep(200);
   const hp0 = (D.all('me').pop() || {}).hp;
   await D.play(Array.from({ length: 50 }, () => cmd({ side: 0, fwd: 1, yaw: -Math.PI / 2 })));
   const snaps = C.all('snap').slice(-20);
   const pick = snaps[Math.max(0, snaps.length - 8)], row = pick && pick.p.find(r => r[0] === D.me);
   if (row) {
-    const [, x, y, z] = row, ex = 50, ey = 1.52, ez = 32;
+    const [, x, y, z] = row, ex = 0, ey = 1.52, ez = 28;
     const yaw = Math.atan2(-(x - ex), -(z - ez)), pitch = Math.atan2(y + 1.1 - ey, Math.hypot(x - ex, z - ez));
     await C.play([...Array.from({ length: 20 }, () => cmd({ yaw, pitch, btn: BTN.ads, vt: pick.n })), cmd({ yaw, pitch, btn: BTN.ads | BTN.fire, vt: pick.n })]);
     const hit = await C.waitEvent('dmg', e => e.to === D.me && e.hp < (hp0 ?? 150) && C.events('kill', k => k.v === D.me).length < 2, 2000);
@@ -117,7 +117,8 @@ try {
   const F = await connect(S2.port, '폭스트롯').ready();
   F.send({ t: 'qm', mode: 'tdm' });
   const wf = await F.waitFor('welcome');
-  await sleep(7000);
+  // 맵이 넓으면 봇끼리 만나는 데 시간이 걸린다: 교전·소리가 나올 때까지 최대 20초
+  for (let t = 0; t < 20000 && !(F.events('shot').length > 20 && F.events('dmg').length > 0 && F.events('snd').length > 0); t += 500) await sleep(500);
   const pj = F.events('pj').length, shots = F.events('shot').length, dm = F.events('dmg').length;
   check(wf && pj >= 9, `봇이 빈자리를 채운다 (${pj}명)`);
   check(shots > 20 && dm > 0, `봇이 사람과 같은 규칙으로 싸운다 (사격 ${shots}, 피해 ${dm})`);

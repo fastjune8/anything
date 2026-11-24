@@ -8,7 +8,7 @@ import { getMap } from '../../shared/maps/index.js';
 import { WEAPONS, calcDamage, isMelee } from '../../shared/weapons.js';
 import { packOutfit, botOutfit } from '../../shared/cosmetics.js';
 import { makeLoadout, loadoutWire, newPlayerSim, respawnSim, stepPlayer, decodeCmd } from '../../shared/sim/player.js';
-import { applyImpulse, knockDown, eyeY, hSpeed } from '../../shared/sim/movement.js';
+import { applyImpulse, knockDown, eyeY, hSpeed, ROPE_MOTIONS } from '../../shared/sim/movement.js';
 import { castRay, castMelee } from '../../shared/sim/hitscan.js';
 import { pickDynamic, pickTeam } from '../../shared/sim/spawn.js';
 import { NOISE, quantBearing } from '../../shared/sim/noise.js';
@@ -20,6 +20,7 @@ import { BOT_NAMES } from '../bots/names.js';
 import { createRules } from './modes/index.js';
 import { record, poseAt, clampVt, crouchOf } from './lagcomp.js';
 import { launch, tickProjectiles } from './projectiles.js';
+import { KUNAI, KS, kunaiSlot, segSegDist, wireOn, segEnds, areaValid, areaShape, inArea, THREAD } from '../../shared/sim/kunai.js';
 import { allowChat } from '../chat.js';
 import { perf } from '../perf.js';
 import { goalFor, matchMsFor, botFillFor, respawnFor, RESULTS_MS, VICTORY_MS, APP_ENV, lanAddresses, PORT, INPUT_QUEUE } from '../config.js';
@@ -29,6 +30,7 @@ const BURST = 30, MAX_PER_MSG = 120;
 const CATCHUP_AT = 3, MAX_QUEUE = 36;
 const r3 = v => Math.round(v * 1000) / 1000;
 const r2 = v => Math.round(v * 100) / 100;
+const KU_IDLE = '0,0|0,0||'; // 쿠나이 두 개 다 손에, 핀·와이어·영역 없음
 
 export class Room {
   constructor({ number, mode, custom = null, hub }) {
@@ -114,6 +116,7 @@ export class Room {
       s.room = this; s.player = P;
       this.players.set(id, P);
       this.welcome(P);
+      for (const Q of this.players.values()) if (Q !== P && Q.kuSig && Q.kuSig !== KU_IDLE) P.out.push(this.kuEvent(Q)); // 지금 박혀 있는 쿠나이·와이어
       this.emit({ e: 'pj', p: this.info(P) }, Q => Q !== P);
       if (this.state === 'playing') this.spawn(P);
       console.log(`[+] ${P.name} → 방 ${this.number} (${this.mode}${this.custom ? ' 커스텀 ' + this.custom.code : ''}) 팀 ${team}, 사람 ${this.humans().length}명`);
@@ -286,6 +289,8 @@ export class Room {
     if (!P.alive) return;
     const vt = P.bot ? this.tickN : clampVt(cmd.vt, this.tickN);
     for (const shot of ev.shots) this.resolveShot(P, shot, vt);
+    if (ev.kuThrow) { const ks = kunaiSlot(P.lo); if (ks >= 0) this.wstat(P, P.lo[ks].w.id).shots += ev.kuThrow.length; this.noise(P, 'walk'); }
+    if (ev.ku) this.kunaiHits(P, ev.ku, vt);
     if (ev.reload) { this.emit({ e: 'rl', id: P.id, w: P.lo[P.ps.cur].wi }, Q => Q !== P); this.noise(P, 'reload'); }
     if (ev.skills) for (const s of ev.skills) { this.emit({ e: 'sk', id: P.id, k: s.effect }, Q => Q !== P); this.noise(P, 'skill'); }
     if (ev.slash) P.slashHit = { dmg: ev.slash.dmg, wi: P.lo[ev.slash.slot].wi, ids: new Set() };
@@ -340,10 +345,13 @@ export class Room {
       const h = castMelee(shot.o, P.ps.yaw, P.ps.pitch, shot.range, cs, targets);
       if (h) byVictim.set(h.id, { dmg: w.dmg * shot.mul, head: false, dist: h.t });
       this.emit({ e: 'mel', id: P.id }, Q => Q !== P);
+      const f = { x: -Math.sin(P.ps.yaw) * Math.cos(P.ps.pitch), y: Math.sin(P.ps.pitch), z: -Math.cos(P.ps.yaw) * Math.cos(P.ps.pitch) };
+      this.cutWires(P, shot.o, { x: shot.o.x + f.x * shot.range, y: shot.o.y + f.y * shot.range, z: shot.o.z + f.z * shot.range });
     } else {
       for (const d of shot.dirs) {
         const r = castRay(shot.o, d, shot.range, cs, targets, shot.pierce);
         ends.push([r2(r.end.x), r2(r.end.y), r2(r.end.z), r.n]);
+        this.cutWires(P, shot.o, r.end);
         r.hits.forEach((h, k) => {
           let dmg = calcDamage(w, h.part, h.t, { headMul: shot.headMul }) * shot.mul * Math.pow(shot.pierceMul, k);
           if (shot.close && h.t <= shot.close) dmg *= shot.closeMul;
@@ -375,6 +383,122 @@ export class Room {
     list.push(this.time);
     if (list.length >= b.hits) { V.bleed = { by: P.id, wi: shot.wi, t: b.dur, dps: b.dps, acc: 0 }; list.length = 0; this.emit({ e: 'bleed', id: V.id }); }
     P.bleedHits.set(V.id, list);
+  }
+  // ───── 쿠나이 (기획: docs/weapons/DUAL_KUNAI.md, 공용 동작: shared/sim/kunai.js) ─────
+  // 직접 명중: 이번 tick 의 비행 구간을 쏜 사람이 보던 순간(vt)으로 되감은 적에게 검사. 처치하면 그 쿠나이가 바로 손으로, 아니면 맞은 자리에서 회수
+  kunaiHits(P, segs, vt) {
+    const slot = kunaiSlot(P.lo);
+    if (slot < 0) return;
+    const wi = P.lo[slot].wi, w = WEAPONS[wi], cs = this.map.layout.colliders;
+    const targets = this.targetsAt(P, vt).filter(t => this.isEnemy(P, this.players.get(t.id)));
+    if (!targets.length) return;
+    for (const g of segs) {
+      const k = P.ps.ku[g.h];
+      if (k.s !== KS.FLY && k.s !== KS.ANCHOR) continue; // 이번 tick 에 이미 다른 걸로 끝났다
+      const r = castRay(g.o, g.d, g.len, cs, targets);
+      if (!r.hits.length) continue;
+      const h = r.hits[0], V = this.players.get(h.id);
+      if (!V || !V.alive) continue;
+      const head = h.part === 'head', st = this.wstat(P, w.id); st.hits++; if (head) st.heads++;
+      this.damage(P, V, calcDamage(w, h.part, h.t), { wi, how: head ? 'head' : 'normal', part: head ? 'head' : 'body' });
+      const at = { x: g.o.x + g.d.x * h.t, y: g.o.y + g.d.y * h.t, z: g.o.z + g.d.z * h.t };
+      if (!V.alive) { k.s = KS.READY; k.t = 0; } // 처치: 바로 손으로 (제트 궁처럼 이어 던진다)
+      else { k.s = KS.RETURN; k.x = at.x; k.y = at.y; k.z = at.z; k.vx = k.vy = k.vz = 0; }
+      this.emit({ e: 'kuh', id: P.id, p: [r2(at.x), r2(at.y), r2(at.z)], kill: V.alive ? 0 : 1 });
+      P.meDirty = true;
+    }
+  }
+  // 총알·칼이 지나간 선분이 적의 와이어 선분에 닿으면 그 선분만 끊는다 (와이어는 발견하고 파괴할 수 있다). 영역은 변이 빠지면 없어진다
+  cutWires(P, a, b) {
+    for (const Q of this.players.values()) {
+      if (!Q.alive || !this.isEnemy(P, Q) || !wireOn(Q.ps)) continue;
+      const ps = Q.ps;
+      for (let j = ps.wires.length - 1; j >= 0; j--) {
+        const [w0, w1] = segEnds(ps, ps.wires[j]), r = segSegDist(a, b, w0, w1);
+        if (r.d > KUNAI.wire.cutRadius) continue;
+        ps.wires.splice(j, 1); Q.meDirty = true;
+        if (ps.area && !areaValid(ps)) ps.area = null;
+        this.emit({ e: 'wcut', id: Q.id, by: P.id, p: [r2(w0.x + (w1.x - w0.x) * r.t), r2(w0.y + (w1.y - w0.y) * r.t), r2(w0.z + (w1.z - w0.z) * r.t)] });
+      }
+    }
+  }
+  // 와이어 감지: 적이 어느 선분에든 닿으면 설치자에게 알리고 위치를 잠깐 보여 주며, 적은 잠깐 느려진다 (같은 적은 몇 초에 한 번)
+  wireTrips(P) {
+    const ps = P.ps, W = KUNAI.wire, cd = P.wireCd || (P.wireCd = new Map());
+    const segs = ps.wires.map(w => segEnds(ps, w));
+    for (const V of this.players.values()) {
+      if (!V.alive || !this.isEnemy(P, V) || this.time < (cd.get(V.id) || 0)) continue;
+      const vs = V.ps, v0 = { x: vs.x, y: vs.y + 0.15, z: vs.z }, v1 = { x: vs.x, y: vs.y + vs.h - 0.1, z: vs.z };
+      for (const [a, b] of segs) {
+        const r = segSegDist(a, b, v0, v1);
+        if (r.d > W.radius) continue;
+        cd.set(V.id, this.time + W.cd);
+        vs.st.slow = Math.max(vs.st.slow || 0, W.slowDur); V.meDirty = true;
+        const p = [r2(vs.x), r2(vs.y), r2(vs.z)];
+        if (!P.bot) P.out.push({ e: 'wtrip', id: V.id, p, t: W.reveal });
+        if (!V.bot) V.out.push({ e: 'wslow', by: P.id, t: W.slowDur });
+        this.emit({ e: 'wfx', id: P.id, p: [r2(a.x + (b.x - a.x) * r.s), r2(a.y + (b.y - a.y) * r.s), r2(a.z + (b.z - a.z) * r.s)] });
+        break;
+      }
+    }
+  }
+  // 영역 감지 (W9-3): 적이 와이어로 둘러싼 영역에 들어오면 설치자에게 알리고 위치를 잠깐 보여 준다. 나가는 것도 알린다.
+  //   안에 있는 동안 계속 알리지 않는다 (들어옴/나감만, 같은 적의 들어옴 알림은 몇 초에 한 번). 기본 효과는 정보뿐 (THREAD.area.slow 로 감속을 켤 수 있다)
+  areaTrips(P) {
+    const ps = P.ps, A = THREAD.area;
+    const key = ps.area && areaValid(ps) ? ps.area.g.join(',') : null;
+    if (key !== P.areaKey) { P.areaKey = key; P.areaIn = new Map(); }
+    if (!key) return;
+    const shape = areaShape(ps), cd = P.areaCd || (P.areaCd = new Map());
+    for (const V of this.players.values()) {
+      if (!V.alive || !this.isEnemy(P, V)) { P.areaIn.delete(V.id); continue; }
+      const vs = V.ps, inside = inArea(shape, vs.x, vs.y, vs.z), was = P.areaIn.get(V.id) || false;
+      if (inside === was) continue;
+      P.areaIn.set(V.id, inside);
+      const p = [r2(vs.x), r2(vs.y), r2(vs.z)];
+      if (inside) {
+        if (this.time < (cd.get(V.id) || 0)) continue;
+        cd.set(V.id, this.time + A.cd);
+        if (!P.bot) P.out.push({ e: 'aenter', id: V.id, p, t: A.reveal });
+        if (A.slow > 0) { vs.st.slow = Math.max(vs.st.slow || 0, A.slow); V.meDirty = true; }
+      } else if (!P.bot) P.out.push({ e: 'aexit', id: V.id, p });
+    }
+  }
+  // 기동 공격: 앵커로 끌려가며 빠르게 움직이는 중 적과 부딪히면 피해 + 밀어냄·짧은 경직, 기동은 거기서 끝 (한 번의 기동에 한 번)
+  kunaiDash(P) {
+    const ps = P.ps, D = KUNAI.dash;
+    if (!ps.mo || ps.mo.k !== 'kpull') return;
+    const sp = Math.hypot(ps.vx, ps.vy, ps.vz);
+    if (sp < D.minSpeed) return;
+    const slot = kunaiSlot(P.lo);
+    for (const V of this.players.values()) {
+      if (!V.alive || !this.isEnemy(P, V)) continue;
+      const vs = V.ps;
+      if (Math.hypot(vs.x - ps.x, vs.z - ps.z) > D.reach || !(vs.y < ps.y + ps.h && ps.y < vs.y + vs.h)) continue;
+      const dx = ps.vx / sp, dz = ps.vz / sp;
+      this.damage(P, V, D.dmg, { wi: slot >= 0 ? P.lo[slot].wi : -1, how: 'melee', part: 'body' });
+      if (V.alive) { applyImpulse(vs, dx * D.push, D.lift, dz * D.push, 0.4); knockDown(vs, D.stun); V.meDirty = true; V.hitBy = { id: P.id, t: this.time }; }
+      ps.mo = null; ps.vx *= D.keep; ps.vy *= D.keep; ps.vz *= D.keep; P.meDirty = true;
+      this.emit({ e: 'kdash', id: P.id, v: V.id, p: [r2(vs.x), r2(vs.y + 1), r2(vs.z)] });
+      return;
+    }
+  }
+  // 다른 사람에게 보이는 쿠나이 상태: 바뀔 때만 보낸다 (비행은 시작점·속도로 브라우저가 이어 그린다)
+  // k = 손마다 [상태, 위치, 속도], pn = 핀 노드 [위치] 또는 0, w = 와이어 선분 [노드, 노드] (노드 0·1 = 쿠나이, 2·3 = 핀), ar = 영역 노드 순서 또는 0
+  kuEvent(P) {
+    const ps = P.ps;
+    if (!P.alive) return { e: 'ku', id: P.id, k: null, pn: null, w: [], ar: 0 };
+    return {
+      e: 'ku', id: P.id, k: ps.ku.map(k => [k.s, r2(k.x), r2(k.y), r2(k.z), r2(k.vx), r2(k.vy), r2(k.vz)]),
+      pn: ps.pins.map(p => (p.on ? [r2(p.x), r2(p.y), r2(p.z)] : 0)), w: ps.wires.map(w => [w.a, w.b]), ar: ps.area && areaValid(ps) ? ps.area.n : 0,
+    };
+  }
+  syncKunai(P) {
+    const ps = P.ps;
+    const sig = P.alive && ps.ku ? `${ps.ku[0].s},${ps.ku[1].s}|${ps.pins.map((p, i) => (p.on ? ps.ng[2 + i] : 0)).join(',')}|${ps.wires.map(w => `${w.a}${w.b}${w.ga}.${w.gb}`).join(',')}|${ps.area ? ps.area.g.join(',') : ''}` : KU_IDLE;
+    if (sig === (P.kuSig || KU_IDLE)) return;
+    P.kuSig = sig;
+    this.emit(this.kuEvent(P), Q => Q !== P);
   }
   wstat(P, wid) { return P.m.weapons[wid] || (P.m.weapons[wid] = { kills: 0, deaths: 0, dmg: 0, shots: 0, hits: 0, heads: 0 }); }
 
@@ -503,6 +627,10 @@ export class Room {
         if (b.t <= 0) P.bleed = null;
         if (!P.alive) continue;
       }
+      // 쿠나이: 와이어 감지 · 기동 중 부딪힘 공격
+      if (wireOn(ps)) this.wireTrips(P);
+      if (ps.area || P.areaKey) this.areaTrips(P);
+      if (ps.mo && ps.mo.k === 'kpull') this.kunaiDash(P);
       // 스텔스: 적과 3m 안이면 풀린다
       if (ps.st.stealth > 0) {
         const sk = P.lo.map(l => l.skill).find(s => s && s.effect === 'stealth');
@@ -516,6 +644,7 @@ export class Room {
         P.hp = 0; this.kill(A || null, P, { wi: A ? A.lo[A.ps.cur].wi : -1, how: 'fall' });
       }
     }
+    for (const P of this.players.values()) this.syncKunai(P);
     // 모드 규칙 / 승패
     const timeUp = this.time >= this.endsAt;
     const res = this.rules.tick(DT, timeUp, this.overtime && this.time - this.overtimeAt >= ((this.cfg.dom && this.cfg.dom.overtimeMax) || 180));
@@ -528,8 +657,8 @@ export class Room {
     const ps = P.ps, st = ps.st;
     return ((ps.adsT > 0.5 ? PF.ads : 0) | (ps.sprinting && hSpeed(ps) > 1 ? PF.sprint : 0) | (!ps.ground && !ps.vault ? PF.air : 0) | (ps.slide > 0 ? PF.slide : 0)
       | (ps.crouch && ps.slide <= 0 ? PF.crouch : 0) | (ps.stun > 0 ? PF.stun : 0) | (st.stealth > 0 ? PF.stealth : 0) | (st.protect > 0 ? PF.protect : 0)
-      | (st.invuln > 0 ? PF.invuln : 0) | (ps.w[ps.cur].rl > 0 ? PF.reload : 0) | (ps.mo && ps.mo.k === 'grapple' ? PF.grapple : 0)
-      | (ps.mo && ps.mo.k !== 'grapple' ? PF.dash : 0) | (st.intro > 0 ? PF.intro : 0) | (st.dr > 0 ? PF.dr : 0));
+      | (st.invuln > 0 ? PF.invuln : 0) | (ps.w[ps.cur].rl > 0 ? PF.reload : 0) | (ps.mo && ROPE_MOTIONS.has(ps.mo.k) ? PF.grapple : 0)
+      | (ps.mo && !ROPE_MOTIONS.has(ps.mo.k) ? PF.dash : 0) | (st.intro > 0 ? PF.intro : 0) | (st.dr > 0 ? PF.dr : 0));
   }
   sendSnapshots() {
     const rows = [];

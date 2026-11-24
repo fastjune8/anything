@@ -45,7 +45,7 @@ export const ASSIST_WINDOW = 10;                      // 이 시간 안에 피�
 export const ENV_CREDIT = 6;                          // 낙사 전 이 시간 안에 피해·밀어내기를 준 적이 처치자
 
 // ───── 입력 버튼 (cmd 의 btn 비트) ─────
-export const BTN = { jump: 1, crouch: 2, sprint: 4, fire: 8, ads: 16, reload: 32, sk1: 64, sk2: 128 };
+export const BTN = { jump: 1, crouch: 2, sprint: 4, fire: 8, ads: 16, reload: 32, sk1: 64, sk2: 128, mode: 256, node: 512 }; // node = 쿠나이 핀 노드 (F) // mode = 쿠나이 기동/설치 모드 전환 (X)
 
 // ───── 다른 사람에게 보이는 상태 비트 (스냅샷의 f) ─────
 export const PF = {

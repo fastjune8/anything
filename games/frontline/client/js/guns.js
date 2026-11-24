@@ -141,6 +141,13 @@ const BUILD = {
     return { muzzleZ: -0.23, sightY: 0.02, hip: [0.18, -0.2, -0.4], adsZ: -0.4, gripZ: 0.04, supportZ: 0.04, pistol: true, barrelY: 0, small: 0.8 };
   },
 };
+BUILD.kunai = g => { // 듀얼 쿠나이 (한 자루 — 1인칭은 viewmodel.js 가 왼손에 하나 더). 끝이 앞 −z
+  const blade = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), M.steel); blade.scale.set(0.026, 0.007, 0.1); blade.position.set(0, 0, -0.1); g.add(blade);
+  const edge = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), M.glass); edge.scale.set(0.018, 0.0085, 0.085); edge.position.set(0, 0, -0.11); g.add(edge);
+  cy(g, 0.011, 0.11, 0, 0, 0.035, M.polymer);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.0045, 6, 14), M.steel); ring.position.set(0, 0, 0.11); ring.rotation.y = Math.PI / 2; g.add(ring);
+  return { muzzleZ: -0.2, sightY: 0.02, hip: [0.2, -0.19, -0.42], adsZ: -0.4, gripZ: 0.035, supportZ: 0.035, pistol: true, barrelY: 0, small: 0.8 };
+};
 BUILD.mp5 = BUILD.mp5 || BUILD.ar; BUILD.akimbo = BUILD.m9; // 아킴보 = 권총 두 자루
 
 // ───────── 파츠 모델 ─────────

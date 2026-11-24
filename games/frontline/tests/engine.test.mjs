@@ -19,7 +19,7 @@ const shots = evs => evs.reduce((n, e) => n + e.shots.length, 0);
 const LO = (a, sa, b, sb) => makeLoadout([{ id: a, skill: sa }, { id: b, skill: sb }]);
 
 console.log('[콘텐츠]');
-check(WEAPONS.length === 8 && ['ar', 'smg', 'shotgun', 'sniper', 'melee', 'revolver', 'akimbo', 'lmg'].every(k => WEAPONS.some(w => w.kind === k)), '무기 8종 (기획 3.4)');
+check(WEAPONS.length === 9 && ['ar', 'smg', 'shotgun', 'sniper', 'melee', 'revolver', 'akimbo', 'lmg', 'kunai'].every(k => WEAPONS.some(w => w.kind === k)), '무기 8종 (기획 3.4) + 특수 무기 듀얼 쿠나이');
 const mv = Object.fromEntries(WEAPONS.map(w => [w.kind, w.move]));
 check(mv.smg === 1.1 && mv.shotgun === 1.05 && mv.ar === 1 && mv.sniper === 0.9 && mv.lmg === 0.85, '무기별 이동 속도 (기획 2.3)', JSON.stringify(mv));
 const sf = k => WEAPONS.find(w => w.kind === k);

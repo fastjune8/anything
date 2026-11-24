@@ -54,6 +54,7 @@ export function showGun() {
   const useArms = armsFor(wp.cur);
   guns.forEach((g, i) => { g.group.visible = i === wp.cur && !useArms; if (g.mag) g.mag.position.copy(g.magRest); });
   if (leftGun) leftGun.group.visible = wp.cur === AKIMBO;
+  if (leftKunai) leftKunai.group.visible = wp.cur === KUNAI_I;
   if (arms.anim) { arms.anim.root.visible = useArms; if (useArms) arms.anim.setGun(arms.guns[wp.cur]); }
 }
 // 아킴보: 왼손에 드는 두 번째 권총 (오른손 총을 좌우로 뒤집은 복제)
@@ -63,6 +64,15 @@ if (leftGun) {
   leftGun.flash = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), flashMat); leftGun.flash.position.set(0, 0.005, leftGun.muzzleZ - 0.05); leftGun.flash.visible = false; leftGun.group.add(leftGun.flash);
   leftGun.group.visible = false; vm.add(leftGun.group);
 }
+// 듀얼 쿠나이: 오른손 것(guns[KUNAI_I])을 좌우로 뒤집은 왼손 것 (팔까지 함께 뒤집는다). 받치는 왼팔은 숨긴다
+const KUNAI_I = WEAPONS.findIndex(w => w.kind === 'kunai');
+export const leftKunai = KUNAI_I >= 0 ? buildGun(WEAPONS[KUNAI_I].id, true, {}) : null;
+if (leftKunai) {
+  leftKunai.group.scale.x = -1; leftKunai.group.visible = false; vm.add(leftKunai.group);
+  for (const g of [leftKunai, guns[KUNAI_I]]) if (g.armL) g.armL.visible = false;
+}
+const kunaiBody = g => g.group.children[0]; // 쿠나이 모양 (팔 제외) — 던져서 손에 없으면 숨긴다
+
 // 출전 무기를 바꾸면 손에 든 무기도 바꾼다
 onLoadoutChange(() => showGun());
 showGun();
@@ -149,6 +159,15 @@ export function updateViewmodel(dt) {
     leftGun.group.rotation.set(lk * 0.05, -2 * ry, -2 * rz);
     leftGun.flash.visible = wp.flashT > 0 && wp.side === 1;
     if (wp.side === 1) guns[wp.cur].flash.visible = false;
+  }
+  // 듀얼 쿠나이: 던진 손이 앞으로 뻗었다 돌아오고, 손에 없는 쿠나이는 안 보인다
+  if (leftKunai && wp.cur === KUNAI_I) {
+    const ku = me.ps.ku, inHand = h => !ku || ku[h].s === 0 || ku[h].s === 4;
+    const tr = Math.sin(Math.PI * Math.min(1, wp.kThrow[1])), tl = Math.sin(Math.PI * Math.min(1, wp.kThrow[0]));
+    p.z -= tr * 0.12; p.y += tr * 0.03; rx -= tr * 0.25;
+    leftKunai.group.position.set(-2 * Math.max(p.x, 0.12), tr * -0.03 + tl * 0.03, tr * 0.12 - tl * 0.12);
+    leftKunai.group.rotation.set(-tl * 0.25 + tr * 0.25, -2 * ry, -2 * rz);
+    kunaiBody(g).visible = inHand(1); kunaiBody(leftKunai).visible = inHand(0);
   }
   // 볼트 / 펌프 동작
   if ((w.bolt || w.shell) && wp.cooldown > 0 && !wp.reload) {

@@ -2,12 +2,13 @@
 //   액티브(Q/E): 쿨타임·충전은 플레이어 상태(ps.sk)에 있어 브라우저가 예측하고 서버가 같은 계산으로 확정한다.
 //   이동 스킬(대쉬·구르기·백스텝·그래플·슬래시)은 shared/sim/movement.js 의 스킬 이동으로, 상태 효과(무적·투명·피해 감소·공격 속도)는 ps.st 로.
 //   서버만 할 수 있는 일(유탄 비행, 슬래시 경로 피해, 넉백 적용, 출혈)은 사건(ev)으로 넘긴다.
-import { startMotion, applyImpulse, wishDir, eyeY } from './movement.js';
+import { startMotion, applyImpulse, wishDir, eyeY, ropeTarget, findLedge } from './movement.js';
 import { rayWorld } from '../collision.js';
 import { MOVE } from './config.js';
+import { kunaiAbility } from './kunai.js';
 
 // 그 무기를 손에 들고 있어야 쓰는 스킬 (안 들고 있으면 꺼내고, 다 꺼내면 바로 발동)
-export const NEEDS_HELD = new Set(['slash', 'fanning', 'shove', 'grenade']);
+export const NEEDS_HELD = new Set(['slash', 'fanning', 'shove', 'grenade', 'kunai']);
 // 쿨타임 대신 충전 수를 쓰는 스킬
 export const CHARGED = new Set(['grenade']);
 
@@ -59,8 +60,9 @@ export function activate(ps, lo, slot, cs, ev, inp) {
       const d = aimDir(ps.yaw, ps.pitch), o = { x: ps.x, y: eyeY(ps), z: ps.z };
       const h = rayWorld(o, d, cs, sk.range);
       if (h.t >= sk.range || h.t < 2) { ok = false; ev.grappleMiss = true; break; }
-      const t = h.t - 0.4;
-      startMotion(ps, 'grapple', { tx: o.x + d.x * t, ty: o.y + d.y * t, tz: o.z + d.z * t, dur: sk.dur, accel: 70, max: sk.speed });
+      const hit = { x: o.x + d.x * h.t, y: o.y + d.y * h.t, z: o.z + d.z * h.t }, tg = ropeTarget(hit, h.n);
+      // 위도우메이커식: 탁 당겨져 곧게 날아가고, 박힌 곳 위에 올라설 자리가 있으면 끝에서 턱을 넘겨 준다
+      startMotion(ps, 'grapple', { tx: tg.x, ty: tg.y, tz: tg.z, dur: sk.dur, max: sk.speed, snap: 9, steer: 3, grav: 0.12, arrive: 1.2, kick: 0.6, ledge: findLedge(cs, hit, h.n) });
       ev.grapple = { x: o.x + d.x * h.t, y: o.y + d.y * h.t, z: o.z + d.z * h.t };
       break;
     }
@@ -77,6 +79,7 @@ export function activate(ps, lo, slot, cs, ev, inp) {
       ev.grenade = { slot, o: { x: ps.x, y: eyeY(ps), z: ps.z }, d };
       break;
     }
+    case 'kunai': ok = kunaiAbility(ps, ev, cs); break; // 쿠나이: 기동 모드 = 앵커로 끌려가기, 설치 모드 = 와이어 (shared/sim/kunai.js)
     default: ok = false;
   }
   if (!ok) return false;

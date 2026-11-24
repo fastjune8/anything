@@ -113,6 +113,16 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #slots div.on { color: #fff; border-right-color: var(--accent); background: linear-gradient(90deg, transparent, rgba(0,0,0,.45)); }
 #slots div.empty { opacity: .45; }
 #slots span { margin-right: 8px; opacity: .7; }
+/* 듀얼 쿠나이: 모드 · 왼손/오른손 상태 · 와이어 */
+#kunaiBox { position: absolute; right: 200px; bottom: 86px; display: none; min-width: 216px; padding: 6px 9px; background: rgba(8,10,12,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font-size: 11px; text-shadow: 0 1px 2px #000; }
+#kunaiBox.on { display: block; }
+#kunaiBox .km { font-weight: 700; color: var(--accent); margin-bottom: 3px; }
+#kunaiBox .kr { display: flex; justify-content: space-between; color: var(--dim); }
+#kunaiBox .kr b { color: #fff; font-weight: 600; margin-right: 8px; }
+#kunaiBox .kr.anc { color: #9fe9ff; }
+#kunaiBox .kp { color: var(--dim); }
+#kunaiBox .kw { margin-top: 3px; color: var(--dim); }
+#kunaiBox .kw.on { color: #9fe9ff; font-weight: 600; }
 /* 스킬 (Q = 주무기, E = 보조무기) */
 #skills { position: absolute; right: 200px; bottom: 22px; display: flex; gap: 8px; }
 #skills .sk { position: relative; width: 104px; padding: 6px 7px 7px; background: rgba(8,10,12,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; text-shadow: 0 1px 2px #000; overflow: hidden; }

@@ -6,6 +6,7 @@ import { fromServer } from './loadout.js';
 import { makeLoadout } from '/shared/sim/player.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
 import { impact, addTracer, spawnGrenade, explode, clearGrenades } from './fx.js';
+import { onKunaiEvent, clearKunai } from './kunai.js';
 import { playFx, vfx } from './vfx.js';
 import { killFeed, feedNote, hurt, showHit, damageNumber, rosterSet, applyKD, showEnd, showDeath, setHudOn, banner, setZones } from './hud.js';
 import { remotes, addRemote, removeRemote, clearRemotes, remoteFired, remoteReload, onSnapshot, remoteSpawn, remoteDied, remoteHook } from './remotes.js';
@@ -47,7 +48,7 @@ export function connect() {
 // 경기 화면 → 로비 화면 (상태 정리)
 function toLobbyScreen(message = '') {
   game.joined = false; game.matchState = 'idle'; game.room = null; game.end = null; game.death = null; game.dom = null;
-  clearRemotes(); roster.clear(); clearGrenades(); clearSounds(); vfx.clear();
+  clearRemotes(); roster.clear(); clearGrenades(); clearSounds(); vfx.clear(); clearKunai();
   me.alive = true; me.team = -1;
   inp.keys.clear(); inp.fireHeld = inp.adsHeld = false;
   if (inp.chatOpen) closeChat();
@@ -91,7 +92,7 @@ function onMessage(m) {
       setMode(m.mode); loadMap(m.map);
       me.lo = makeLoadout(m.lo); me.ps.id = m.id;
       resetSession(); clock.reset(); clock.onTick(m.n, true);
-      clearRemotes(); roster.clear(); clearChat(); clearGrenades(); clearSounds(); vfx.clear();
+      clearRemotes(); roster.clear(); clearChat(); clearGrenades(); clearSounds(); vfx.clear(); clearKunai();
       startMatchState(m);
       for (const p of m.players) { rosterSet(p); if (p.id !== m.id) addRemote(p); }
       rosterSet({ id: m.id, name: me.name, team: me.team });
@@ -188,6 +189,7 @@ function onEvent(e) {
     case 'contest': { const z = game.zones[e.z]; if (z && Math.hypot(me.pos.x - z.x, me.pos.z - z.z) < z.r + 12) banner(`${z.id} 거점 경합 중`, 'c'); break; }
     case 'ot': game.overtime = true; banner('연장전 — 점수가 갈리는 순간 끝납니다', 'c'); break;
     case 'snd': onSound(e); break;
+    case 'ku': case 'kuh': case 'wtrip': case 'aenter': case 'aexit': case 'wslow': case 'wfx': case 'wcut': case 'kdash': onKunaiEvent(e); break; // 듀얼 쿠나이 (kunai.js)
   }
 }
 

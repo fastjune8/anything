@@ -14,6 +14,8 @@ games/frontline/
 │   │   ├── movement.js     캐릭터 컨트롤러 (가속/마찰·점프·슬라이딩·넘어가기·넉백·넘어짐·스킬 이동·충돌)
 │   │   ├── player.js       stepPlayer: cmd → 이동 + 무기 + 스킬 → 사건. 출전 무기 정리(makeLoadout)
 │   │   ├── abilities.js    스킬 19종 동작
+│   │   ├── kunai.js        듀얼 쿠나이: 비행·앵커·회수·끌려가기 (docs/weapons/DUAL_KUNAI.md)
+│   │   ├── thread.js       쿠나이 와이어 네트워크 (W9): 노드·핀·선분·교차·영역, 설치 검사
 │   │   ├── hitscan.js      광선·관통·근접 판정
 │   │   ├── domination.js   점령 규칙·점수·연장전 판단 (순수 함수)
 │   │   ├── spawn.js        동적 스폰 점수

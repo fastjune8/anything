@@ -1,5 +1,6 @@
 // 미니맵 (기획 9.2~9.4): 늘 보이는 작은 원형 지도(내 시선이 위) + 단축키(M)로 여는 전술 지도(게임은 멈추지 않는다).
-//   보이는 것: 아군 위치 · 거점 위치/소유/경합 · 적이 낸 소리의 "대략적인 방향" (정확한 적 좌표는 절대 그리지 않는다)
+//   보이는 것: 아군 위치 · 거점 위치/소유/경합 · 적이 낸 소리의 "대략적인 방향" (정확한 적 좌표는 그리지 않는다)
+//   예외 하나: 내 쿠나이 와이어에 걸린 적은 그 순간의 위치를 몇 초 보여 준다 (서버가 설치자에게만 보낸다 — 무기 능력)
 //   소리 표시: 처음 들린 순간 짧은 펄스 → 같은 소리가 이어지면 그 아이콘을 갱신 → 멈추면 천천히 사라진다.
 import { getMap } from '/shared/maps/index.js';
 import { currentMap } from './scene.js';
@@ -67,6 +68,14 @@ function drawPoints(g, toXY, scale) {
     g.fillStyle = TEAM[teamCss(st[0])]; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(z.id, x, y + 0.5);
   });
 }
+function drawReveals(g, toXY) {
+  const list = game.kunaiReveals || [], now = performance.now() / 1000;
+  for (const r of list) {
+    const [x, y] = toXY(r.x, r.z), a = Math.min(1, (r.until - now) / 0.6);
+    g.save(); g.globalAlpha = Math.max(0, a); g.fillStyle = '#ffa060'; g.strokeStyle = '#000';
+    g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 5, y); g.lineTo(x, y + 6); g.lineTo(x - 5, y); g.closePath(); g.fill(); g.lineWidth = 1; g.stroke(); g.restore();
+  }
+}
 function drawAllies(g, toXY, arrow) {
   let n = 0;
   if (!MODE_CFG.teams) return 0;
@@ -95,6 +104,7 @@ export function updateMinimap() {
   const toXY = (x, z) => { const dx = x - mx, dz = z - mz; return [R + (dx * rx + dz * rz) * K, R - (dx * fx + dz * fz) * K]; };
   drawPoints(g, toXY, K);
   lastStats.allies = drawAllies(g, toXY, false);
+  drawReveals(g, toXY);
   lastStats.pings = drawPings(g, R, R, R - 4, (dx, dz) => [dx * rx + dz * rz, -(dx * fx + dz * fz)], now);
   g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(R, R - 7); g.lineTo(R + 5, R + 5); g.lineTo(R - 5, R + 5); g.closePath(); g.fill();
   g.restore();
@@ -111,6 +121,7 @@ export function updateMinimap() {
   t.save(); t.translate(W / 2, H / 2); t.scale(flip, flip); t.drawImage(bg.c, -W / 2, -H / 2, W, H); t.restore();
   drawPoints(t, T, k);
   drawAllies(t, T, true);
+  drawReveals(t, T);
   const [px, py] = T(mx, mz);
   drawPings(t, px, py, Math.min(W, H) * 0.12, (dx, dz) => [dx * flip, dz * flip], now);
   t.save(); t.translate(px, py); t.rotate(Math.atan2(fx * flip, -fz * flip)); t.fillStyle = '#fff'; t.beginPath(); t.moveTo(0, -9); t.lineTo(6, 6); t.lineTo(-6, 6); t.closePath(); t.fill(); t.restore();

@@ -96,12 +96,12 @@ export const MAP_SCHEMA = obj('맵', {
 
 // ───────── 무기 ─────────
 // 코드로 모양을 만들어 둔 기본 무기 (client/js/guns.js 의 BUILD). 이 밖의 새 무기는 등록된 모델이 있어야 한다
-export const BUILTIN_GUNS = ['ar', 'mp5', 'm870', 'awm', 'm249', 'revolver', 'akimbo', 'knife'];
-// 무기 종류 (기획 3.4 의 8종). 1인칭·3인칭 동작, 봇 사거리가 이 값으로 정해진다
-export const WEAPON_KINDS = ['ar', 'smg', 'shotgun', 'sniper', 'melee', 'revolver', 'akimbo', 'lmg'];
+export const BUILTIN_GUNS = ['ar', 'mp5', 'm870', 'awm', 'm249', 'revolver', 'akimbo', 'knife', 'kunai'];
+// 무기 종류 (기획 3.4 의 8종 + 특수 무기 쿠나이). 1인칭·3인칭 동작, 봇 사거리가 이 값으로 정해진다
+export const WEAPON_KINDS = ['ar', 'smg', 'shotgun', 'sniper', 'melee', 'revolver', 'akimbo', 'lmg', 'kunai'];
 export const WEAPON_SCHEMA = obj('무기', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'), cls: str('분류'),
-  kind: oneOf('종류', WEAPON_KINDS, { hint: 'ar 돌격소총, smg 기관단총, shotgun 산탄총, sniper 저격, melee 근접, revolver 리볼버, akimbo 아킴보 권총, lmg 경기관총' }),
+  kind: oneOf('종류', WEAPON_KINDS, { hint: 'ar 돌격소총, smg 기관단총, shotgun 산탄총, sniper 저격, melee 근접, revolver 리볼버, akimbo 아킴보 권총, lmg 경기관총, kunai 듀얼 쿠나이 (shared/sim/kunai.js — 탄창·연사 칸은 안 쓴다)' }),
   auto: bool('연사'), rpm: num('분당 발사 수', { min: 10, max: 2000 }),
   dmg: num('피해', { min: 1, max: 300 }), head: num('머리 배율', { min: 1, max: 5, step: 0.05 }), pellets: int('산탄 수', { min: 1, max: 20 }),
   mag: int('탄창 (근접 무기는 1)', { min: 1, max: 300 }), reload: num('재장전 (초, 한 발씩 장전이면 한 발당)', { min: 0.05, max: 10, step: 0.05 }),
@@ -204,6 +204,7 @@ export const SKILL_EFFECTS = {
   adrenaline: '공격 속도 증가', sprint: '달리며 사격', grenade: '유탄', dash: '대쉬', overheat: '과열', charge: '차지 샷', shove: '넉백 (다음 사격)',
   kickback: '반동 이동', backstep: '백스텝', grapple: '그래플', caliber: '관통', stealth: '투명화', slash: '돌진 베기', quickdraw: '퀵드로우',
   fanning: '패닝 (연속 발사)', roll: '구르기 (무적)', bang: '헤드샷 강화', fastreload: '빠른 재장전', bleed: '출혈',
+  kunai: '쿠나이 모드 능력 (기동: 앵커로 끌려감 · 설치: 와이어)',
 };
 const SKILL_NUMS = {
   cd: num('쿨타임 (초)', opt({ min: 0.5, max: 120, step: 0.5 })), dur: num('지속 시간 (초)', opt({ min: 0.05, max: 30, step: 0.05 })),
@@ -233,7 +234,7 @@ const SKILL_NEEDS = {
   overheat: ['heat', 'cool', 'coolDelay', 'bonus'], charge: ['wait', 'bonus'], shove: ['cd', 'dur', 'force', 'stun'], kickback: ['force'],
   backstep: ['cd', 'dur', 'force', 'mul'], grapple: ['cd', 'range', 'dur', 'speed'], caliber: ['pierce', 'mul'], stealth: ['cd', 'dur', 'range'],
   slash: ['cd', 'dist', 'dur', 'dmg', 'mul'], quickdraw: ['wait', 'bonus', 'close', 'mul'], fanning: ['cd', 'shots', 'gap', 'spread'],
-  roll: ['cd', 'dist', 'dur'], bang: ['mul'], fastreload: ['mul'], bleed: ['hits', 'wait', 'dur', 'dps'],
+  roll: ['cd', 'dist', 'dur'], bang: ['mul'], fastreload: ['mul'], bleed: ['hits', 'wait', 'dur', 'dps'], kunai: ['cd'],
 };
 export const PASSIVE_EFFECTS = ['sprint', 'overheat', 'charge', 'kickback', 'caliber', 'quickdraw', 'bang', 'fastreload', 'bleed'];
 export function checkSkills(list) {

@@ -20,7 +20,7 @@ export function newMove(x = 0, y = 0, z = 0, yaw = 0) {
     airT: 0, coyote: 0, jumpBuf: 0, landT: 0, landVy: 0, airY0: y, // 막 착지한 뒤 남은 시간 / 떨어진 높이만큼의 속도 (착지 슬라이딩) / 땅을 떠난 높이
     kb: 0, stun: 0,                    // 밀려나는 중 / 넘어짐 남은 시간
     vault: null, vaultLock: false,
-    mo: null,                          // 스킬 이동 { k: 'dash'|'roll'|'slash'|'grapple', t, dur, ... }
+    mo: null,                          // 스킬 이동 { k: 'dash'|'roll'|'slash'|'grapple'|'kpull'|'ledge', t, dur, ... }
     sprinting: false, sprintOut: 1,    // 지금 달리는 중인가 / 달리기를 멈춘 뒤 지난 시간 (달리기 → 사격 전환)
   };
 }
@@ -75,13 +75,32 @@ function moveAxis(s, cs, axis, delta, h) {
   return true;
 }
 
+// 줄에 끌려가는 이동 (그래플·쿠나이) 과 그 끝의 턱 넘기. 이 셋은 대쉬류가 아니다 (중력이 있고, 넉백에도 갈고리는 유지)
+export const ROPE_MOTIONS = new Set(['grapple', 'kpull', 'ledge']);
+// 줄 이동의 목표: 박힌 점(a, 면 번호 n)에서 몸 가운데가 가야 할 자리. 벽이면 벽에서 몸 반지름만큼 떨어져 점보다 조금 아래(손이 점에 닿게), 바닥이면 그 위
+export function ropeTarget(a, n) {
+  const N = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]][n] || [0, 1, 0];
+  const out = 0.5, down = N[1] > 0.5 ? -1.0 : N[1] < -0.5 ? 0.4 : 0.55; // 바닥: 1m 위, 천장: 아래로, 벽: 손이 점에 닿는 높이
+  return { x: a.x + N[0] * out, y: a.y + N[1] * out - down, z: a.z + N[2] * out };
+}
+// 박힌 점이 벽(옆면)이고 그 벽 위가 2.2m 안에 올라설 수 있는 윗면이면 그 자리 (오버워치 위도우메이커처럼 끝에서 턱을 넘겨 준다). 없으면 null
+export function findLedge(cs, a, n) {
+  const N = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]][n];
+  if (!N || N[1] !== 0) return null;
+  const ix = a.x - N[0] * 0.7, iz = a.z - N[2] * 0.7; // 벽 안쪽으로 조금 들어간 곳의 윗면
+  const top = supportBelow(cs, ix, a.y + 2.2, iz);
+  if (top < a.y - 0.4 || top > a.y + 2.2) return null;
+  if (overlapTop(cs, ix, top, iz, STAND_H) !== -Infinity) return null; // 올라서면 머리가 막힌다
+  return { x: ix, y: top, z: iz };
+}
+
 // ───── 외부 힘 ─────
 // 밀어내기·반동 이동 등: 속도에 더하고, kbTime 동안 미끄러진다. 스킬 이동·넘어가기는 끊긴다 (군중 제어)
 export function applyImpulse(s, ix, iy, iz, kbTime = 0.3) {
   s.vx += ix; s.vy += iy; s.vz += iz;
   if (s.vy > 0.5) { if (s.ground) s.airY0 = s.y; s.ground = false; s.coyote = 0; }
   s.kb = Math.max(s.kb, kbTime);
-  if (s.mo && s.mo.k !== 'grapple') s.mo = null;
+  if (s.mo && s.mo.k !== 'grapple') s.mo = null; // 갈고리는 맞아도 놓지 않는다 (쿠나이 기동은 넉백에 끊긴다)
   s.vault = null;
 }
 // 넘어뜨리기 (이동·사격·스킬 불가)
@@ -90,7 +109,15 @@ export function knockDown(s, t) { s.stun = Math.max(s.stun, t); s.slide = 0; s.m
 // 스킬 이동 시작. dir = {x, z} 수평 방향(길이 1)
 export function startMotion(s, k, p) {
   s.vault = null; s.slide = 0;
-  if (k === 'grapple') { s.mo = { k, t: 0, dur: p.dur, tx: p.tx, ty: p.ty, tz: p.tz, accel: p.accel, max: p.max }; s.ground = false; return; }
+  if (k === 'grapple' || k === 'kpull') { // 줄 이동: 목표(몸 가운데가 갈 자리)로 곧장. 쿠나이는 목표를 매 tick shared/sim/kunai.js 가 다시 잡는다
+    s.mo = { k, t: 0, dur: p.dur, tx: p.tx, ty: p.ty, tz: p.tz, max: p.max, snap: p.snap, steer: p.steer || 0, grav: p.grav ?? 0.12, arrive: p.arrive ?? 1.2, ledge: p.ledge || null, gone: false };
+    // 처음부터 빠르게 (위도우메이커처럼 "탁" 하고 당겨진다): 지금 속도 중 목표 쪽 성분은 살리고, 시작 속도를 바로 준다
+    const dx = p.tx - s.x, dy = p.ty - (s.y + 0.9), dz = p.tz - s.z, d = Math.hypot(dx, dy, dz) || 1;
+    const along = Math.max(0, (s.vx * dx + s.vy * dy + s.vz * dz) / d), v0 = Math.max(along, p.max * (p.kick ?? 0.55));
+    s.vx = dx / d * v0; s.vy = dy / d * v0 + (s.ground ? 1.2 : 0); s.vz = dz / d * v0;
+    s.ground = false; s.coyote = 0;
+    return;
+  }
   const sp = p.dist / p.dur;
   s.mo = { k, t: 0, dur: p.dur, vx: p.dir.x * sp, vz: p.dir.z * sp, end: p.end ?? MOVE.walk };
   if (k !== 'roll') { s.vy = 0; }
@@ -137,18 +164,40 @@ function updateVault(s, cs, dt, ev) {
 function updateMotion(s, i, dt, ev) {
   const m = s.mo;
   m.t += dt;
-  if (m.k === 'grapple') {
-    const dx = m.tx - s.x, dy = m.ty - (s.y + 1), dz = m.tz - s.z, d = Math.hypot(dx, dy, dz);
+  if (m.k === 'ledge') { // 턱 넘기: 올라가는 동안 벽 쪽으로 계속 밀어 윗면에 올려놓는다 (중력은 그대로)
+    s.vx = m.hx; s.vz = m.hz;
+    if (m.t >= m.dur || (s.y >= m.ly - 0.02 && m.t > 0.12 && s.vy <= 0)) { s.mo = null; ev.ledgeDone = true; return false; }
+    return true;
+  }
+  if (m.k === 'grapple' || m.k === 'kpull') {
+    const dx = m.tx - s.x, dy = m.ty - (s.y + 0.9), dz = m.tz - s.z, d = Math.hypot(dx, dy, dz);
     const sp = Math.hypot(s.vx, s.vy, s.vz);
-    const stuck = m.t > 0.2 && sp < 2;
-    if (d < 1.3 || m.t >= m.dur || stuck || (i.jumpPress && m.t > 0.08)) {
-      if (d < 1.3) s.vy = Math.max(s.vy, 4); // 도착: 살짝 띄워 턱 위로 올라서기 쉽게
-      s.mo = null; ev.grappleEnd = true; return false;
+    const jumpOff = i.jumpPress && m.t > 0.06;
+    // 턱 넘기: 박힌 곳 위에 올라설 자리가 있고 벽에 닿을 만큼 왔다
+    if (m.ledge && !jumpOff) {
+      const L = m.ledge, lx = L.x - s.x, lz = L.z - s.z, hd = Math.hypot(lx, lz);
+      if ((hd < 2.3 || d < m.arrive) && s.y < L.y + 0.3 && s.y > L.y - 3.4) { // 벽 가까이 왔거나 목표에 닿았다
+        const up = L.y + 0.55 - s.y, hs = 5; // 윗면보다 조금 높이 + 벽 쪽으로 밀어 올려놓는다
+        s.vy = Math.sqrt(2 * MOVE.gravity * Math.max(0.5, up));
+        s.mo = { k: 'ledge', t: 0, dur: 0.6, hx: lx / hd * hs, hz: lz / hd * hs, ly: L.y };
+        s.vx = s.mo.hx; s.vz = s.mo.hz;
+        ev.ledgePop = true; ev[m.k === 'kpull' ? 'kpullEnd' : 'grappleEnd'] = true;
+        return true;
+      }
     }
-    s.vx += dx / d * m.accel * dt; s.vy += dy / d * m.accel * dt; s.vz += dz / d * m.accel * dt;
-    const n = Math.hypot(s.vx, s.vy, s.vz);
-    if (n > m.max) { s.vx *= m.max / n; s.vy *= m.max / n; s.vz *= m.max / n; }
-    s.vy -= MOVE.gravity * 0.25 * dt;
+    const stuck = m.t > 0.2 && sp < 2.5;
+    if (m.gone || d < m.arrive || m.t >= m.dur || stuck || jumpOff) {
+      if (jumpOff) { s.vy = Math.max(s.vy, 0) * 0.5 + 6.8; } // 점프로 놓기: 위로 튀어 오르며 앞으로 가던 속도는 그대로
+      else if (d < m.arrive && dy > -0.5) s.vy = Math.max(s.vy, 3.5); // 도착: 살짝 띄워 턱 위로 올라서기 쉽게 (속도는 가진 채 빠져나간다)
+      s.mo = null; ev[m.k === 'kpull' ? 'kpullEnd' : 'grappleEnd'] = true; return false;
+    }
+    // 원하는 속도 = 목표 쪽으로 최고 속도 (+ 방향키로 옆으로 틀기). 지금 속도를 그쪽으로 빠르게 맞춘다 → 곧은 궤적, 빙빙 돌거나 튕기지 않는다
+    let wx = dx / d * m.max, wy = dy / d * m.max, wz = dz / d * m.max;
+    if (m.steer && (i.fwd || i.side)) { const wd = wishDir(s, i.fwd, i.side); wx += wd.x * m.steer; wz += wd.z * m.steer; }
+    if (d < 4 && m.arrive < 2) { const k = 0.55 + 0.45 * d / 4; wx *= k; wy *= k; wz *= k; } // 벽·바닥 목표는 다 와 가면 조금 늦춘다 (처박히지 않게). 공중 목표(쿠나이 2개 가운데)는 그대로 지나간다
+    const a = 1 - Math.exp(-m.snap * dt);
+    s.vx += (wx - s.vx) * a; s.vy += (wy - s.vy) * a; s.vz += (wz - s.vz) * a;
+    s.vy -= MOVE.gravity * m.grav * dt;
     s.ground = false;
     return true;
   }
@@ -183,7 +232,7 @@ export const NO_MOVE = Object.freeze({ fwd: 0, side: 0, jump: false, crouch: fal
 
 // 한 tick 진행. 반환: 사건 (소리·연출·소음 탐지용)
 export function stepMove(s, i, cs, dt) {
-  const ev = { moved: 0, landed: 0, jumped: false, slideStart: false, slideEnd: false, vaultStart: false, vaultDone: false, motionEnd: null, grappleEnd: false };
+  const ev = { moved: 0, landed: 0, jumped: false, slideStart: false, slideEnd: false, vaultStart: false, vaultDone: false, motionEnd: null, grappleEnd: false, kpullEnd: false, ledgePop: false, ledgeDone: false };
   const jumpPress = i.jump && !s.jHeld, crouchPress = i.crouch && !s.cHeld;
   s.jHeld = i.jump; s.cHeld = i.crouch;
   if (!i.jump) s.vaultLock = false;
@@ -193,7 +242,7 @@ export function stepMove(s, i, cs, dt) {
   if (s.vault) { updateVault(s, cs, dt, ev); s.sprinting = false; return ev; }
 
   const sp0 = hSpeed(s);
-  const inMotion = s.mo ? updateMotion(s, { jumpPress }, dt, ev) : false;
+  const inMotion = s.mo ? updateMotion(s, { jumpPress, fwd: i.fwd, side: i.side }, dt, ev) : false;
 
   // 앉기 · 슬라이딩
   if (!inMotion) {
@@ -274,7 +323,7 @@ export function stepMove(s, i, cs, dt) {
   for (let k = 0; k < n; k++) {
     moveAxis(s, cs, 'x', s.vx * sub, h);
     moveAxis(s, cs, 'z', s.vz * sub, h);
-    if (!(s.mo && s.mo.k !== 'roll' && s.mo.k !== 'grapple')) s.vy -= MOVE.gravity * sub; // 대쉬·돌진 중에는 떨어지지 않는다
+    if (!(s.mo && s.mo.k !== 'roll' && s.mo.k !== 'grapple' && s.mo.k !== 'kpull' && s.mo.k !== 'ledge')) s.vy -= MOVE.gravity * sub; // 대쉬·돌진 중에는 떨어지지 않는다 (줄 이동은 위에서 약한 중력, 턱 넘기는 보통 중력)
     const ny = s.y + s.vy * sub;
     if (s.vy <= 0) {
       const sup = supportBelow(cs, s.x, s.y, s.z);
@@ -285,7 +334,7 @@ export function stepMove(s, i, cs, dt) {
           s.landT = MOVE.landSlideWindow; s.landVy = Math.sqrt(2 * MOVE.gravity * Math.max(0, s.airY0 - sup));
         }
         s.y = sup; s.vy = 0; s.ground = true;
-      } else if (wasGround && s.ground && s.y - sup <= STEP && !(s.mo && s.mo.k === 'grapple')) { // 내리막·계단에 붙어 내려간다
+      } else if (wasGround && s.ground && s.y - sup <= STEP && !(s.mo && ROPE_MOTIONS.has(s.mo.k))) { // 내리막·계단에 붙어 내려간다
         s.stepOff += s.y - sup; s.y = sup; s.vy = 0;
       } else { s.y = ny; s.ground = false; }
     } else {

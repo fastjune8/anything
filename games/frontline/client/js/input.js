@@ -1,6 +1,7 @@
 // 키보드·마우스 입력. 상태(inp)에 기록만 하고, 실제 반응은 predict.js 가 1/60초마다 cmd 로 만든다.
 //   이동 WASD · 달리기 Shift · 슬라이딩/앉기 C(또는 Ctrl) · 점프 Space · 사격 좌클릭 · 정조준 우클릭/T · 재장전 R
 //   무기 1·2·휠 · 스킬 Q(주무기 자리)·E(보조무기 자리) · 전술 지도 M · 점수판 Tab · 채팅 Enter
+//   듀얼 쿠나이: 좌클릭 왼손 · 우클릭 오른손 (던지기/회수) · R 둘 다 회수 · X 기동/설치 모드 전환 · F 핀 노드
 import { canvas, camera } from './scene.js';
 import { closeChat, openChat } from './chat.js';
 import { sfx } from './sfx.js';
@@ -19,7 +20,7 @@ document.addEventListener('pointerlockchange', () => {
 $('pause').addEventListener('click', e => { if (!e.target.closest('.opt, button')) lock(); });
 canvas.addEventListener('click', () => { if (game.joined && !isActive()) lock(); });
 
-const GAME_KEYS = ['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyR', 'KeyQ', 'KeyE', 'KeyT', 'KeyM', 'ControlLeft'];
+const GAME_KEYS = ['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyR', 'KeyQ', 'KeyE', 'KeyT', 'KeyM', 'KeyX', 'KeyF', 'ControlLeft'];
 addEventListener('keydown', e => {
   if ((e.code === 'Enter' || e.code === 'NumpadEnter') && isActive()) { e.preventDefault(); openChat(); return; }
   if (!game.joined) return;
@@ -33,6 +34,8 @@ addEventListener('keydown', e => {
   else if (e.code === 'Digit2') inp.wantSlot = 1;
   else if (e.code === 'KeyQ') inp.skillPress[0] = true;
   else if (e.code === 'KeyE') inp.skillPress[1] = true;
+  else if (e.code === 'KeyX') inp.modePress = true; // 쿠나이 모드 전환
+  else if (e.code === 'KeyF') inp.nodePress = true; // 쿠나이 핀 노드
   else if (e.code === 'KeyM') inp.tactical = !inp.tactical; // 전술 지도 (게임은 멈추지 않는다)
 });
 addEventListener('keyup', e => { inp.keys.delete(e.code); if (e.code === 'Tab') inp.board = false; });

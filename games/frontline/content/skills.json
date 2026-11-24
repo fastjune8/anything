@@ -8,7 +8,7 @@
   {"id":"shove","name":"넉백","type":"active","effect":"shove","desc":"다음 사격이 맞은 적을 밀어내고 0.5초 동안 넘어뜨린다 (이동·사격 불가)","cd":9,"dur":6,"force":12,"stun":0.5},
   {"id":"kickback","name":"반동 이동","type":"passive","effect":"kickback","desc":"쏠 때마다 반동으로 조준 반대 방향으로 날아간다. 공중에서도 된다 (아래로 쏘면 뜬다)","force":8},
   {"id":"backstep","name":"백스텝","type":"active","effect":"backstep","desc":"뒤로 훌쩍 물러나고, 4초 안에 쏘는 다음 한 발의 피해가 2배","cd":8,"dur":4,"force":11,"mul":2},
-  {"id":"grapple","name":"그래플","type":"active","effect":"grapple","desc":"갈고리를 쏴서 맞은 곳으로 끌려간다 (최대 32m). 점프하면 놓는다","cd":8,"range":32,"dur":1.5,"speed":26},
+  {"id":"grapple","name":"그래플","type":"active","effect":"grapple","desc":"갈고리를 쏴서 맞은 곳으로 곧장 끌려간다 (최대 32m). 그 위에 올라설 곳이 있으면 턱을 넘겨 준다. 점프하면 놓는다","cd":8,"range":32,"dur":1.5,"speed":26},
   {"id":"caliber","name":"대구경","type":"passive","effect":"caliber","desc":"탄이 적을 관통해 뒤의 적까지 맞힌다 (관통할 때마다 피해 80%)","pierce":2,"mul":0.8},
   {"id":"stealth","name":"스텔스","type":"active","effect":"stealth","desc":"1.5초 동안 투명해진다. 피해를 주거나 받거나, 무기를 바꾸거나, 적과 3m 안으로 가까워지면 풀린다","cd":10,"dur":1.5,"range":3},
   {"id":"slash","name":"슬래시","type":"active","effect":"slash","desc":"앞으로 돌진하며 지나가는 길의 적을 벤다. 돌진하는 동안 받는 피해 30% 감소","cd":7,"dist":7,"dur":0.28,"dmg":60,"mul":0.7},
@@ -17,5 +17,6 @@
   {"id":"roll","name":"구르기","type":"active","effect":"roll","desc":"움직이는 방향으로 빠르게 구른다. 구르는 동안 무적","cd":6,"dist":5,"dur":0.4},
   {"id":"bang","name":"뱅!","type":"passive","effect":"bang","desc":"헤드샷 피해가 50% 더 늘어난다","mul":1.5},
   {"id":"fastreload","name":"빠른 재장전","type":"passive","effect":"fastreload","desc":"재장전 시간이 45% 짧아진다","mul":0.55},
-  {"id":"bleed","name":"출혈","type":"passive","effect":"bleed","desc":"2초 안에 같은 적을 4번 맞히면 2초 동안 초당 12 지속 피해","hits":4,"wait":2,"dur":2,"dps":12}
+  {"id":"bleed","name":"출혈","type":"passive","effect":"bleed","desc":"2초 안에 같은 적을 4번 맞히면 2초 동안 초당 12 지속 피해","hits":4,"wait":2,"dur":2,"dps":12},
+  {"id":"thread","name":"실 조종","type":"active","effect":"kunai","desc":"기동 모드: 박힌 쿠나이 쪽으로 끌려간다(2개면 가운데로, 방향키로 틀기·점프로 놓기). 설치 모드: 두 쿠나이 사이에 8초 와이어 — 지나가는 적을 알리고 잠깐 느리게 한다. X = 모드 전환","cd":0.5}
 ]

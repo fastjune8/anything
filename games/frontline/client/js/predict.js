@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { stepPlayer, copySim, respawnSim, encodeCmd, canSprintFire } from '/shared/sim/player.js';
 import { castRay, castMelee } from '/shared/sim/hitscan.js';
-import { eyeY } from '/shared/sim/movement.js';
+import { eyeY, ROPE_MOTIONS } from '/shared/sim/movement.js';
+import { KIND_NAME } from '/shared/sim/thread.js';
 import { BTN, DT, PF } from '/shared/sim/config.js';
 import { colliders, camera } from './scene.js';
 import { sfx } from './sfx.js';
@@ -39,8 +40,10 @@ function readCmd(can) {
     if (inp.reloadPress) btn |= BTN.reload;
     if (inp.skillPress[0]) btn |= BTN.sk1;
     if (inp.skillPress[1]) btn |= BTN.sk2;
+    if (inp.modePress) btn |= BTN.mode;
+    if (inp.nodePress) btn |= BTN.node;
   }
-  inp.reloadPress = false; inp.skillPress[0] = inp.skillPress[1] = false;
+  inp.reloadPress = false; inp.skillPress[0] = inp.skillPress[1] = false; inp.modePress = false; inp.nodePress = false;
   return {
     fwd: can ? (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0) : 0, side: can ? (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0) : 0,
     btn, yaw: me.yaw, pitch: me.pitch, slot: inp.wantSlot, vt: Math.round(clock.render() * 100) / 100,
@@ -71,7 +74,7 @@ function syncView() {
   me.pos.set(ps.x, ps.y, ps.z); me.vel.set(ps.vx, ps.vy, ps.vz);
   me.onGround = ps.ground; me.crouch = ps.crouch; me.h = ps.h; me.stepOff = ps.stepOff; me.vault = ps.vault;
   me.stunT = ps.stun; me.slide = ps.slide;
-  const dash = ps.mo && ps.mo.k !== 'grapple' ? ps.mo : null;
+  const dash = ps.mo && !ROPE_MOTIONS.has(ps.mo.k) ? ps.mo : null;
   me.dashT = dash ? Math.max(0, dash.dur - dash.t) : 0; me.dashV = dash ? { x: dash.vx, z: dash.vz } : me.dashV;
   wp.slot = slot; wp.cur = me.lo[slot].wi;
   wp.drawT = ps.drawT; wp.adsT = ps.adsT; wp.cooldown = ws.cd;
@@ -94,6 +97,8 @@ function onEvents(ev) {
     if (mv.slideStart) { sfx.whoosh(0); sfx.step(0.9); if (mv.slideBoost > 1) startDashFx(); }
     if (mv.jumped) sfx.step(0.5);
     if (mv.slideJump) sfx.whoosh(0);
+    if (mv.ledgePop) { sfx.whoosh(0); sfx.step(0.7); } // 줄 끝에서 턱 넘기
+    if (mv.ledgeDone) sfx.land(0.35);
     if (mv.moved > 0.0005) {
       wp.stepDist += mv.moved; wp.bobPhase += mv.moved * (wp.sprinting ? 2.6 : 3.1);
       if (wp.stepDist > (wp.sprinting ? 2.4 : me.crouch ? 1.6 : 2.0)) { wp.stepDist = 0; if (me.slide <= 0) sfx.step(me.crouch ? 0.3 : wp.sprinting ? 1 : 0.7); }
@@ -110,6 +115,16 @@ function onEvents(ev) {
   }
   if (ev.skills) for (const s of ev.skills) onSkill(s.effect);
   if (ev.grappleMiss) flashSkill('닿는 곳이 없다');
+  // 쿠나이 (shared/sim/kunai.js 의 사건)
+  if (ev.kuThrow) for (const h of ev.kuThrow) { sfx.whoosh(h ? 0.3 : -0.3); wp.kThrow[h] = 1; }
+  if (ev.kuAnchor) for (const h of ev.kuAnchor) { const k = me.ps.ku[h]; _b.set(k.x, k.y, k.z); impact(_b, k.n); sfx.mech('magin', 0.45); }
+  if (ev.kuRecall) sfx.whoosh(0);
+  if (ev.kuReady) sfx.mech('draw', 0.35);
+  if (ev.kmode !== undefined) { flashSkill(ev.kmode ? '설치 모드 — 와이어' : '기동 모드 — 끌려가기'); sfx.mech('dry', 0.6); }
+  if (ev.kunaiFail) flashSkill(ev.kunaiFail);
+  if (ev.wire) { sfx.mech('bolt', 1); flashSkill(KIND_NAME[ev.threadKind] ? `${KIND_NAME[ev.threadKind]} 설치` : '와이어 설치'); }
+  if (ev.pin) { sfx.mech('magin', 0.6); for (const s of ev.pin) { const p = me.ps.pins[s]; _b.set(p.x, p.y, p.z); impact(_b, p.n); } }
+  if (ev.areaEnd) flashSkill('영역이 풀렸다');
   for (const shot of ev.shots) onShot(shot);
 }
 function onSkill(effect) {
@@ -117,6 +132,7 @@ function onSkill(effect) {
   else if (effect === 'adrenaline') { sfx.whoosh(0); playFx('skill_adrenaline', me.pos); }
   else if (effect === 'grapple') sfx.mech('bolt', 1);
   else if (effect === 'grenade') { sfx.mech('pump', 1, 0, 0.3); wp.vmKick = 1.4; }
+  else if (effect === 'kunai') { if (me.ps.mo && me.ps.mo.k === 'kpull') { sfx.whoosh(0); startDashFx(); } }
   else sfx.whoosh(0);
 }
 function muzzleWorld(out) { const k = wp.adsT; return out.set(lerp(0.13, 0, k) * (wp.side ? -1 : 1), lerp(-0.11, -0.04, k), -0.75).applyQuaternion(camera.quaternion).add(camera.position); }

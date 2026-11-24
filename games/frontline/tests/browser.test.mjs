@@ -22,7 +22,7 @@ try {
   await page.waitForFunction(() => window.__g && window.__g.lobby.me, null, { timeout: 20000 });
   check(await page.isVisible('#menu') && (await page.textContent('#meTag')).startsWith('#'), '로비: 내 이름·친구 코드·레벨');
   check(await page.locator('#modes .mode').count() === 3, '모드 3개 (점령전·팀 데스매치·개인전)');
-  check(await page.locator('#slot0 .wgrid .w').count() === 8, '출전 무기 8종에서 고른다');
+  check(await page.locator('#slot0 .wgrid .w').count() === 9, '출전 무기 9종(8종 + 듀얼 쿠나이)에서 고른다');
   await page.click('#slot0 .wgrid .w:has-text("호넷 SMG")');
   check(await g(page, () => window.__g.loadout.wire[0].id) === 'mp5', '주무기를 SMG 로 바꾼다');
   await page.click('#slot0 .wgrid .w:has-text("랜서 AR")');

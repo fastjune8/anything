@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, vm, vmScene, vmCam, colliders, currentMap, world } from './scene.js';
 import { updateTracers, updateParts, updateGrenades } from './fx.js';
+import { updateKunai } from './kunai.js';
 import { vfx } from './vfx.js';
 import { updateDashFx, dashView } from './dashfx.js';
 import { updateRemotes, remotes, liveTargets, cullRemoteShadows } from './remotes.js';
@@ -26,6 +27,7 @@ import { dress, setOutfit, outfitState, equip as equipWear, undress } from './ou
 import { clock } from './clock.js';
 import { diag } from './netdiag.js';
 import { BODY } from '/shared/sim/config.js';
+import { ROPE_MOTIONS } from '/shared/sim/movement.js';
 import './lobby.js';
 
 // ───── 3인칭 시점 (기획 11.2: 1인칭·3인칭 지원) ─────
@@ -58,7 +60,8 @@ function updateLocalTP(dt) {
 // 속도감: 달리기보다 빠를수록 시야가 넓어진다 (슬라이딩·슬라이딩 점프·반동 이동)
 let fovBoost = 0;
 function speedFov(dt) {
-  const v = Math.hypot(me.vel.x, me.vel.z), want = Math.min(9, Math.max(0, v - 7) * 1.4) + (me.slide > 0 ? 2 : 0);
+  const rope = me.ps.mo && ROPE_MOTIONS.has(me.ps.mo.k); // 줄 이동(그래플·쿠나이)은 위아래로 빠른 것도 속도감에 넣는다
+  const v = rope ? Math.hypot(me.vel.x, me.vel.y, me.vel.z) : Math.hypot(me.vel.x, me.vel.z), want = Math.min(rope ? 11 : 9, Math.max(0, v - 7) * (rope ? 0.6 : 1.4)) + (me.slide > 0 ? 2 : 0);
   fovBoost += (want - fovBoost) * (1 - Math.exp(-dt * 6));
   return fovBoost;
 }
@@ -105,7 +108,7 @@ function frame(now) {
   }
   inp.mdx = inp.mdy = 0;
   updateRemotes(dt);
-  updateTracers(dt); updateParts(dt); updateGrenades(dt);
+  updateTracers(dt); updateParts(dt); updateGrenades(dt); updateKunai(dt);
   vfx.update(dt, camera);
   updateDashFx(dt);
   updateObjective(dt);
@@ -178,5 +181,7 @@ window.__g = {
     if ('slot' in o) inp.wantSlot = o.slot;
     if (o.skill !== undefined) inp.skillPress[o.skill] = true;
     if (o.reload) inp.reloadPress = true;
+    if (o.mode) inp.modePress = true; // 쿠나이 모드 전환 (X)
+    if (o.node) inp.nodePress = true; // 쿠나이 핀 노드 (F)
   },
 };
