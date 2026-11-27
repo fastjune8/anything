@@ -1,6 +1,6 @@
 # 창고용 절차적 텍스처 생성 (numpy + PIL). 반복해도 이음매가 안 보이도록 FFT 노이즈로 만든다.
 #   Blender 없이도 돌아간다:  python3 textures.py <출력 폴더>
-# 종류와 해상도(메모리 관리): concrete 512(색·법선)+256(ORM) / paint 256+512(법선, 골판)+128 / metal 128+256+128 / wood 256
+# 종류와 해상도(메모리 관리): concrete 512(색·법선)+256(ORM) / paint 256+512(법선, 골판)+128 / metal 128+256+128 / wood 256+256(법선)+128
 #   ORM = R 가림(1) · G 거칠기 · B 금속성 (glTF 규칙)
 import os, sys
 import numpy as np
@@ -85,6 +85,10 @@ def wood(out):
     seam = np.zeros((N, N)); seam[::64, :] = 1; seam[1::64, :] = 0.5
     col = hexc('#a87a40')[None, None, :] * v[..., None] * (1 - 0.35 * seam[..., None])
     save(col, os.path.join(out, 'wood_bc.jpg'), 'JPEG')
+    # 법선: 결 + 널 이음새 홈 (감시탑처럼 나무 면이 넓은 에셋용. 256px)
+    save(normal_from_height(0.35 * grain + 0.1 * knots - 2.5 * seam, 0.9), os.path.join(out, 'wood_n.png'))
+    rough = np.clip(0.78 + 0.06 * grain + 0.12 * seam, 0.55, 0.95)
+    save(resize(np.stack([np.ones_like(rough), rough, np.zeros_like(rough)], -1), 128), os.path.join(out, 'wood_orm.png'))
 
 if __name__ == '__main__':
     out = sys.argv[1] if len(sys.argv) > 1 else '.'

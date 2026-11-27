@@ -130,7 +130,7 @@ const LOBBY = {
     const custom = {
       code: makeCode(), name: (sanitizeChat(m.name) || '').slice(0, 20) || `${s.acc.name}의 방`,
       pass: typeof m.pass === 'string' ? m.pass.slice(0, 16) : '', bots: m.bots !== false, minutes, max,
-      map: typeof m.map === 'string' && MAP_IDS.includes(m.map) ? m.map : cfg.map, host: s.id,
+      map: typeof m.map === 'string' && MAP_IDS.includes(m.map) ? m.map : null, host: s.id, // null = 맵 풀에서 경기마다 무작위
       matchMs: process.env.MATCH_SECONDS ? matchMsFor(cfg) : minutes * 60000,
     };
     const room = newRoom(mode, custom);

@@ -34,6 +34,9 @@ function imageSize(b) { // PNG / JPEG 헤더에서 가로·세로
 }
 
 const mapDefs = Object.fromEntries(MAPS.map(id => [id, JSON.parse(read(`content/maps/${id}.json`))]));
+const bounds = {}; // id → 모델 바닥 면적·높이 (아래 맵 검사에서 선택 상자와 비교)
+const matSig = {}; // 재질 이름 → [처음 본 모델, 내용 서명]  (게임은 같은 이름 재질을 하나로 공유한다: client/js/mapassets.js)
+const crypto = await import('node:crypto');
 
 for (const id of index) {
   const file = `content/assets/${id}.glb`;
@@ -59,6 +62,15 @@ for (const id of index) {
   check(ib <= BUDGET.imageBytes, `${id}: 텍스처 ${(ib / 1024).toFixed(0)} KB ≤ ${(BUDGET.imageBytes / 1024).toFixed(0)} KB`);
   check(big <= BUDGET.imageSize, `${id}: 가장 큰 텍스처 ${big}px ≤ ${BUDGET.imageSize}px`);
   check(json.materials.filter(m => m.alphaMode === 'BLEND').length <= 1, `${id}: 투명 재질은 유리 하나만`);
+  bounds[id] = { lo, hi };
+  // 같은 이름 재질 = 같은 내용 (계수 + 텍스처 바이트)
+  const texHash = ti => { if (ti === undefined) return '-'; const im = json.images[json.textures[ti.index].source]; const bv = json.bufferViews[im.bufferView]; return crypto.createHash('md5').update(bin.subarray(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength)).digest('hex').slice(0, 8); };
+  for (const m of json.materials) {
+    const pbr = m.pbrMetallicRoughness || {};
+    const sig = JSON.stringify([pbr.baseColorFactor, pbr.metallicFactor, pbr.roughnessFactor, m.alphaMode, m.doubleSided, m.normalTexture?.scale, texHash(pbr.baseColorTexture), texHash(m.normalTexture), texHash(pbr.metallicRoughnessTexture)]);
+    if (!matSig[m.name]) matSig[m.name] = [id, sig];
+    else check(matSig[m.name][1] === sig, `${id}: 재질 ${m.name} 이 ${matSig[m.name][0]} 의 같은 이름 재질과 내용이 같다 (게임에서 하나로 공유된다)`);
+  }
   if (id === 'warehouse') { // 20 × 16 건물. 원점 = 건물 가운데 바닥. 바깥으로는 문 위 캐노피(머리 위 2.5 m 이상)가 1.05 m 까지 나간다
     check(lo[0] >= -11.1 && hi[0] <= 11.1 && lo[2] >= -9.1 && hi[2] <= 9.1, `warehouse: 바닥 면적이 충돌 건물(20×16) + 캐노피 1.05 m 안`, `x ${lo[0].toFixed(2)}~${hi[0].toFixed(2)} z ${lo[2].toFixed(2)}~${hi[2].toFixed(2)}`);
     check(lo[1] >= -0.01 && lo[1] <= 0.02, 'warehouse: 원점이 바닥 (가장 낮은 곳 y≈0)', lo[1].toFixed(3));
@@ -75,7 +87,17 @@ for (const [id, def] of Object.entries(mapDefs)) {
   const assets = def.objects.filter(o => o.type === 'asset');
   check(assets.every(a => index.includes(a.id)), `${id}: asset 물체의 id 가 모두 등록돼 있다`, assets.map(a => a.id).join(','));
   const rep = def.objects.filter(o => o.replacedBy);
-  check(rep.every(o => assets.some(a => a.id === o.replacedBy && Math.hypot(a.x - o.x, a.z - o.z) < 0.01)), `${id}: replacedBy 마다 같은 자리에 그 모델이 놓인다`);
+  // replacedBy 가 붙은 물체의 박스는 모두 그 모델의 선택 상자(asset 의 w·d) 안에 있다 → 모델이 그 자리를 덮는다
+  const inside = (o, a) => expandObject(o).boxes.every(b => Math.abs(b.x - a.x) + b.w / 2 <= (a.w || 2) / 2 + 1e-6 && Math.abs(b.z - a.z) + b.d / 2 <= (a.d || 2) / 2 + 1e-6);
+  check(rep.every(o => assets.some(a => a.id === o.replacedBy && inside(o, a))), `${id}: replacedBy 물체마다 그 모델의 선택 상자 안에 있다 (${rep.length}개)`,
+    rep.filter(o => !assets.some(a => a.id === o.replacedBy && inside(o, a))).map(o => o.type + '@' + o.x + ',' + o.z).join(' '));
+  // 모델의 실제 크기도 선택 상자 안 (원점 = 바닥, 회전 없음 기준)
+  for (const a of assets.filter(a => bounds[a.id] && !a.rot)) {
+    const { lo, hi } = bounds[a.id], s = a.s || 1;
+    check(-lo[0] * s <= (a.w || 2) / 2 + 0.05 && hi[0] * s <= (a.w || 2) / 2 + 0.05 && -lo[2] * s <= (a.d || 2) / 2 + 0.05 && hi[2] * s <= (a.d || 2) / 2 + 0.05 && hi[1] * s <= (a.h || 2) + 0.05,
+      `${id}: ${a.id} 모델이 선택 상자 (${a.w}×${a.d}×${a.h}) 안`, `x ${lo[0].toFixed(2)}~${hi[0].toFixed(2)} z ${lo[2].toFixed(2)}~${hi[2].toFixed(2)} y ~${hi[1].toFixed(2)}`);
+    check(lo[1] >= -0.01 && lo[1] <= 0.12, `${id}: ${a.id} 원점이 바닥 (가장 낮은 곳 y≈0)`, lo[1].toFixed(3));
+  }
   const pick = def.objects.filter(o => o.type === 'asset').flatMap(o => expandObject(o).boxes);
   check(pick.every(b => b.invisible && b.noCollide), `${id}: asset 은 안 보이는 선택 박스만 낸다 (충돌 없음)`);
   check(L.assets.length === assets.length, `${id}: 배치 목록 ${L.assets.length}개 = asset 물체 ${assets.length}개`);

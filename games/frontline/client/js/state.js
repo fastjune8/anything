@@ -19,6 +19,11 @@ export const me = {
 me.ps = newPlayerSim(0, me.lo);
 export const eff = WEAPONS; // 무기 성능 (부착물 시스템은 기획 3.7 에 따라 초기 범위에서 뺐다 → 데이터 그대로)
 
+// wp 의 각 필드는 쓰는 모듈이 정해져 있다 (다른 모듈은 읽기만). 표는 tests/arch.test.mjs 의 WP_OWNERS — 새 필드를 만들면 거기에 쓰는 모듈을 적어야 테스트가 통과한다.
+//   predict.js  시뮬레이션 상태를 옮겨 온 값 (cur·slot·adsT·drawT·cooldown·reload·sprintT·sprinting)
+//   recoil.js   시선·화면 반동 (kickP·kickY·burstN·burstSeed·sinceShot)
+//   playerfx.js 사건 연출 (shots·side·vmKick·flashT·swing·stepDist·bobPhase·kThrow 시작)   kunai.js  kThrow 가 줄어드는 것
+//   viewmodel.js 마우스 흔들림 (swayX·swayY)      loadout.js  출전 무기를 바꾸면 cur·slot 을 처음으로
 export const wp = {
   cur: me.lo[0].wi, slot: 0,                 // 들고 있는 무기 (WEAPONS 번호) / 자리 (0·1)
   drawT: 0, cooldown: 0, adsT: 0, sprintT: 0, reload: null,

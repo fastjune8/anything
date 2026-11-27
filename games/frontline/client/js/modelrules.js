@@ -152,7 +152,11 @@ export function checkModel(root, { bytes = 0, clips = [] } = {}, scan = scanMode
 }
 
 // 모션 클립 (docs/GUN_MODELING.md 11): 아는 이름인가, 대상이 있는가, 처음과 끝이 쉴 때 자세인가
-export const CLIP_NAMES = { reload: '재장전 (탄창식 총) — 게임이 재장전 시간에 맞춰 재생' };
+export const CLIP_NAMES = {
+  reload: '재장전 (탄창식 총) — 게임이 재장전 시간에 맞춰 재생',
+  reload_shell: '한 발씩 장전 (산탄총) — 한 발마다 재생',
+  reload_end: '한 발씩 장전이 끝난 뒤 마무리 동작',
+};
 function checkClips(root, scan, clips, ok, warn, fail) {
   if (!clips.length) { ok('모션 클립 없음 — 선택 사항 (재장전은 코드 동작, docs/GUN_MODELING.md 11)'); return; }
   const names = new Set(); root.traverse(o => names.add(o.name));
@@ -168,7 +172,7 @@ function checkClips(root, scan, clips, ok, warn, fail) {
     }).map(t => t.name.split('.')[0]);
     if (open.length) warn(`클립 ${c.name}: 첫 프레임과 마지막 프레임이 다릅니다 (${[...new Set(open)].join(', ')}) — 끝나면 쉴 때 자세로 튑니다`);
     const hand = c.tracks.find(t => /^anim_hand_l/i.test(t.name) && t.name.endsWith('.position'));
-    if (hand && scan.sockets.hand_l) {
+    if (hand && scan.sockets.hand_l && c.name !== 'reload_shell') { // reload_shell 의 왼손은 장전구에서 시작한다 (게임이 부드럽게 잇는다)
       const hl = scan.sockets.hand_l.position, v = hand.values;
       if (Math.hypot(v[0] - hl.x, v[1] - hl.y, v[2] - hl.z) > 0.01) warn(`클립 ${c.name}: anim_hand_l 의 첫 키가 socket_hand_l 과 다른 자리입니다 — 재장전을 시작할 때 왼손이 튑니다`);
     }

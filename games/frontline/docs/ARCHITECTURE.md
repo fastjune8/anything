@@ -41,14 +41,16 @@ games/frontline/
 ├── client/js/
 │   ├── main.js             프레임 루프 · 3인칭(V) · 자동 입장(?auto) · 디버그 훅(window.__g)
 │   ├── state.js            공유 상태 (me.ps = 내 시뮬레이션 상태, wp = 1인칭 연출, game, lobby)
-│   ├── predict.js          예측·보정·사격 연출      clock.js  서버 시각 추정
+│   ├── predict.js          예측·보정(넷코드)만. 사건은 onSimEvents 로 내보낸다    clock.js  서버 시각 추정
+│   ├── playerfx.js         내 사건 연출: 소리·궤적·탄흔·총구 불빛·총 모델 반동   recoil.js  시선·화면 반동 수치
 │   ├── net.js              통신 (로비 + 경기)        input.js  키·마우스 → inp
 │   ├── lobby.js            로비 화면                 loadout.js  출전 무기·스킬·외형 저장
-│   ├── hud.js              전투 HUD·킬피드·사망 화면·점수판·결과 화면
+│   ├── hud.js              전투 HUD 진입점 → hud/ (common·vitals·skills·combat·match·feed·screens: 이름·체력/탄약·스킬 바·맞힘/조준선/도트·점수/거점·킬피드·사망/점수판/결과)
 │   ├── minimap.js          미니맵·전술 지도·소리 방향  objective.js  거점 3D 표시·화면 표식
 │   ├── remotes.js          다른 사람: 스냅샷 보간·모델·상태 연출·이름표
-│   ├── viewmodel.js        1인칭 무기 (칼 휘두르기·아킴보 두 손)
-│   └── (그리기·자산: scene · world · guns · gunmat · gunanim · charassets · charanim · charik · outfit · fx · vfx · effects · dashfx · audio · sfx · textures — 스튜디오와 공용)
+│   ├── viewmodel.js        1인칭 무기 코어 → viewmodel/ (offhand: 왼손 무기·아킴보/쿠나이, poses: 근접 휘두르기·볼트/펌프)   weaponview.js  무기가 보이는 방식(조준 방식·연출 배율, 순수)
+│   ├── selfview.js         내 화면: 카메라(1·3인칭·로비)·3인칭 몸   quality.js  자동 화질   mousefilter.js · lookdiag.js  마우스 이상치 필터·시점 진단(?debuglook)
+│   └── (그리기·자산: scene · world(→ world/ proctex·matstyle·materials·indoor·geometry) · guns · gunmat · gunanim · charassets · charanim · charik · outfit · fx · vfx · effects · dashfx · audio · sfx · textures — 스튜디오와 공용)
 ├── content/                게임 데이터 (스튜디오가 쓴다): maps/ · weapons · skills · modes · models · looks · cosmetics …
 ├── studio/                 FRONTIER Studio (개발 서버의 /studio/)
 ├── tools/maps/gen_v2_maps.mjs   레벨 디자인 v2.0 세 맵 생성기 (골목극장 = 대표 맵 · 아스테르 항만 · 교차 동력실)
@@ -64,8 +66,35 @@ games/frontline/
 - **스튜디오와 게임은 같은 코드로 그린다** — 모델 에디터·맵 에디터·분위기 에디터는 게임의 모듈(`world.js`, `guns.js`, `gunmat.js`, `gunanim.js`)을 그대로 불러 쓴다. 에디터에서 본 그대로 게임에 나온다.
 - **규칙은 순수 함수로** — `shared/sim/domination.js`, `spawn.js`, `chat.js` 처럼 입력→결과만 있는 함수로 두면 단위 테스트가 쉽다.
 - **브라우저 모듈 간 값 공유는 `state.js` 의 객체로** — `wp.cur = 3` 처럼 속성으로 바꾼다. (모듈 간에 변수를 직접 바꿀 수 없기 때문)
-- **브라우저 모듈 의존은 한 방향** — `util → state → loadout → scene/sfx/textures → charassets → charanim → fx/clock/remotes/viewmodel/hud/minimap → predict → lobby → net/input → main`. 순환 참조를 만들지 않는다.
+- **브라우저 모듈 의존은 한 방향** — `util → state → loadout → scene/sfx/textures → charassets → charanim → fx/clock/remotes/viewmodel/hud/minimap → predict → playerfx → selfview → lobby → net/input → main`. 순환 참조를 만들지 않는다 (arch.test.mjs 가 확인).
 - **캐릭터 애니메이션은 상태로 다시 만든다** — 뼈 자세를 네트워크로 보내지 않는다. 각 브라우저가 스냅샷의 속도·상태 비트(정조준·달리기·공중·슬라이딩·넘어짐 …)·사격(`shot`)·재장전(`rl`) 사건으로 같은 컨트롤러를 돌린다 (docs/CHARACTER_ANIMATION.md).
+
+## 클라이언트 구조 — 책임 나누기와 기능 넣는 곳
+
+프레임 한 번은 `main.js` 가 아래 순서로 **부르기만** 한다 (계산은 각 모듈이):
+`입력(input) → 예측(predict) → 연출·반동(playerfx) → 카메라(selfview) → 1인칭 무기(viewmodel) → 내 몸(selfview) → 전송(net) → 다른 사람·효과·HUD → 그리기`
+
+| 층 | 모듈 | 하는 일 | 알면 안 되는 것 |
+|---|---|---|---|
+| 규칙 | `shared/sim/*` | 결정적 시뮬레이션 (서버와 같음) | 브라우저·three·DOM |
+| 넷코드 | `predict.js` `clock.js` `net.js` | cmd 전송·보정·시계 | 소리·그리기 (연출) |
+| 상태 | `state.js` | `me` `wp` `inp` `game` 공유 값 | 다른 모듈 (값만 가진다) |
+| 연출 규칙 | `weaponview.js` `recoil.js` | 조준 방식별 배율·반동 수치 | 아무것도 불러오지 않음 / 상태·유틸만 |
+| 연출 | `playerfx.js` `viewmodel.js` `selfview.js` `hud.js` `remotes.js` `fx/vfx/sfx` | 화면·소리 | 서버 규칙 (읽기만) |
+| 조립 | `main.js` | 프레임 순서 | 계산 (부르기만) |
+
+**기능을 넣을 때 어디에?**
+- **새 조준 방식**(홀로그램·레이저 등): `weaponview.js` 의 `SIGHTS` 에 항목 하나 + `sightFor` 에서 쓸 무기를 정한다. 다른 파일은 `viewOf(무기 번호).ads` 만 읽으므로 안 바뀐다. (무기 종류 `w.kind === '…'` 로 연출을 나누지 않는다)
+- **새 반동·화염·소리 연출**: `playerfx.js`. 시선이 움직이는 수치는 `recoil.js`. `predict.js` 에 소리·효과를 넣지 않는다.
+- **카메라·시야각·3인칭**: `selfview.js`.
+- **새 시뮬레이션 규칙**(이동·무기·스킬): `shared/sim/` — 서버와 브라우저가 같이 쓰므로 둘 다 테스트(`engine.test.mjs`)에 걸린다.
+- **새 HUD 표시**: `hud.js` (조준점·십자선 포함). 값은 `state.js` 에서 읽는다.
+- **새 무기 동작**(근접·볼트·펌프 같은 포즈 보정): `viewmodel/poses.js` 의 `APPLY` 에 함수 추가. **왼손에 두 번째 무기**를 드는 무기: `viewmodel/offhand.js` 의 `KINDS` 에 항목 추가.
+- **새 재질·무늬·실내 조명**: `world/` 의 맞는 파일 (`proctex` 바탕 무늬 · `matstyle` 분위기별 그리기 · `materials` 물성 프리셋 · `indoor` 실내 조명). `world.js` 는 조립만 한다.
+- **새 HUD 요소**: `hud/` 의 맞는 파일에 넣고, 다른 모듈이 불러야 하면 `hud.js` 에서 다시 내보낸다.
+- **한 값을 여러 모듈이 같이 쓰는 새 상태**: `wp.x` 처럼 전역 필드를 늘리기 전에 "누가 쓰고 누가 읽는가" 를 정한다. 쓰는 모듈은 하나로 하고, 다른 모듈은 읽기만 한다. 계산해서 나오는 값은 필드에 저장하지 말고 `weaponview.js` 같은 순수 함수로 조회한다 (예전 `wp.dot` 이 그 사례 — 5개 모듈이 얽혔다).
+
+**구조 가드** `tests/arch.test.mjs` (`npm test` 에 포함, 1초): `wp` 필드는 쓰는 모듈이 정해져 있다(`WP_OWNERS` — 새 필드를 만들면 쓰는 모듈을 거기 적어야 통과). 위 표의 "알면 안 되는 것" 중 기계로 확인할 수 있는 것을 지킨다 — `shared/` 는 브라우저·서버를 모른다, `predict.js` 는 연출을 모른다, 순수 모듈은 아무것도 불러오지 않는다, 순환 참조 없음. 규칙은 `RULES` 표에 한 줄 추가. 규칙을 일부러 바꿀 때는 이 문서의 표도 같이 고친다.
 
 ## 모드/맵 전환은 새로고침 없이
 - 클라이언트의 현재 모드는 `MODE_CFG`(`util.js`)에 있고 `setMode(id)` 로 바뀐다. 다른 모듈은 이 객체를 그대로 읽는다.

@@ -1,0 +1,46 @@
+{
+ "item": "tactical_jacket_001",
+ "slot": "upper",
+ "fp": true,
+ "version": 4,
+ "bytes": 80308,
+ "checks": {
+  "tactical_jacket_004_fp": {
+   "tris": 1648,
+   "warns": [
+    "tactical_jacket_004_fp: location (1.2, 0.0, 1.5) is not 0 (skinned garments sit at the armature origin)",
+    "tactical_jacket_004_fp: material slot 6 (core) is not used by any face",
+    "tactical_jacket_004_fp: no UV map (the game ignores UVs today; a UV map is required once textures are used \u2014 see spec)",
+    "tactical_jacket_004_fp: 8 vertices on top of each other"
+   ],
+   "clearance": {
+    "verts": 1044,
+    "min_mm": 0.3,
+    "p05_mm": 8.6,
+    "median_mm": 20.2,
+    "inside": 0,
+    "tight": 18
+   },
+   "weights": {
+    "influences": {
+     "1": 236,
+     "2": 776,
+     "3": 32
+    },
+    "bones_used": [
+     "LeftForeArm",
+     "LeftHand",
+     "LeftShoulder",
+     "LeftThumb1",
+     "LeftUpperArm",
+     "RightForeArm",
+     "RightHand",
+     "RightShoulder",
+     "RightThumb1",
+     "RightUpperArm"
+    ]
+   }
+  }
+ },
+ "glb": []
+}

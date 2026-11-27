@@ -9,15 +9,18 @@
 //   각 층의 가중치 합은 항상 1 (모자라면 three.js 가 레스트 자세를 섞어 버린다).
 import * as THREE from 'three';
 import { tpAsset, fpAsset, makeInstance, REF_SPEED } from './charassets.js';
-import { reachGrip, socketWorld, elbowPole, setWorldQuaternion } from './charik.js';
+import { reachGrip, socketWorld, elbowPole, setWorldQuaternion, curlHand, handCurl, driveTwist, palmToBore } from './charik.js';
+import { poseClip, hasClip } from './gunanim.js';
 
-export const RIFLE_WEAPONS = new Set(['ar']); // 라이플 클립을 쓰는 무기 (지금은 기본 돌격소총만)
+export const RIFLE_WEAPONS = new Set(['ar']); // 1인칭에서 팔 모델 클립이 총을 드는 무기 (지금은 기본 돌격소총만)
+export const holdsGun = w => w.kind !== 'melee' && w.kind !== 'kunai'; // 3인칭: 총을 두 손으로 드는 무기 (라이플 상체 자세)
+const gunAnimated = g => !!(g && g.clips && (hasClip(g, 'reload') || hasClip(g, 'reload_shell'))); // 총 모델에 장전 동작이 있다
 
 const DIRS = ['f', 'r', 'b', 'l'];          // 진행 방향 순서 (각도 0, 90, 180, 270°: 앞, 오른쪽, 뒤, 왼쪽)
 const ease = (w, target, dt, tau) => w + (target - w) * (1 - Math.exp(-dt / tau));
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3();
-const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
+const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _one = new THREE.Vector3(1, 1, 1);
 
 // 재장전 중 탄창이 왼손을 따라가는 구간 (클립 길이 대비, animation_spec.md RELOAD_EVENTS)
 const MAG = { grab: 0.24, drop: 0.36, fresh: 0.46, seat: 0.68 };
@@ -30,6 +33,8 @@ export function newCharState() {
     ads: 0, sprint: false,
     rifle: false,         // 라이플 클립을 쓰는 무기를 들었나
     reloadF: null,        // 재장전 진행도 0~1 (아니면 null)
+    shell: false,         // 지금 장전이 한 발씩(산탄총)인가
+    endF: null,           // 한 발씩 장전이 끝난 뒤 마무리 동작 진행도 0~1
     shots: 0,             // 쏜 횟수 (늘어나면 반동을 재생)
     pitch: 0,             // 시선 위아래 (rad, 위 +)
     alive: true,
@@ -135,9 +140,10 @@ export class TPAnimator {
   // 들고 있는 총 (guns.js buildGun 결과, 없으면 null)
   setGun(gun) {
     if (this.gun === gun) return;
-    if (this.gun) { this.gun.group.visible = false; if (this.gun.mag) this.gun.mag.visible = true; }
+    if (this.gun) { this.gun.group.visible = false; if (this.gun.mag) this.gun.mag.visible = true; if (this.gun.twin) this.gun.twin.group.visible = false; }
     this.gun = gun; this.gunMag = {};
     if (gun) { if (gun.group.parent !== this.bones.get('RightHandGrip')) attachGun(gun, this.bones.get('RightHandGrip')); gun.group.visible = true; }
+    if (gun && gun.twin) { this.root.add(gun.twin.group); gun.twin.group.visible = true; } // 아킴보의 왼손 총
   }
 
   update(dt, s) {
@@ -175,9 +181,10 @@ export class TPAnimator {
     let tot = 0; for (const w of W.values()) tot += w;
     // ── 상체: 라이플 ──
     this.rifleW = ease(this.rifleW, s.rifle && R.idle ? 1 : 0, dt, 0.12);
-    const reloading = s.reloadF !== null && !!R.reload;
+    const own = gunAnimated(this.gun); // 총에 장전 동작이 있으면 캐릭터의 공용 장전 클립 대신 총을 따라간다
+    const reloading = !own && s.reloadF !== null && !!R.reload;
     this.reloadW = ease(this.reloadW, reloading ? 1 : 0, dt, 0.08);
-    this.aimW = ease(this.aimW, s.sprint || reloading ? 0 : smooth(0, 1, s.ads), dt, 0.06);
+    this.aimW = ease(this.aimW, s.sprint || reloading || (own && s.reloadF !== null) ? 0 : smooth(0, 1, s.ads), dt, 0.06);
     this.walkW = ease(this.walkW, !s.air ? this.move : 0, dt, 0.12);
     const rw = this.rifleW;
     // 모든 이동 클립: 하체 + (1 - 라이플) 만큼 상체
@@ -210,7 +217,7 @@ export class TPAnimator {
     restoreMix(this.mix);
     this.mixer.update(0);
     saveMix(this.mix, this.bones);
-    this.post(s);
+    this.post(s); driveTwist(this.bones);
   }
 
   // 클립을 섞은 뒤: 조준 방향 보정 → 위아래 시선 → 왼손 IK → 탄창
@@ -236,6 +243,7 @@ export class TPAnimator {
     this.root.updateMatrixWorld(true);
     // 왼손: 총의 socket_hand_l 을 쥔다 (재장전 중에는 클립의 손을 그대로)
     const g = this.gun;
+    if (gunAnimated(g)) { this.followGun(s, g, rw); this.fingers(rw); return; }
     if (g && g.group.visible) {
       const lw = socketWorld(g.group, 'socket_hand_l');
       if (lw) {
@@ -244,6 +252,70 @@ export class TPAnimator {
       }
     }
     if (g) magFollow(this.gunMag, g, B.get('LeftHandGrip'), s.rifle && s.reloadF !== null ? s.reloadF : null);
+  }
+
+  // 총의 장전 동작을 몸이 따라간다: 총 부품을 맞추고 → 오른손이 총 전체 동작대로 옮겨 가고 → 왼손이 anim_hand_l(또는 왼손 총)을 쥔다
+  followGun(s, g, rw) {
+    const B = this.bones, grip = B.get('RightHandGrip');
+    const name = s.endF !== null ? 'reload_end' : s.shell ? 'reload_shell' : 'reload';
+    const f = s.endF !== null ? s.endF : s.reloadF;
+    const active = f !== null && hasClip(g, name);
+    if (!poseClip(g, active ? name : 'reload', active ? f : 0, false) && !poseClip(g, 'reload_shell', 0, false)) return;
+    if (g.mag) g.mag.visible = true;
+    const fwd = _v2.set(0, 0, -1).applyQuaternion(this.root.getWorldQuaternion(_q)).clone();
+    this.root.updateMatrixWorld(true);
+    const rest = grip.matrixWorld.clone(); // 장전 동작을 빼고 총을 드는 자리
+    const off = new THREE.Vector3(0, g.gripY ?? -0.085, g.gripZ ?? 0);
+    // 총의 월드 변환 = 드는 자리 × (총 원점으로) × 동작
+    const gunAt = m => {
+      const M = rest.clone().multiply(_m.makeTranslation(-off.x, -off.y, -off.z));
+      if (m) M.multiply(_m2.compose(m.p, m.q, _one));
+      return M;
+    };
+    const gripTo = M => M.clone().multiply(_m.makeTranslation(off.x, off.y, off.z));
+    if (active && g.motion && !g.twin) reachGrip('Right', B, 'RightHandGrip', gripTo(gunAt(g.motion)), elbowPole(B, 'Right', fwd));
+    if (g.twin) { this.akimbo(g, active ? f : null, gunAt, gripTo, fwd, rw); return; }
+    this.root.updateMatrixWorld(true);
+    if (g.handTarget) _v.copy(g.handTarget.position).multiplyScalar(g.modelScale || 1);
+    else _v.set(0, g.supportY ?? -0.05, g.supportZ ?? -0.2);
+    g.group.updateWorldMatrix(true, false);
+    const hq = palmToBore(g.group.getWorldQuaternion(_q2), _v, g.barrelY ?? 0, _q3); // 손바닥이 총열 쪽을 본다
+    const at = _v.applyMatrix4(g.group.matrixWorld);
+    _m.compose(at, hq, _one);
+    blendedLeftIK(B, 'LeftHandGrip', _m, elbowPole(B, 'Left', fwd), rw);
+  }
+
+  // 손가락: 오른손은 총을 쥐고 검지는 방아쇠에, 왼손은 움직이면 펴고 멈추면 쥔다 (아킴보는 왼손도 총을 쥔다)
+  fingers(rw) {
+    if (rw < 0.01) return;
+    const B = this.bones, now = performance.now() / 1000, dt = Math.min(0.1, now - (this.fT || now)); this.fT = now;
+    curlHand(B, 'Right', 0.92 * rw, 0.45 * rw);
+    if (this.gun && this.gun.twin) { curlHand(B, 'Left', 0.92 * rw, 0.45 * rw); return; }
+    const h = B.get('LeftHand'); if (!h) return;
+    curlHand(B, 'Left', rw * handCurl(this.leftCurl || (this.leftCurl = {}), h.getWorldPosition(_v), dt, 0.75, 0.2));
+  }
+
+  // 아킴보: 왼손 총은 오른손 총을 몸의 좌우 가운데면에 비춘 자리. 같은 클립을 조금 늦게 재생한다
+  akimbo(g, f, gunAt, gripTo, fwd, rw) {
+    const B = this.bones, t = g.twin;
+    poseClip(t, 'reload', f === null ? 0 : Math.max(0, (f - 0.035) / 0.965), false);
+    const inRoot = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+    const spread = new THREE.Matrix4().makeTranslation(0.1, 0, 0); // 두 총 사이를 벌린다
+    const right = spread.clone().multiply(inRoot).multiply(gunAt(f === null ? null : g.motion));
+    const left = spread.clone().multiply(inRoot).multiply(gunAt(f === null ? null : t.motion));
+    const S = new THREE.Matrix4().makeScale(-1, 1, 1);
+    const lw = S.clone().multiply(left);                       // 좌우로 비춘 총 (뒤집힌 모양)
+    const under = f === null || !t.motion ? 0 : 0.25 * Math.max(0, -t.motion.p.x);
+    lw.elements[13] -= under;
+    lw.decompose(t.group.position, t.group.quaternion, t.group.scale);
+    const rWorld = this.root.matrixWorld.clone().multiply(right);
+    reachGrip('Right', B, 'RightHandGrip', gripTo(rWorld), elbowPole(B, 'Right', fwd));
+    t.group.updateWorldMatrix(false, false);
+    const hand = left.clone().premultiply(S).multiply(S);        // 회전만 남긴 비춘 자리 (뒤집힘 없음)
+    hand.elements[13] -= under;
+    const target = gripTo(this.root.matrixWorld.clone().multiply(hand));
+    blendedLeftIK(B, 'LeftHandGrip', target, elbowPole(B, 'Left', fwd), rw);
+    this.root.updateMatrixWorld(true);
   }
 }
 
@@ -283,7 +355,7 @@ export class FPAnimator {
     setW(A.walk, base * this.walkW); setW(A.idle, base * (1 - this.walkW) + (A.walk ? 0 : base * this.walkW));
     if (s.shots !== this.shots) { if (s.shots > this.shots) this.fireT = 0; this.shots = s.shots; }
     this.fireT += dt;
-    setW(A.fire, A.fire && this.fireT < A.fire.getClip().duration ? 1 : 0);
+    setW(A.fire, A.fire && this.fireT < A.fire.getClip().duration ? 1 - (s.fireDamp || 0) * this.aimW : 0); // 조준 방식(weaponview.js)에 따라 정조준 중 발사 반동 연출을 줄인다
     setPhase(A.idle, this.t / A.idle.getClip().duration);
     if (A.aim) setPhase(A.aim, this.t / A.aim.getClip().duration);
     if (A.walk) setPhase(A.walk, this.phase);
@@ -293,7 +365,13 @@ export class FPAnimator {
     restoreMix(this.mix);
     this.mixer.update(0);
     saveMix(this.mix, this.bones);
-    this.post(s, space, k);
+    this.post(s, space, k); driveTwist(this.bones);
+  }
+
+  // 왼손 그립을 world 변환(Matrix4)으로 옮긴다 (w 0~1). 총의 장전 클립이 왼손 목표를 줄 때 (viewmodel.js)
+  reachLeft(world, w, space) {
+    blendedLeftIK(this.bones, 'ViewmodelLeftGrip', world, elbowPole(this.bones, 'Left', _v2.set(0, 0, -1).applyQuaternion(space.getWorldQuaternion(_q))), w);
+    this.root.updateMatrixWorld(true);
   }
 
   post(s, space, k) {

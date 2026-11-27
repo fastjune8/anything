@@ -18,7 +18,7 @@ anything/
    │  └─ qa/garment_bind_check.py                          ← 게임 내 바인딩 검사
    ├─ content/
    │  ├─ cosmetics.json                                    ← 아이템 한 줄씩
-   │  ├─ characters/hyperfps_thirdperson_v_7.glb, hyperfps_viewmodel_v_6.glb
+   │  ├─ characters/hyperfps_thirdperson_v_8.glb, hyperfps_viewmodel_v_7.glb
    │  └─ wearables/<id>_v_<n>.glb, <id>_v_<n>_fp.glb       ← 지우지 않고 쌓는다 (지금은 비어 있음: 외부 에셋 대기)
    ├─ archive/retired_garments/<날짜>_procedural/        ← 폐기한 옛 옷 GLB·카탈로그 스냅샷 (게임이 읽지 않음)
    ├─ tests/cosmetics.test.mjs, garment.test.mjs, fixtures/garment/   ← 시험용 옷 사본 (프로덕션 아님)

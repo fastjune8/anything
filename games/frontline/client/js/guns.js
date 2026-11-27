@@ -191,6 +191,7 @@ export function setGunParts(gun, parts = {}) {
   gun.muzzleZ = b.muzzleZ; gun.sightY = b.sightY; gun.adsZ = b.adsZ;
   const hasOptic = !gun.scope && !!gun.optic && !!OPTIC[parts.optic];
   for (const m of gun.irons || []) m.visible = !hasOptic; // 조준경을 달면 가늠자/가늠쇠는 접는다
+  gun.opticGroup = null;
 
   if (gun.scope) { // 저격소총: 달려 있는 스코프의 모양만 바뀐다
     gun.scope.scale.z = parts.optic === 'scope_lo' ? 0.72 : 1;
@@ -198,6 +199,7 @@ export function setGunParts(gun, parts = {}) {
   } else if (hasOptic) {
     const o = new THREE.Group(), s = gun.small || 1;
     o.position.set(0, gun.optic[0], gun.optic[1]); o.scale.setScalar(s); a.add(o);
+    o.userData.base = o.position.clone(); gun.opticGroup = o; // 덮개가 열리는 총은 덮개를 따라간다 (gunanim.js)
     const pm = partModel(parts.optic); // Blender 파츠 모델이 있으면 그것, 없으면 코드로 만든 모양
     if (pm) o.add(pm.root);
     gun.sightY = gun.optic[0] + (pm ? (pm.sockets.sight ? pm.sockets.sight.position.y : 0.03) : OPTIC[parts.optic](o)) * s;
@@ -232,9 +234,9 @@ export function setGunParts(gun, parts = {}) {
 // 1인칭 팔 (손 위치: spec.gripZ/gripY = 오른손, supportZ/supportY = 왼손)
 // 반환: 왼팔 그룹 (모션 클립의 anim_hand_l 을 따라 움직일 수 있게 따로 묶는다)
 export function attachArms(group, spec) {
-  const gy = spec.gripY ?? -0.085, armL = new THREE.Group();
-  group.add(armL);
-  limb(group, [0.005, gy, spec.gripZ], [0.13, gy - 0.215, spec.gripZ + 0.42], 0.075);
+  const gy = spec.gripY ?? -0.085, armL = new THREE.Group(), armR = new THREE.Group();
+  group.add(armL, armR); group.userData.armR = armR; // 오른팔도 따로: 아킴보가 팔을 교차할 때 돌린다
+  limb(armR, [0.005, gy, spec.gripZ], [0.13, gy - 0.215, spec.gripZ + 0.42], 0.075);
   if (spec.pistol) limb(armL, [-0.02, (spec.supportY ?? -0.09), spec.supportZ], [-0.22, -0.3, 0.42], 0.075);
   else limb(armL, [-0.005, spec.supportY ?? -0.05, spec.supportZ], [-0.24, -0.3, spec.supportZ + 0.4], 0.075);
   return armL;

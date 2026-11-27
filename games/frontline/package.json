@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "PORT=${PORT:-3002} APP_ENV=dev node --watch-path=server --watch-path=shared --watch-path=content/weapons.json --watch-path=content/skills.json --watch-path=content/modes.json --watch-path=content/models.json server/index.js",
-    "test": "node tests/engine.test.mjs && node tests/net.test.mjs && node tests/cosmetics.test.mjs && node tests/garment.test.mjs && node tests/envcolor.test.mjs && node tests/archtrim.test.mjs && node tests/assets.test.mjs && node tests/kunai.test.mjs && node tests/server.test.mjs",
+    "test": "node tests/engine.test.mjs && node tests/net.test.mjs && node tests/cosmetics.test.mjs && node tests/garment.test.mjs && node tests/envcolor.test.mjs && node tests/archtrim.test.mjs && node tests/assets.test.mjs && node tests/kunai.test.mjs && node tests/mousefilter.test.mjs && node tests/arch.test.mjs && node tests/rotation.test.mjs && node tests/server.test.mjs",
     "test:browser": "node tests/browser.test.mjs && node tests/netbrowser.test.mjs && node tests/studio.test.mjs",
     "test:all": "eslint . && npm test && node tests/browser.test.mjs && node tests/netbrowser.test.mjs && node tests/studio.test.mjs",
     "deploy:prod": "./deploy/deploy.sh prod",

@@ -11,8 +11,18 @@ import bpy, sys, json, math, random
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from collections import defaultdict
-glb, colf = sys.argv[1], sys.argv[2]
-cols = json.load(open(colf))
+#   공통 옵션 (창고 말고 다른 에셋):
+#     --open <json>     문·창 구멍 목록 [[축, 고정좌표, 바깥부호, a, b, y0, y1, 'door'|'win'], …] (없으면 창고는 아래 기본값, 다른 에셋은 없음)
+#     --zones a:b,c:d   ③ 을 재는 몸 높이 구간 (기본 0:2.4). 2층 바닥이 있으면 그 위 1.8 m 도 넣는다
+#     --surface         ① 을 '충돌 겉면 위의 점 → 시각 표면까지 0.1 m 이내' 로 잰다 (계단·경사로처럼 속이 꽉 찬 덩어리용)
+#   colliders.json 의 7번째 칸이 있으면 경사로 {axis, up} (윗면이 기울어진 쐐기)
+argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]
+glb, colf = argv[0], argv[1]
+flag = lambda k: argv[argv.index(k) + 1] if k in argv else None
+cols = [c[:6] for c in json.load(open(colf))]
+ramps = [c[6] if len(c) > 6 else None for c in json.load(open(colf))]
+ZONES = [tuple(float(v) for v in z.split(':')) for z in (flag('--zones') or '0:2.4').split(',')]
+SURFACE = '--surface' in argv
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=glb)
 dg = bpy.context.evaluated_depsgraph_get()
@@ -38,7 +48,42 @@ rnd = random.Random(1)
 bad = []
 # ① 덮임
 worst = 0.0; n = 0
-for cx, y0, cz, w, h, d in cols:
+def inside_other(p, skip):
+    for k, (cx, y0, cz, w, h, d) in enumerate(cols):
+        if k == skip: continue
+        top = y0 + h
+        if ramps[k]:
+            r = ramps[k]; t = ((p[0] - cx) / w if r['axis'] == 'x' else (p[2] - cz) / d) * r['up'] + 0.5
+            top = y0 + h * min(1, max(0, t))
+        if abs(p[0] - cx) <= w / 2 + 1e-3 and abs(p[2] - cz) <= d / 2 + 1e-3 and y0 - 1e-3 <= p[1] <= top + 1e-3: return True   # 맞닿은 면(계단 단 사이)도 안쪽
+    return False
+def surface_points(k, m):
+    cx, y0, cz, w, h, d = cols[k]; r = ramps[k]; out = []
+    for _ in range(m):
+        f = rnd.randrange(6); u, v = rnd.random(), rnd.random()
+        x, z = cx + (u - .5) * w, cz + (v - .5) * d
+        if r:  # 경사로: 윗면 = 기울어진 면, 옆면은 경사 아래만
+            t = lambda x_, z_: min(1, max(0, ((x_ - cx) / w if r['axis'] == 'x' else (z_ - cz) / d) * r['up'] + 0.5))
+            if f < 2: out.append((x, y0 + h * t(x, z), z)); continue
+            if f == 2: x_ = cx + (rnd.choice((-.5, .5))) * w; out.append((x_, y0 + rnd.random() * h * t(x_, z), z)); continue
+            if f == 3: z_ = cz + (rnd.choice((-.5, .5))) * d; out.append((x, y0 + rnd.random() * h * t(x, z_), z_)); continue
+            continue
+        if f == 0: out.append((x, y0 + h, z))
+        elif f == 1:
+            if y0 > 0.01: out.append((x, y0, z))
+        elif f in (2, 3): out.append((cx + (f - 2.5) * w, y0 + v * h, cz + (u - .5) * d))
+        else: out.append((cx + (u - .5) * w, y0 + v * h, cz + (f - 4.5) * d))
+    return out
+if SURFACE:
+    for k in range(len(cols)):
+        for p_ in surface_points(k, 300):
+            if inside_other(p_, k): continue
+            loc, nor, idx, dist = bv_solid.find_nearest(G(*p_))
+            n += 1
+            if dist is None or dist > 0.1:
+                bad.append(f'덮임: 충돌 겉면 점 ({p_[0]:.2f},{p_[1]:.2f},{p_[2]:.2f}) 에서 시각 표면까지 {dist:.2f} m (허용 0.10)'); break
+            worst = max(worst, dist / 0.1)
+for cx, y0, cz, w, h, d in ([] if SURFACE else cols):
     half = min(w, h, d) / 2 + 0.08     # 기단은 벽보다 0.1 두껍다
     for _ in range(400):
         p = G(cx + (rnd.random() - .5) * w, y0 + rnd.random() * h, cz + (rnd.random() - .5) * d)
@@ -49,11 +94,12 @@ for cx, y0, cz, w, h, d in cols:
         worst = max(worst, dist / half)
 print(f'① 덮임: {n}점, 최악 비율 {worst:.2f} (1 이하면 통과)')
 # ② 비어 있음: 문·창 구멍 (모델 좌표) — 충돌이 없어야 하는 자리를 직접 만든다
-OPEN = [  # (축, 고정좌표, 바깥 부호, 구간 a, b, y0, y1, 종류)
+OPEN_WH = [  # 창고 기본값 (축, 고정좌표, 바깥 부호, 구간 a, b, y0, y1, 종류)
     ('x', 7.85, 1, -7.3, -4.7, 0, 2.2, 'door'), ('x', 7.85, 1, 4.7, 7.3, 0, 2.2, 'door'), ('x', 7.85, 1, -.9, .9, 1.0, 2.0, 'win'),
     ('x', -7.85, -1, -7.3, -4.7, 0, 2.2, 'door'), ('x', -7.85, -1, 4.7, 7.3, 0, 2.2, 'door'), ('x', -7.85, -1, -.9, .9, 1.0, 2.0, 'win'),
     ('z', -9.85, -1, -4.4, -2.6, 1.0, 2.0, 'win'), ('z', -9.85, -1, -1.2, 1.2, 0, 2.2, 'door'), ('z', -9.85, -1, 2.6, 4.4, 1.0, 2.0, 'win'),
     ('z', 9.85, 1, -1.2, 1.2, 0, 2.2, 'door')]
+OPEN = json.load(open(flag('--open'))) if flag('--open') else (OPEN_WH if 'warehouse' in glb else [])
 for ax, fixed, sg, a, b, y0, y1, kind in OPEN:
     hit = tot = 0
     for _ in range(600):
@@ -76,7 +122,7 @@ seen = set(); far = 0; farmax = 0; offenders = []
 for pts, isglass, _o, _c in all_tris:
     for p in pts:
         gx, gy, gz = p.x, p.z, -p.y
-        if gy >= 2.4 or gy < 0.02: continue
+        if gy < 0.02 or not any(a <= gy < b for a, b in ZONES): continue
         key = (round(gx, 2), round(gy, 2), round(gz, 2))
         if key in seen: continue
         seen.add(key)
@@ -86,7 +132,7 @@ for pts, isglass, _o, _c in all_tris:
         dd = outside_dist(gx, gy, gz)
         if dd > 0.16:
             far += 1; farmax = max(farmax, dd); offenders.append((round(gx, 2), round(gy, 2), round(gz, 2), round(dd, 2)))
-print(f'③ 몸 높이(y<2.4) 정점 {len(seen)}개 중 충돌 겉면에서 0.16 m 넘게 나온 것 {far}개 (최대 {farmax:.2f} m)')
+print(f'③ 몸 높이({ZONES}) 정점 {len(seen)}개 중 충돌 겉면에서 0.16 m 넘게 나온 것 {far}개 (최대 {farmax:.2f} m)')
 if far: bad.append(f'튀어나옴: {far}개 정점이 0.16 m 넘게 나와 있다 (최대 {farmax:.2f} m) 예: {sorted(offenders, key=lambda o: -o[3])[:5]}')
 # ④ 겹침
 try:

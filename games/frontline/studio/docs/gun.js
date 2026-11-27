@@ -234,7 +234,7 @@ export async function createGunDoc(ctx, id, opts = {}) {
     poseClip(gun, mo.clip, mo.f);
     arms.visible = r('showArms').checked && (view !== 'orbit' || mo.playing || mo.f > 0); // 살펴보기에서도 모션 중에는 팔(왼손이 따라가는 모습)
     const tilt = view !== 'orbit' && r('clipTilt').checked && mo.clip === 'reload' && (mo.playing || mo.f > 0);
-    const m = tilt ? reloadMotion(mo.f) : null;
+    const m = tilt && !gun.whole ? reloadMotion(mo.f) : null; // 클립에 총 전체 동작(anim_gun)이 있으면 코드 기울임은 더하지 않는다
     if (view !== 'orbit') { holder.position.copy(holderBase); holder.rotation.set(0, 0, 0); if (m) { holder.position.add(new THREE.Vector3(m.x, m.y, m.z)); holder.rotation.set(m.rx, m.ry, m.rz); } }
     r('scrub').value = mo.f; r('clipT').textContent = `${(mo.f * motionDuration()).toFixed(2)}초`;
   }

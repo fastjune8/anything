@@ -2,352 +2,37 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { assetModel } from './mapassets.js';
+import { rng, canvasTex } from './world/proctex.js';
+import { drawMat } from './world/matstyle.js';
+import { presetOf, derivedMaps } from './world/materials.js';
+import { INDOOR, INDOOR_BOXES, MAX_INDOOR, patchIndoor } from './world/indoor.js';
+import { boxGeo, rampGeo } from './world/geometry.js';
 
-// ───────── 절차적 텍스처 ─────────
-function rng(seed) {
-  let s = seed >>> 0;
-  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-}
+export { MAT_PRESETS } from './world/materials.js';
 
-function canvasTex(size, draw, maxAniso) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  draw(c.getContext('2d'), size);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = maxAniso;
-  return t;
-}
-
-function speckle(g, S, r, n, colors, minR, maxR, alpha) {
-  for (let i = 0; i < n; i++) {
-    g.globalAlpha = alpha * (0.3 + r() * 0.7);
-    g.fillStyle = colors[(r() * colors.length) | 0];
-    const s = minR + r() * (maxR - minR);
-    g.fillRect(r() * S, r() * S, s, s);
-  }
-  g.globalAlpha = 1;
-}
-
-function blotches(g, S, r, n, colors, minR, maxR, alpha) {
-  for (let i = 0; i < n; i++) {
-    const x = r() * S, y = r() * S, rad = minR + r() * (maxR - minR);
-    const col = colors[(r() * colors.length) | 0];
-    // 타일 경계에서 이어지도록 9방향 반복
-    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
-      if (x + ox + rad < 0 || x + ox - rad > S || y + oy + rad < 0 || y + oy - rad > S) continue;
-      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
-      gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      g.globalAlpha = alpha; g.fillStyle = gr;
-      g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
-    }
-  }
-  g.globalAlpha = 1;
-}
-
-const TEX = {
-  ground(g, S) {
-    const r = rng(7);
-    g.fillStyle = '#6b6048'; g.fillRect(0, 0, S, S);
-    blotches(g, S, r, 60, ['#4f5a32', '#5a6338', '#465029'], 40, 150, 0.55);
-    blotches(g, S, r, 40, ['#7d6f55', '#84775c', '#5d533f'], 30, 110, 0.5);
-    speckle(g, S, r, 14000, ['#3d3a2a', '#8c8168', '#4a5230', '#9a917c', '#2f3320'], 1, 3, 0.5);
-    speckle(g, S, r, 500, ['#a39a86', '#55503f'], 2, 5, 0.6);
-  },
-  concrete(g, S) {
-    const r = rng(11);
-    g.fillStyle = '#8f8d87'; g.fillRect(0, 0, S, S);
-    blotches(g, S, r, 30, ['#7a7872', '#a09e97', '#6e6c66'], 40, 140, 0.35);
-    speckle(g, S, r, 9000, ['#6d6b66', '#a8a6a0', '#59574f'], 1, 2.5, 0.4);
-    g.strokeStyle = 'rgba(40,38,34,0.35)'; g.lineWidth = 1;
-    for (let i = 0; i < 7; i++) {
-      g.beginPath(); let x = r() * S, y = r() * S; g.moveTo(x, y);
-      for (let k = 0; k < 8; k++) { x += (r() - 0.5) * 50; y += r() * 40; g.lineTo(x, y); }
-      g.stroke();
-    }
-    // 흘러내린 얼룩
-    for (let i = 0; i < 14; i++) {
-      const x = r() * S, h = 60 + r() * 200, w = 4 + r() * 14;
-      const gr = g.createLinearGradient(0, 0, 0, h);
-      gr.addColorStop(0, 'rgba(45,42,36,0.28)'); gr.addColorStop(1, 'rgba(45,42,36,0)');
-      g.fillStyle = gr; g.fillRect(x, 0, w, h);
-    }
-  },
-  concreteDark(g, S) {
-    const r = rng(13);
-    g.fillStyle = '#5c5b58'; g.fillRect(0, 0, S, S);
-    blotches(g, S, r, 30, ['#4a4946', '#6a6965'], 40, 140, 0.4);
-    speckle(g, S, r, 8000, ['#44433f', '#75746f'], 1, 2.5, 0.4);
-  },
-  brick(g, S) {
-    const r = rng(17);
-    g.fillStyle = '#8d8676'; g.fillRect(0, 0, S, S);
-    const rows = 16, cols = 4, bh = S / rows, bw = S / cols;
-    const cols3 = ['#8a4a36', '#7c3f2e', '#96553f', '#6f3a2c', '#a05e45', '#84503e'];
-    for (let y = 0; y < rows; y++) for (let x = -1; x < cols; x++) {
-      const ox = (y % 2) * bw / 2;
-      g.fillStyle = cols3[(r() * cols3.length) | 0];
-      g.fillRect(x * bw + ox + 2, y * bh + 2, bw - 4, bh - 4);
-    }
-    speckle(g, S, r, 9000, ['#5a3024', '#b0705a', '#3d2a22', '#9a9384'], 1, 3, 0.3);
-    blotches(g, S, r, 14, ['#2e2a25'], 40, 120, 0.3);
-  },
-  container(g, S) {
-    const r = rng(19);
-    const n = 16, w = S / n;
-    for (let i = 0; i < n; i++) {
-      const gr = g.createLinearGradient(i * w, 0, (i + 1) * w, 0);
-      gr.addColorStop(0, '#9c9c9c'); gr.addColorStop(0.25, '#f2f2f2');
-      gr.addColorStop(0.5, '#ffffff'); gr.addColorStop(0.75, '#c8c8c8'); gr.addColorStop(1, '#8a8a8a');
-      g.fillStyle = gr; g.fillRect(i * w, 0, w + 1, S);
-    }
-    blotches(g, S, r, 12, ['#6b4a35', '#54402f'], 15, 50, 0.2);
-    speckle(g, S, r, 3000, ['#7a5a40', '#d8d8d8', '#555'], 1, 3, 0.3);
-    for (let i = 0; i < 20; i++) {
-      const x = r() * S, y = r() * S * 0.6, h = 40 + r() * 160;
-      const gr = g.createLinearGradient(0, y, 0, y + h);
-      gr.addColorStop(0, 'rgba(90,60,40,0.35)'); gr.addColorStop(1, 'rgba(90,60,40,0)');
-      g.fillStyle = gr; g.fillRect(x, y, 3 + r() * 6, h);
-    }
-  },
-  crate(g, S) {
-    const r = rng(23);
-    g.fillStyle = '#8a6a42'; g.fillRect(0, 0, S, S);
-    const planks = 6, pw = S / planks;
-    for (let i = 0; i < planks; i++) {
-      g.fillStyle = ['#8f6f46', '#7f623d', '#96764c', '#866841'][(r() * 4) | 0];
-      g.fillRect(i * pw + 1, 0, pw - 2, S);
-      g.strokeStyle = 'rgba(50,34,18,0.35)'; g.lineWidth = 1;
-      for (let k = 0; k < 9; k++) {
-        const x = i * pw + r() * pw; g.beginPath(); g.moveTo(x, 0);
-        g.bezierCurveTo(x + (r() - 0.5) * 12, S * 0.3, x + (r() - 0.5) * 12, S * 0.6, x + (r() - 0.5) * 8, S); g.stroke();
-      }
-    }
-    const f = S * 0.11;
-    g.fillStyle = '#6f5432';
-    g.fillRect(0, 0, S, f); g.fillRect(0, S - f, S, f); g.fillRect(0, 0, f, S); g.fillRect(S - f, 0, f, S);
-    g.save(); g.translate(S / 2, S / 2); g.rotate(Math.PI / 4); g.fillRect(-S * 0.7, -f / 2, S * 1.4, f); g.restore();
-    g.strokeStyle = 'rgba(30,20,10,0.6)'; g.lineWidth = 2;
-    g.strokeRect(f, f, S - 2 * f, S - 2 * f); g.strokeRect(1, 1, S - 2, S - 2);
-    speckle(g, S, r, 3000, ['#4d3a22', '#a98a5c'], 1, 2.5, 0.3);
-  },
-  wood(g, S) {
-    const r = rng(29);
-    g.fillStyle = '#6e563a'; g.fillRect(0, 0, S, S);
-    const planks = 8, pw = S / planks;
-    for (let i = 0; i < planks; i++) {
-      g.fillStyle = ['#70583b', '#644d33', '#7a6042', '#5c472f'][(r() * 4) | 0];
-      g.fillRect(0, i * pw + 1, S, pw - 2);
-      g.strokeStyle = 'rgba(35,24,12,0.35)';
-      for (let k = 0; k < 6; k++) { const y = i * pw + r() * pw; g.beginPath(); g.moveTo(0, y); g.lineTo(S, y + (r() - 0.5) * 6); g.stroke(); }
-    }
-    speckle(g, S, r, 3000, ['#3f2f1d', '#8d7350'], 1, 2.5, 0.3);
-  },
-  sandbag(g, S) {
-    const r = rng(31);
-    g.fillStyle = '#4c4533'; g.fillRect(0, 0, S, S);
-    const rows = 3, cols = 2, bh = S / rows, bw = S / cols;
-    for (let y = 0; y < rows; y++) for (let x = -1; x <= cols; x++) {
-      const ox = (y % 2) * bw / 2, X = x * bw + ox + 4, Y = y * bh + 4, W = bw - 8, H = bh - 8;
-      const gr = g.createLinearGradient(0, Y, 0, Y + H);
-      gr.addColorStop(0, '#b3a47c'); gr.addColorStop(0.5, '#9c8d68'); gr.addColorStop(1, '#6f6449');
-      g.fillStyle = gr; g.beginPath(); g.roundRect(X, Y, W, H, H * 0.45); g.fill();
-    }
-    speckle(g, S, r, 12000, ['#7d7153', '#c2b48d', '#5e553e'], 1, 2, 0.35);
-  },
-  metal(g, S) {
-    const r = rng(37);
-    g.fillStyle = '#5a5f63'; g.fillRect(0, 0, S, S);
-    blotches(g, S, r, 30, ['#6e4a33', '#474c50', '#70767b'], 20, 90, 0.35);
-    speckle(g, S, r, 5000, ['#3c4043', '#80868b', '#6b4c38'], 1, 2.5, 0.35);
-  },
-  barrel(g, S) {
-    const r = rng(41);
-    g.fillStyle = '#e8e8e8'; g.fillRect(0, 0, S, S);
-    for (const y of [0.02, 0.33, 0.66, 0.96]) {
-      const gr = g.createLinearGradient(0, y * S - 8, 0, y * S + 8);
-      gr.addColorStop(0, '#fff'); gr.addColorStop(1, '#777');
-      g.fillStyle = gr; g.fillRect(0, y * S - 8, S, 16);
-    }
-    blotches(g, S, r, 24, ['#6b4a35', '#3b3028'], 15, 70, 0.45);
-    speckle(g, S, r, 3000, ['#7a5a40', '#444'], 1, 3, 0.3);
-  },
-};
-
-// ───────── 색으로 그리는 무늬 (분위기의 재질 style). m = 재질 정의 (content/looks.json) ─────────
-// 밝은 근미래 톤: 칠한 면 + 이음새 + 옅은 때. 색은 데이터에서, 모양은 여기서
-const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-function shade(hex, f) { // f > 0 밝게, f < 0 어둡게 (-1 ~ 1)
-  const c = hexRgb(hex || '#888888').map(v => Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f)));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
-function grime(g, S, r, amt, base) { // 위에서 흘러내린 옅은 때 + 모서리 닳음
-  if (!amt) return;
-  for (let i = 0; i < 10; i++) {
-    const x = r() * S, h = S * (0.15 + r() * 0.5), w = 6 + r() * 24;
-    const gr = g.createLinearGradient(0, 0, 0, h);
-    gr.addColorStop(0, `rgba(40,36,30,${0.22 * amt})`); gr.addColorStop(1, 'rgba(40,36,30,0)');
-    g.fillStyle = gr; g.fillRect(x, 0, w, h);
-  }
-  speckle(g, S, r, 2500 * amt, [shade(base, -0.25), shade(base, 0.2)], 1, 2.5, 0.35);
-}
-const STYLE = {
-  plain(g, S, m, r) {
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    speckle(g, S, r, 4000, [shade(m.base, -0.06), shade(m.base, 0.06)], 1, 2, 0.4);
-    grime(g, S, r, m.grime ?? 0.2, m.base);
-  },
-  panel(g, S, m, r) {
-    const n = m.cells || 2, c = S / n, line = m.line || shade(m.base, -0.3);
-    for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) { // 칸마다 아주 살짝 다른 색
-      g.fillStyle = shade(m.base, (r() - 0.5) * 0.06); g.fillRect(i * c, k * c, c, c);
-    }
-    blotches(g, S, r, 18, [shade(m.base, -0.05), shade(m.base, 0.05)], 30, 120, 0.3);
-    if (m.trim) { // 아래 띠 (경고색 등)
-      g.fillStyle = m.trim; for (let k = 0; k < n; k++) g.fillRect(0, (k + 1) * c - c * 0.1, S, c * 0.07);
-    }
-    grime(g, S, r, m.grime ?? 0.25, m.base);
-    for (let i = 0; i <= n; i++) { // 이음새: 어두운 홈 + 밝은 가장자리
-      g.fillStyle = line; g.fillRect(i * c - 2, 0, 4, S); g.fillRect(0, i * c - 2, S, 4);
-      g.fillStyle = shade(m.base, 0.25); g.fillRect(i * c + 2, 0, 1.5, S); g.fillRect(0, i * c + 2, S, 1.5);
-    }
-    g.fillStyle = line; // 귀퉁이 볼트
-    for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) for (const [ox, oy] of [[0.08, 0.08], [0.92, 0.08], [0.08, 0.92], [0.92, 0.92]]) {
-      g.beginPath(); g.arc(i * c + ox * c, k * c + oy * c, 3, 0, Math.PI * 2); g.fill();
-    }
-  },
-  blocks(g, S, m, r) {
-    const rows = m.rows || 4, cols = m.cols || 2, bh = S / rows, bw = S / cols;
-    g.fillStyle = m.line || shade(m.base, -0.35); g.fillRect(0, 0, S, S);
-    for (let y = 0; y < rows; y++) for (let x = -1; x <= cols; x++) {
-      const ox = (y % 2) * bw / 2, X = x * bw + ox + 3, Y = y * bh + 3, W = bw - 6, H = bh - 6;
-      g.fillStyle = shade(m.base, (r() - 0.5) * 0.12); g.fillRect(X, Y, W, H);
-      g.fillStyle = shade(m.base, 0.18); g.fillRect(X, Y, W, 2);
-      g.fillStyle = shade(m.base, -0.15); g.fillRect(X, Y + H - 2, W, 2);
-    }
-    grime(g, S, r, m.grime ?? 0.2, m.base);
-  },
-  corrugated(g, S, m, r) {
-    const n = 16, w = S / n;
-    for (let i = 0; i < n; i++) {
-      const gr = g.createLinearGradient(i * w, 0, (i + 1) * w, 0);
-      gr.addColorStop(0, shade(m.base, -0.35)); gr.addColorStop(0.3, shade(m.base, -0.05)); gr.addColorStop(0.5, m.base);
-      gr.addColorStop(0.75, shade(m.base, -0.18)); gr.addColorStop(1, shade(m.base, -0.4));
-      g.fillStyle = gr; g.fillRect(i * w, 0, w + 1, S);
-    }
-    grime(g, S, r, m.grime ?? 0.15, m.base);
-  },
-  crate(g, S, m, r) {
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    speckle(g, S, r, 3000, [shade(m.base, -0.08), shade(m.base, 0.08)], 1, 2, 0.4);
-    const f = S * 0.1, frame = shade(m.base, -0.28);
-    g.fillStyle = frame; g.fillRect(0, 0, S, f); g.fillRect(0, S - f, S, f); g.fillRect(0, 0, f, S); g.fillRect(S - f, 0, f, S);
-    g.fillStyle = shade(m.base, 0.2); g.fillRect(f, f, S - 2 * f, 2);
-    if (m.line) { g.fillStyle = m.line; g.fillRect(S * 0.3, S * 0.44, S * 0.4, S * 0.12); } // 가운데 표시 띠
-    g.fillStyle = shade(m.base, -0.4);
-    for (const [x, y] of [[f / 2, f / 2], [S - f / 2, f / 2], [f / 2, S - f / 2], [S - f / 2, S - f / 2]]) { g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); }
-    grime(g, S, r, m.grime ?? 0.2, m.base);
-  },
-  planks(g, S, m, r) {
-    const n = 8, pw = S / n;
-    for (let i = 0; i < n; i++) {
-      g.fillStyle = shade(m.base, (r() - 0.5) * 0.14); g.fillRect(0, i * pw + 1, S, pw - 2);
-      g.strokeStyle = `rgba(30,20,10,0.25)`;
-      for (let k = 0; k < 5; k++) { const y = i * pw + r() * pw; g.beginPath(); g.moveTo(0, y); g.lineTo(S, y + (r() - 0.5) * 6); g.stroke(); }
-    }
-    grime(g, S, r, m.grime ?? 0.15, m.base);
-  },
-  plate(g, S, m, r) {
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(255,255,255,${0.04 * r()})`; g.fillRect(0, r() * S, S, 1); } // 결
-    const line = m.line || shade(m.base, -0.3);
-    g.fillStyle = line; g.fillRect(0, S / 2 - 2, S, 4); g.fillRect(S / 2 - 2, 0, 4, S);
-    for (let i = 0; i < 8; i++) for (const y of [S * 0.06, S * 0.56]) { g.beginPath(); g.arc((i + 0.5) * S / 8, y, 3.5, 0, Math.PI * 2); g.fill(); }
-    grime(g, S, r, m.grime ?? 0.2, m.base);
-  },
-  stripe(g, S, m, r) {
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    g.fillStyle = m.accent || shade(m.base, -0.6);
-    for (const y of [0.1, 0.82]) g.fillRect(0, y * S, S, S * 0.08);
-    for (const y of [0.0, 0.33, 0.66, 0.97]) { g.fillStyle = shade(m.base, -0.25); g.fillRect(0, y * S - 4, S, 8); }
-    grime(g, S, r, m.grime ?? 0.2, m.base);
-  },
-  bag(g, S, m, r) { // 모래주머니 한 개: 삼베 결 + 가운데가 볼록한 명암 + 가운데 꿰맨 줄 (면마다 한 장씩 쓴다: tile 0)
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    for (let y = 0; y < S; y += 8) { g.fillStyle = `rgba(0,0,0,${0.02 + 0.025 * r()})`; g.fillRect(0, y, S, 2); }
-    speckle(g, S, r, 4500, [shade(m.base, -0.12), shade(m.base, 0.1)], 1, 2.5, 0.3);
-    const gr = g.createRadialGradient(S * 0.5, S * 0.42, S * 0.08, S * 0.5, S * 0.5, S * 0.75); // 볼록한 느낌: 가운데 밝고 가장자리 어둡게
-    gr.addColorStop(0, 'rgba(255,255,240,0.16)'); gr.addColorStop(0.55, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.42)');
-    g.fillStyle = gr; g.fillRect(0, 0, S, S);
-    g.fillStyle = m.line || shade(m.base, -0.4); g.globalAlpha = 0.55;
-    for (let x = S * 0.12; x < S * 0.88; x += 26) g.fillRect(x, S * 0.5 - 2, 14, 4); // 꿰맨 자국
-    g.globalAlpha = 1;
-    grime(g, S, r, m.grime ?? 0.12, m.base);
-  },
-  ground(g, S, m, r) {
-    g.fillStyle = m.base; g.fillRect(0, 0, S, S);
-    blotches(g, S, r, 40, [shade(m.base, -0.05), shade(m.base, 0.05)], 60, 200, 0.4);
-    if (m.accent) blotches(g, S, r, 18, [m.accent], 40, 140, 0.22);
-    speckle(g, S, r, 12000, [shade(m.base, -0.14), shade(m.base, 0.1), shade(m.base, -0.07)], 1, 3, 0.35);
-  },
-};
-// 재질 정의 → 텍스처 (classic 은 예전 무늬 그대로)
-function drawMat(name, m) {
-  return (g, S) => {
-    if (m.style === 'classic' || !STYLE[m.style]) (TEX[name] || TEX.concrete)(g, S);
-    else STYLE[m.style](g, S, { base: '#888888', ...m }, rng(name.length * 977 + 13));
-  };
-}
-
-// 경사로(쐐기): 박스 크기 안에서 ramp.up 쪽이 높은 모양. 면마다 따로 (각진 그림자)
-function rampGeo(w, h, d, ramp, tile) {
-  const along = ramp.axis === 'x' ? w : d, across = ramp.axis === 'x' ? d : w;
-  const a = along / 2, c = across / 2, y0 = -h / 2, y1 = h / 2;
-  // x+ 쪽이 높은 쐐기를 만든 뒤 돌린다
-  const P = { A: [-a, y0, -c], B: [a, y0, -c], C: [a, y0, c], D: [-a, y0, c], E: [a, y1, -c], F: [a, y1, c] };
-  const faces = [['A', 'B', 'C'], ['A', 'C', 'D'], ['B', 'E', 'F'], ['B', 'F', 'C'], ['A', 'D', 'F'], ['A', 'F', 'E'], ['A', 'E', 'B'], ['D', 'C', 'F']];
-  const pos = [], uv = [], t = tile || 2;
-  for (const f of faces) for (const k of f) { const p = P[k]; pos.push(...p); uv.push((p[0] + p[1]) / t, p[2] / t); }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.computeVertexNormals();
-  const turn = ramp.axis === 'x' ? (ramp.up > 0 ? 0 : Math.PI) : (ramp.up > 0 ? -Math.PI / 2 : Math.PI / 2);
-  if (turn) g.rotateY(turn);
-  return g;
-}
-
-function boxGeo(w, h, d, tile) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  if (tile) {
-    const uv = g.attributes.uv;
-    const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-    for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) {
-      const k = f * 4 + i;
-      uv.setXY(k, uv.getX(k) * dims[f][0] / tile, uv.getY(k) * dims[f][1] / tile);
-    }
-  }
-  return g;
-}
+// 월드(하늘·빛·그림자·지면·맵 물체)를 장면에 만든다. 절차적 텍스처·재질·실내 조명·지오메트리는 world/ 아래 모듈이 맡고, 여기는 그것들을 조립한다.
+// (게임과 스튜디오가 같은 코드로 그린다 — 에디터에서 본 그대로 게임에 나온다)
+const TONE = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping };
 
 // 하늘·조명·지면·먼 산을 만들고, 맵(구조물)은 setMap(layout) 으로 올린다. layout = shared/maps 의 { boxes, trees, colliders }
 // look = content/looks.json 의 분위기 하나. 나중에 setLook 으로 바꿀 수 있다 (스튜디오에서 고치는 즉시 보기)
 // opts.fogScale: 안개 짙기 배율 (맵 에디터는 위에서 내려다보므로 옅게)
 export function buildWorld(scene, renderer, look, opts = {}) {
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  let textures = {}, MAT_DEF = {};
+  let textures = {}, derived = {}, MAT_DEF = {};
   const matCache = new Map();
   const getMat = (name, tint) => {
     const key = name + ':' + (tint ?? '');
     if (matCache.has(key)) return matCache.get(key);
     const d = MAT_DEF[name] || MAT_DEF.concrete;
     const tex = textures[name] || textures.concrete;
-    const m = new THREE.MeshStandardMaterial({
-      map: tex, bumpMap: tex, bumpScale: d.bump,
-      roughness: d.rough, metalness: d.metal || 0,
-      color: tint ?? 0xffffff,
+    const P = presetOf(name, d), dm = derived[name] || derived.concrete;
+    const m = new THREE.MeshStandardMaterial({ // 색 + Normal + Roughness/Metalness (값은 맵에 들어 있으므로 배율 1)
+      map: tex, normalMap: dm.normal, normalScale: new THREE.Vector2(d.bump * P.nrm, d.bump * P.nrm),
+      roughnessMap: dm.orm, metalnessMap: dm.orm, roughness: 1, metalness: 1,
+      envMapIntensity: P.env, color: tint ?? 0xffffff,
     });
+    patchIndoor(m);
     matCache.set(key, m);
     return m;
   };
@@ -358,6 +43,9 @@ export function buildWorld(scene, renderer, look, opts = {}) {
   sky.scale.setScalar(4000);
   const u = sky.material.uniforms;
   const envScene = new THREE.Scene();
+  const envGround = new THREE.Mesh(new THREE.CircleGeometry(3000, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: false }));
+  envGround.position.y = -2; envScene.add(envGround);
+  const _grey = new THREE.Color(0.32, 0.32, 0.32); // 땅빛 채도를 눌러서 그늘·천장이 갈색으로 물들지 않게
   scene.add(sky);
   scene.fog = new THREE.FogExp2(0xb4bcc2, 0.0042);
 
@@ -409,11 +97,13 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     current = lk;
     MAT_DEF = lk.materials;
     const names = only || Object.keys(lk.materials);
-    if (!only) { for (const t of Object.values(textures)) t.dispose(); textures = {}; }
+    if (!only) { for (const t of Object.values(textures)) t.dispose(); for (const x of Object.values(derived)) { x.normal.dispose(); x.orm.dispose(); } textures = {}; derived = {}; }
     for (const [key, m] of [...matCache]) if (!only || names.includes(key.split(':')[0])) { m.dispose(); matCache.delete(key); }
     for (const k of names) {
       if (textures[k]) textures[k].dispose();
       textures[k] = canvasTex(k === 'ground' ? 1024 : 512, drawMat(k, lk.materials[k]), aniso);
+      if (derived[k]) { derived[k].normal.dispose(); derived[k].orm.dispose(); }
+      derived[k] = derivedMaps(textures[k].image, lk.materials[k], presetOf(k, lk.materials[k]), aniso);
     }
     sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - lk.sun.elev), THREE.MathUtils.degToRad(lk.sun.azim));
     u.turbidity.value = lk.sky.turbidity; u.rayleigh.value = lk.sky.rayleigh; u.mieCoefficient.value = lk.sky.mie; u.mieDirectionalG.value = lk.sky.mieG;
@@ -422,6 +112,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     fill.color.set(lk.fill.sky); fill.groundColor.set(lk.fill.ground); fill.intensity = lk.fill.intensity;
     scene.fog.color.set(lk.fog.color); scene.fog.density = lk.fog.density * (opts.fogScale ?? 1);
     // 주변 반사: 하늘을 한 번 찍어서
+    envGround.material.color.set(lk.fill.ground).lerp(_grey, 0.55).multiplyScalar(lk.envGround ?? 0); envGround.visible = (lk.envGround ?? 0) > 0; // 반사 아래쪽 = 땅 (없으면 하늘 셰이더의 지평선 아래)
     scene.remove(sky); envScene.add(sky);
     const pmrem = new THREE.PMREMGenerator(renderer);
     if (scene.environment) scene.environment.dispose();
@@ -430,6 +121,9 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     envScene.remove(sky); scene.add(sky);
     scene.environmentIntensity = lk.env;
     renderer.toneMappingExposure = lk.exposure;
+    renderer.toneMapping = TONE[lk.tone] ?? THREE.ACESFilmicToneMapping;
+    INDOOR.uIndoorAmb.value = lk.indoor?.ambient ?? 1;
+    INDOOR.uIndoorCol.value.set(lk.indoor?.color || '#ffffff').multiplyScalar(lk.indoor?.intensity ?? 0);
     hillMat.color.set(lk.hills);
     hillFarMat.color.set(lk.hills).lerp(new THREE.Color(lk.fog.color), 0.4); // 먼 줄은 안개색 쪽으로 옅게
     const leavesChanged = JSON.stringify(lk.leaves) !== leafKey;
@@ -441,7 +135,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     const gt = textures.ground, gTile = MAT_DEF.ground.tile || 14;
     gt.repeat.set(600 / gTile, 600 / gTile);
     if (groundMat) groundMat.dispose();
-    groundMat = getMat('ground').clone(); groundMat.vertexColors = true; // 꼭짓점 색(paintGround)을 곱한다. 재질은 지면 전용 복제본
+    groundMat = patchIndoor(getMat('ground').clone()); groundMat.vertexColors = true; // 꼭짓점 색(paintGround)을 곱한다. 재질은 지면 전용 복제본
     ground.material = groundMat;
     if (lastLayout && (!only || names.some(k => k !== 'ground') || leavesChanged)) setMap(lastLayout);
   }
@@ -504,6 +198,17 @@ export function buildWorld(scene, renderer, look, opts = {}) {
     col.needsUpdate = true;
   }
 
+  // glb 재질: 이름으로 프리셋을 골라 반사 세기를 맞추고 실내 조명을 넣는다 (텍스처는 glb 것 그대로, 한 번만)
+  const tunedAssets = new WeakSet();
+  function tuneAssetMat(m) {
+    if (tunedAssets.has(m)) return;
+    tunedAssets.add(m);
+    const key = (m.name || '').replace(/^NS_/, ''), P = presetOf(key);
+    if (key === 'Glass') { m.envMapIntensity = P.env; m.depthWrite = false; m.roughness = Math.max(m.roughness, 0.08); }
+    else m.envMapIntensity = P.env;
+    patchIndoor(m);
+  }
+
   function setMap(layout) {
     lastLayout = layout;
     { let half = 0; for (const b of layout.boxes) if (!b.invisible && b.h >= 4) half = Math.max(half, Math.abs(b.x) - b.w / 2, Math.abs(b.z) - b.d / 2); paintGround(half > 20 ? half : 56); } // 외곽 벽 안쪽 면
@@ -511,26 +216,36 @@ export function buildWorld(scene, renderer, look, opts = {}) {
       mapGroup.remove(child);
       if (child.geometry) child.geometry.dispose();
     }
+    // 그림자 카메라를 플레이 공간에 맞춘다 (같은 4096 맵으로 더 촘촘한 그림자). 바깥 산·나무는 원래 그림자 밖
+    { let ext = 0; for (const b of layout.boxes) if (!b.invisible) ext = Math.max(ext, Math.abs(b.x) + b.w / 2, Math.abs(b.z) + b.d / 2);
+      const R = Math.min(80, Math.max(30, ext + 6)); sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.updateProjectionMatrix(); }
+    INDOOR.uIndoorN.value = 0;
     shadowFloor = 0;
     for (const b of layout.boxes) if (!b.invisible && b.y < shadowFloor) shadowFloor = b.y; // 그림자를 받을 수 있는 가장 낮은 면
     const groups = new Map(); // key → { mat, cast, recv, geoms }
     mapStats.sources = 0; mapStats.meshes = 0; mapStats.merged = 0; mapStats.unmerged = 0; mapStats.assetMeshes = 0; mapStats.assetTris = 0;
     // 시각 모델(.glb): 불러온 것만. replacedBy 가 가리키는 모델이 있으면 그 박스의 눈에 보이는 모양은 건너뛴다 (충돌 박스는 layout.colliders 가 따로 갖는다)
+    const assetGeos = []; // 모델 메쉬도 아래 emit 으로 (재질 × 그림자 × 공간 칸) 묶음에 합친다 — 같은 이름 재질은 모델끼리 공유하므로(mapassets.js) 모델이 늘어도 그리기 호출이 덜 는다
     const placed = new Set(), _am = new THREE.Matrix4(), _aq = new THREE.Quaternion(), _ae = new THREE.Euler();
     for (const a of layout.assets || []) {
       const model = assetModel(a.id);
       if (!model) continue;
       placed.add(a.id);
       _am.compose(_sv.set(a.x, a.y, a.z), _aq.setFromEuler(_ae.set(0, -THREE.MathUtils.degToRad(a.rot || 0), 0)), new THREE.Vector3(a.s || 1, a.s || 1, a.s || 1));
+      const ib = INDOOR_BOXES[a.id];
+      if (ib && INDOOR.uIndoorN.value < MAX_INDOOR) { // 실내 상자도 같은 변환으로 (180° 대칭 복제 포함)
+        _bx.set(new THREE.Vector3(...ib.min), new THREE.Vector3(...ib.max)).applyMatrix4(_am);
+        const n = INDOOR.uIndoorN.value++; INDOOR.uIndoorMin.value[n].copy(_bx.min); INDOOR.uIndoorMax.value[n].copy(_bx.max);
+      }
       model.traverse(o => {
         if (!o.isMesh) return;
         const mats = [].concat(o.material);
+        for (const m of mats) tuneAssetMat(m);
         for (const m of mats) for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap']) if (m[k] && m[k].anisotropy < aniso) { m[k].anisotropy = aniso; m[k].needsUpdate = true; }
         const geo = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(_am, o.matrixWorld)); // 위치를 구워 넣어야 그림자 컬이 박스를 바로 쓴다
         const cast = a.shadow !== 'none' && !/^NS_/.test(o.name) && !mats.some(m => m.transparent);
-        const mesh = new THREE.Mesh(geo, o.material);
-        mesh.castShadow = cast; mesh.receiveShadow = !mats.some(m => m.transparent); mesh.userData.cs = cast; mesh.name = o.name;
-        mapGroup.add(mesh); mapStats.assetMeshes++; mapStats.assetTris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        assetGeos.push([geo, o.material, a.x, a.z, cast, !mats.some(m => m.transparent)]);
+        mapStats.assetMeshes++; mapStats.assetTris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
       });
     }
     // 모양(위치까지 구워 넣은 지오메트리)을 내놓는다. big 이면 합치지 않고 바로 메쉬로
@@ -546,6 +261,7 @@ export function buildWorld(scene, renderer, look, opts = {}) {
       if (!g) groups.set(key, g = { mat, cast, recv, geoms: [] });
       g.geoms.push(geo);
     };
+    for (const [geo, mat, x, z, cast, recv] of assetGeos) emit(geo, mat, x, z, cast, recv, false);
     const r = rng(99);
     for (const b of layout.boxes) {
       if (b.invisible || (b.swap && placed.has(b.swap))) continue;

@@ -32,6 +32,10 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #scope b { position: absolute; left: 50%; top: 50%; width: 80vh; height: 80vh; margin: -40vh;
   border-radius: 50%; box-shadow: inset 0 0 9vh 2vh rgba(0,0,0,.75); }
 
+/* 도트 사이트: 정조준하면 조준경 유리 한가운데에 빨간 점 (총과 같이 움직이지 않고 화면 중앙에 고정 — 시선 = 조준선) */
+#reddot { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: #ff3a22; box-shadow: 0 0 3px 1px rgba(255,60,40,.9), 0 0 9px 3px rgba(255,40,20,.45); }
+
 /* 피격 */
 #vig { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(170,10,0,.6) 100%); }
 #dmgdir { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px; opacity: 0; }

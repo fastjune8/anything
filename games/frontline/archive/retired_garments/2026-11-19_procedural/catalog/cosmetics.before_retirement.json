@@ -1,0 +1,32 @@
+{
+  "colorSlots": ["fabric", "fabric2", "leather", "metal", "accent", "team", "core", "hair"],
+  "materials": {
+    "fabric": { "rough": 0.9, "metal": 0 },
+    "fabric2": { "rough": 0.84, "metal": 0 },
+    "leather": { "rough": 0.62, "metal": 0 },
+    "metal": { "rough": 0.38, "metal": 0.85 },
+    "accent": { "rough": 0.5, "metal": 0.05 },
+    "team": { "rough": 0.78, "metal": 0 },
+    "core": { "rough": 0.92, "metal": 0 },
+    "hair": { "rough": 0.55, "metal": 0 }
+  },
+  "palettes": {
+    "tactical_dark": { "fabric": "#1c1e22", "fabric2": "#383b41", "leather": "#2a2b2e", "metal": "#50545a", "accent": "#2c9c92", "team": "#3b3f46", "core": "#111214", "hair": "#1a1b20" }
+  },
+  "teams": { "ally": "#2f4f7a", "foe": "#7a3029" },
+  "skins": ["#e6c7b0", "#d2a98a", "#9c6c4e", "#5e3c2b"],
+  "defaults": {
+    "items": { "hair": "tactical_hair_001", "head": "tactical_headset_001", "upper": "tactical_jacket_001", "lower": "tactical_pants_001", "hands": "tactical_gloves_001", "feet": "tactical_boots_001", "back": "tactical_backpack_001" },
+    "palette": "tactical_dark",
+    "skin": 0
+  },
+  "items": [
+    {"id": "tactical_hair_001", "name": "택티컬 단발", "slot": "hair", "set": "tactical_001", "tp": "wearables/tactical_hair_001_v_2.glb", "mount": {"bone": "Head"}, "mask": [], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_headset_001", "name": "택티컬 헤드셋", "slot": "head", "set": "tactical_001", "tp": "wearables/tactical_headset_001_v_2.glb", "mount": {"bone": "Head"}, "mask": [], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_jacket_001", "name": "택티컬 재킷", "slot": "upper", "set": "tactical_001", "tp": "wearables/tactical_jacket_001_v_3.glb", "fp": "wearables/tactical_jacket_001_v_3_fp.glb", "mount": "skin", "mask": ["chest", "abdomen", "shoulder_l", "shoulder_r", "upperarm_l", "upperarm_r", "forearm_l", "forearm_r"], "rarity": "rare", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_pants_001", "name": "카고 팬츠", "slot": "lower", "set": "tactical_001", "tp": "wearables/tactical_pants_001_v_3.glb", "mount": "skin", "mask": ["pelvis", "thigh_l", "thigh_r", "shin_l", "shin_r"], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_gloves_001", "name": "택티컬 장갑", "slot": "hands", "set": "tactical_001", "tp": "wearables/tactical_gloves_001_v_3.glb", "fp": "wearables/tactical_gloves_001_v_3_fp.glb", "mount": "skin", "mask": ["hand_l", "hand_r"], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_boots_001", "name": "택티컬 부츠", "slot": "feet", "set": "tactical_001", "tp": "wearables/tactical_boots_001_v_3.glb", "mount": "skin", "mask": ["foot_l", "foot_r"], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]},
+    {"id": "tactical_backpack_001", "name": "소형 배낭", "slot": "back", "set": "tactical_001", "tp": "wearables/tactical_backpack_001_v_3.glb", "mount": {"bone": "BackWeaponSocket"}, "mask": [], "rarity": "common", "unlock": {"type": "default"}, "tags": ["tactical"]}
+  ]
+}

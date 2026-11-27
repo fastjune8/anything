@@ -63,9 +63,28 @@ GLB 를 못 불러오면 `mapassets.js` 가 경고만 하고 건너뛴다. `worl
 
 `asset` 은 스튜디오 맵 에디터의 물체 종류에 나온다 (id·x·z·y·선택 상자 크기·배율·그림자). 안 보이는 선택 박스(충돌 없음)를 내서 클릭으로 집을 수 있다. 모델 자체는 에디터에서도 보인다 (같은 `world.setMap`).
 
-## 6. 새 에셋 추가 순서
+## 6. 여러 에셋 (P3-3)
 
-1. `build_<이름>.py` 를 `build_warehouse.py` 처럼 만든다 (치수는 충돌 박스에서 옮겨 적는다).
+| 에셋 | 맵 위치 | 대신하는 물체 | 스크립트 |
+|---|---|---|---|
+| warehouse | outpost (31, 0) | building | `tools/blender/warehouse/build_warehouse.py` |
+| watchtower | outpost (−47, 0) | tower | `tools/blender/env/build_watchtower.py` |
+| centerdeck | outpost (0, 0) | platform · ramp 2 · stairs 2 · 난간 box 4 | `tools/blender/env/build_centerdeck.py` |
+
+- **공통 도구** `tools/blender/env/envkit.py`: 상자·막대·원기둥·다각형 기둥(prism), 재질 묶음(C·P·PN·M_·MN·WD·WDS·GL), 재질 만들기, 내보내기. 모든 에셋이 같은 `make_materials()` 와 같은 `textures.py` 출력을 쓴다.
+- **재질 공유**: 게임은 같은 이름 재질을 모델끼리 하나로 쓴다 (`client/js/mapassets.js shareMaterials`). 그래서 GPU 텍스처는 모델 수만큼 늘지 않는다. `tests/assets.test.mjs` 가 같은 이름 재질의 계수·텍스처 바이트가 같은지 확인한다 (다르면 실패).
+- **그리기 호출**: 모델 메쉬도 절차적 박스와 같은 경로(`world.js emit`)로 (재질 × 그림자 × 40 m 칸) 묶음에 합친다. 모델이 늘어도 같은 칸·같은 재질이면 그리기 호출이 늘지 않는다. P1-6 그림자 컬(`userData.cs`)도 그대로.
+- **여러 물체를 한 모델이**: `replacedBy` 는 모든 물체 종류에 붙일 수 있다. 그 물체의 박스는 모두 모델의 선택 상자(asset 의 w·d) 안에 있어야 한다 (테스트).
+- **충돌 박스 뽑기**: `node tools/blender/env/colliders.mjs outpost <id> > /tmp/<id>_col.json` (경사로는 7번째 칸 `{axis, up}`).
+- **맞춤 검사** (`check_fit.py`): 속이 꽉 찬 계단·경사로·발판은 `--surface` (충돌 겉면 점 → 시각 표면 0.1 m 이내, 맞닿은 면은 뺀다), 2층 바닥이 있으면 `--zones 0:2.4,<바닥>:<바닥+1.8>`.
+  ```
+  python3 check_fit.py watchtower.glb /tmp/watchtower_col.json --surface --zones 0:2.4,3.2:5.0
+  python3 check_fit.py centerdeck.glb /tmp/centerdeck_col.json --surface --zones 0:2.4,2.4:4.2
+  ```
+
+## 7. 새 에셋 추가 순서
+
+1. `tools/blender/env/build_<이름>.py` 를 `build_watchtower.py` 처럼 만든다 (`from envkit import *`, 치수는 충돌 박스에서 옮겨 적는다).
 2. `content/assets/<id>.glb` 를 내보내고 `content/assets/index.json` 에 id 를 넣는다.
-3. 맵 데이터에 `{ type: 'asset', id, x, z }` 를 넣고, 가려질 건물에 `replacedBy: id`.
-4. `check_fit.py` → `node tests/assets.test.mjs` → 실제 화면에서 기존과 같은 카메라로 비교.
+3. 맵 데이터에 `{ type: 'asset', id, x, z, w, d, h }` 를 넣고, 가려질 물체마다 `replacedBy: id`.
+4. `colliders.mjs` → `check_fit.py` → `node tests/assets.test.mjs` → 실제 화면에서 기존과 같은 카메라로 비교.

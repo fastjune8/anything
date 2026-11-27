@@ -31,6 +31,7 @@ const sideOpenings = label => list(label, OPENING, opt());
 export const COMMON_FIELDS = {
   rot: oneOf('회전 (도)', [0, 90, 180, 270], opt()),
   sym: bool('반대편에도 배치 (맵 중심 대칭)', opt()),
+  replacedBy: str('눈에 보이는 모양을 대신할 시각 모델 id', opt({ hint: '충돌은 이 물체 그대로. 이 물체의 박스들이 그 모델의 선택 상자(asset 의 w·d) 안에 있어야 한다. 모델을 못 불러오면 박스가 보인다' })),
 };
 
 // 물체 종류별 칸. 순서 = 에디터에 보이는 순서. label = 에디터 목록에 보일 이름
@@ -54,7 +55,6 @@ export const OBJECT_SCHEMAS = {
   building: { label: '건물', fields: {
     x: X, z: Z, w: num('너비 (x)', { min: 2, max: 100, step: 0.1 }), d: num('깊이 (z)', { min: 2, max: 100, step: 0.1 }), h: num('높이', { min: 1, max: 20, step: 0.1 }),
     mat: oneOf('재질', MATERIALS), roof: bool('지붕', opt()), y: Y, plain: bool('건축 장식 없음 (틀·기단·모서리·지붕 띠)', opt()),
-    replacedBy: str('눈에 보이는 모양을 대신할 시각 모델 id', opt({ hint: '충돌은 이 건물 그대로. 같은 자리에 asset 물체를 두면 박스 대신 그 모델이 보이고, 모델을 못 불러오면 박스가 보인다' })),
     ops: obj('문·창문 (위치 = 벽을 따라가는 절대 좌표)', { n: sideOpenings('북쪽 벽 (z+)'), s: sideOpenings('남쪽 벽 (z−)'), e: sideOpenings('동쪽 벽 (x+)'), w: sideOpenings('서쪽 벽 (x−)') }, opt()),
   } },
   container: { label: '컨테이너', fields: { x: X, z: Z, axis: AXIS, tint: color('색', opt()), y: num('바닥 높이 (2단 = 2.59)', opt({ min: 0, step: 0.01 })) } },
@@ -170,6 +170,7 @@ export function checkModels(list) {
 // ───────── 분위기 (content/looks.json): 빛·하늘·안개 + 재질(맵 물체 겉모습) 묶음. 맵마다 하나를 고른다 ─────────
 export const MAT_STYLES = ['classic', 'plain', 'panel', 'blocks', 'corrugated', 'crate', 'planks', 'plate', 'stripe', 'ground', 'bag'];
 export const LOOK_MATERIALS = ['ground', ...MATERIALS];
+export const MAT_PRESET_IDS = ['concrete', 'metal', 'paintedMetal', 'wood', 'fabric', 'glass', 'plastic', 'ground'];
 const MAT_LOOK = obj('재질', {
   style: oneOf('무늬', MAT_STYLES, { hint: 'classic = 예전 사실적 무늬, panel = 칠한 패널, blocks = 큰 블록, corrugated = 골판 금속, crate = 상자, planks = 판자, plate = 금속판, stripe = 띠, bag = 모래주머니 한 개, ground = 땅' }),
   base: color('바탕 색', opt()), line: color('선·이음새 색', opt()), accent: color('포인트 색', opt()), trim: color('아래 띠 색 (패널)', opt()),
@@ -178,6 +179,7 @@ const MAT_LOOK = obj('재질', {
   tile: num('무늬 한 장 크기 (m, 0 = 면마다 한 장)', { min: 0, max: 40, step: 0.1 }),
   rough: num('거칠기 (0 = 매끈, 1 = 거침)', { min: 0, max: 1, step: 0.01 }), metal: num('금속성', opt({ min: 0, max: 1, step: 0.01 })),
   bump: num('요철', { min: 0, max: 2, step: 0.05 }),
+  preset: oneOf('물성 프리셋 (없으면 재질 이름으로)', MAT_PRESET_IDS, opt({ hint: 'concrete, metal, paintedMetal, wood, fabric, glass, plastic, ground' })),
 });
 export const LOOK_SCHEMA = obj('분위기', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름'),
@@ -187,6 +189,9 @@ export const LOOK_SCHEMA = obj('분위기', {
   fill: obj('그늘 빛 (하늘·땅 반사)', { sky: color('위쪽 (그늘 색)'), ground: color('아래쪽 (땅 반사)'), intensity: num('세기', { min: 0, max: 5, step: 0.05 }) }),
   fog: obj('안개', { color: color('색'), density: num('짙기', { min: 0, max: 0.03, step: 0.0005 }) }),
   env: num('주변 반사 세기', { min: 0, max: 3, step: 0.05 }),
+  envGround: num('주변 반사의 아래쪽 (땅빛) 세기, 0 = 하늘 셰이더 그대로', opt({ min: 0, max: 10, step: 0.05 })),
+  tone: oneOf('톤 매핑', ['aces', 'agx', 'neutral'], opt({ hint: 'aces = 기본(대비 강함), agx = 부드러운 하이라이트, neutral = 재질 색을 가장 그대로' })),
+  indoor: obj('실내 (지붕 있는 시각 모델 안)', { ambient: num('그늘 빛 남기는 비율', { min: 0, max: 1, step: 0.05 }), color: color('등 색'), intensity: num('등 세기', { min: 0, max: 5, step: 0.05 }) }, opt()),
   hills: color('먼 산 색'), leaves: list('나뭇잎 색', color('색'), { minLen: 1, maxLen: 6 }),
   materials: dict('재질', MAT_LOOK, { keys: LOOK_MATERIALS }),
 });
@@ -320,7 +325,7 @@ export function checkEffects(list) {
 export const RULES = ['domination', 'deathmatch']; // server/game/modes/ 에 있는 규칙
 export const MODE_SCHEMA = obj('모드', {
   id: str('id', { pattern: '^[a-z0-9_]+$' }), name: str('이름 (로비 카드)'), desc: str('설명 (로비 카드)'),
-  map: str('기본 맵 id'), rules: oneOf('점수·승리 규칙', RULES, { hint: 'domination = 거점 점령전, deathmatch = 킬이 점수' }),
+  map: str('기본 맵 id'), mapPool: list('맵 풀 (경기마다 이 중 무작위로 하나, 직전 맵은 제외. 비우면 기본 맵만)', str('맵 id'), opt({ minLen: 1 })), rules: oneOf('점수·승리 규칙', RULES, { hint: 'domination = 거점 점령전, deathmatch = 킬이 점수' }),
   max: int('방 최대 인원 (사람 + 봇)', { min: 2, max: 16 }), fill: int('봇으로 채울 인원', { min: 0, max: 16 }),
   teams: oneOf('팀 수', [0, 2], { hint: '0 = 개인전' }), goal: int('승리 점수 (킬 또는 거점 점수)', { min: 1, max: 1000 }),
   minutes: num('제한 시간 (분)', { min: 1, max: 30, step: 0.5 }),
@@ -452,6 +457,7 @@ export function checkModes(list, mapIds = null) {
     if (m.rules === 'domination' && !m.teams) errors.push(`모드 ${m.id}: 점령전은 팀이 2개여야 한다`);
     if (m.fill > m.max) errors.push(`모드 ${m.id}: 봇으로 채울 인원(${m.fill})이 최대 인원(${m.max})보다 많다`);
     if (mapIds && !mapIds.includes(m.map)) errors.push(`모드 ${m.id}: 없는 맵 "${m.map}"`);
+    if (mapIds && m.mapPool) for (const id of m.mapPool) if (!mapIds.includes(id)) errors.push(`모드 ${m.id}: 맵 풀에 없는 맵 "${id}"`);
   }
   return errors;
 }

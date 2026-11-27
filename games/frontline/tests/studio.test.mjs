@@ -325,7 +325,7 @@ try {
       return { moved, colored, sel: c.selBone && c.selBone.name };
     });
     check(pose.sel === 'LeftForeArm' && pose.moved > 0.05 && pose.colored, '뼈를 골라 돌려 보고, 고른 뼈의 웨이트를 색으로 본다', JSON.stringify(pose));
-    await page.evaluate(() => window.__ch.setGun('ar_lancer'));
+    await page.evaluate(() => window.__ch.setGun('ar_lancer_v_7'));
     await page.waitForFunction(() => window.__ch.gun && window.__ch.hold, null, { timeout: 10000 }).catch(() => {});
     const hold = await page.evaluate(async () => {
       const THREE = await import('three'), c = window.__ch;
@@ -343,7 +343,7 @@ try {
   }
 
   console.log('\n[의상 (모델 에디터): 입히기 · 벗기기 · 교체 · 새 의상 · 검사]');
-  const wearAssets = (() => { try { const j = JSON.parse(fs.readFileSync(C('cosmetics.json'), 'utf8')); return j.items.length > 0 && fs.existsSync(C('characters', 'hyperfps_thirdperson_v_7.glb')) && j.items.every(i => fs.existsSync(C(i.tp)) && (!i.fp || fs.existsSync(C(i.fp)))); } catch { return false; } })();
+  const wearAssets = (() => { try { const j = JSON.parse(fs.readFileSync(C('cosmetics.json'), 'utf8')); return j.items.length > 0 && fs.existsSync(C('characters', 'hyperfps_thirdperson_v_8.glb')) && j.items.every(i => fs.existsSync(C(i.tp)) && (!i.fp || fs.existsSync(C(i.fp)))); } catch { return false; } })();
   if (!wearAssets) console.log('  (등록된 옷이 없거나(카탈로그가 비어 있음 — 절차적 옷은 폐기됨) 캐릭터·옷 .glb 가 이 컴퓨터의 content/ 에 없어 건너뜀)');
   else { // 게임과 같은 몸·옷 코드로 실제 옷(content/wearables)을 입히고 벗겨 본다
     const cosmetics = JSON.parse(fs.readFileSync(C('cosmetics.json'), 'utf8'));
@@ -416,7 +416,7 @@ try {
     const vis = () => page.evaluate(() => ['views', 'boneTree', 'gunSel'].map(k => !!document.querySelector(`#toolbox > div:not([hidden]) [data-r="${k}"]`).offsetParent));
     const v1 = await vis(); await page.click(`${ACT.tools} .mtabs button:has-text("뼈")`); const v2 = await vis(); await page.click(`${ACT.tools} .mtabs button:has-text("무기 · 동작")`); const v3 = await vis();
     check(JSON.stringify([v1, v2, v3]) === JSON.stringify([[true, false, false], [false, true, false], [false, false, true]]), '탭을 누르면 그 묶음만 보인다', JSON.stringify([v1, v2, v3]));
-    await page.evaluate(() => { for (const k of ['wear:edit', 'char:hyperfps_thirdperson_v_7']) if (window.__studio.docs.has(k)) window.__studio.closeDoc(k); });
+    await page.evaluate(() => { for (const k of ['wear:edit', 'char:hyperfps_thirdperson_v_8']) if (window.__studio.docs.has(k)) window.__studio.closeDoc(k); });
     fs.writeFileSync(C('cosmetics.json'), JSON.stringify(cosmetics, null, 2)); // 시험용으로 더한 의상을 되돌린다 (끝에서 원본 문자열로도 복원)
     await page.click('.tab.home');
   }
@@ -463,10 +463,10 @@ try {
   });
   check(mat.metal[0] === mat.want[0] && mat.metal[1] === mat.want[1] && mat.dark[0] === mat.want[2] && mat.dark[1] === mat.want[3], '총 재질: 색 칸 이름으로 금속성·거칠기를 엔진이 정한다 (content/gunmaterials.json)', JSON.stringify(mat));
   check(mat.glow > 1 && mat.cool === 0 && mat.own, '효과: 열을 올리면 metal 칸이 달아오르고, 총마다 자기 재질이라 다른 총에 번지지 않는다', JSON.stringify(mat));
-  { // 모션 클립: smg_hornet 의 reload 를 게임과 같은 코드로 재생 (탄창·왼손이 움직인다)
+  { // 모션 클립: smg_hornet_v_5 의 reload 를 게임과 같은 코드로 재생 (탄창·왼손이 움직인다)
     const prev = await page.evaluate(() => window.__studio.active.key);
-    await page.evaluate(() => window.__studio.openAsset('gun:smg_hornet_v_3'));
-    await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.key === 'gun:smg_hornet_v_3', null, { timeout: 30000 });
+    await page.evaluate(() => window.__studio.openAsset('gun:smg_hornet_v_5'));
+    await page.waitForFunction(() => window.__gv && window.__gv.model && window.__studio.active.key === 'gun:smg_hornet_v_5', null, { timeout: 30000 });
     const mo = await page.evaluate(() => {
       const api = window.__gv, g = api.model.gun, rest = g.mag.position.y;
       api.motion.f = 0.3; api.poseMotion();

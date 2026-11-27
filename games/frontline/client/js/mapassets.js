@@ -14,6 +14,30 @@ try {
       models.set(id, scene);
     } catch (e) { console.warn(`시각 모델을 불러오지 못해 박스 모양을 씁니다: ${id}`, e); }
   }));
+  shareMaterials(ids);
 } catch (e) { console.warn('시각 모델 목록을 불러오지 못했습니다', e); }
+
+// 같은 이름의 재질(Concrete·PaintedMetal·BareMetal·Wood·Glass)은 모든 모델이 하나를 같이 쓴다.
+//   에셋 스크립트가 모두 같은 make_materials()·같은 텍스처로 내보내므로 내용이 같다 (tests/assets.test.mjs 가 확인한다).
+//   → GPU 텍스처가 모델 수만큼 늘지 않고, world.js 가 재질별로 지오메트리를 합칠 수 있어 그리기 호출도 덜 는다
+function shareMaterials(ids) {
+  const keep = new Map(), drop = new Set();
+  for (const id of ids) {
+    const scene = models.get(id);
+    if (!scene) continue;
+    scene.traverse(o => {
+      if (!o.isMesh || Array.isArray(o.material)) return;
+      const m = o.material, key = m.name + (m.vertexColors ? ':vc' : '');
+      if (!m.name) return;
+      const k = keep.get(key);
+      if (!k) keep.set(key, m);
+      else if (k !== m) { drop.add(m); o.material = k; }
+    });
+  }
+  for (const m of drop) {
+    for (const t of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) if (m[t] && ![...keep.values()].some(k => k[t] === m[t])) m[t].dispose();
+    m.dispose();
+  }
+}
 
 export const assetModel = id => models.get(id) || null;

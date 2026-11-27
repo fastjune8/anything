@@ -1,0 +1,55 @@
+{
+ "item": "tactical_jacket_001",
+ "slot": "upper",
+ "fp": false,
+ "version": 4,
+ "bytes": 172136,
+ "checks": {
+  "tactical_jacket_004": {
+   "tris": 4000,
+   "warns": [
+    "tactical_jacket_004: material slot 6 (core) is not used by any face",
+    "tactical_jacket_004: no UV map (the game ignores UVs today; a UV map is required once textures are used \u2014 see spec)",
+    "tactical_jacket_004: 8 vertices on top of each other",
+    "tactical_jacket_004: 28/522 faces of the main shell point into the body (5.4%)"
+   ],
+   "clearance": {
+    "verts": 2604,
+    "min_mm": 3.9,
+    "p05_mm": 6.9,
+    "median_mm": 25.8,
+    "inside": 0,
+    "tight": 0
+   },
+   "weights": {
+    "influences": {
+     "1": 236,
+     "2": 557,
+     "3": 164,
+     "4": 1647
+    },
+    "bones_used": [
+     "Chest",
+     "Head",
+     "Hips",
+     "LeftForeArm",
+     "LeftHand",
+     "LeftShoulder",
+     "LeftThumb1",
+     "LeftUpperArm",
+     "LeftUpperLeg",
+     "Neck",
+     "RightForeArm",
+     "RightHand",
+     "RightShoulder",
+     "RightThumb1",
+     "RightUpperArm",
+     "RightUpperLeg",
+     "Spine",
+     "Spine1"
+    ]
+   }
+  }
+ },
+ "glb": []
+}

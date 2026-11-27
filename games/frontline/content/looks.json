@@ -148,7 +148,7 @@
       "color": "#c3d3e2",
       "density": 0.003
     },
-    "env": 0.7,
+    "env": 0.95,
     "hills": "#71877f",
     "leaves": [
       "#5f8a3a",
@@ -245,6 +245,12 @@
         "metal": 0.5,
         "bump": 0.2
       }
+    },
+    "envGround": 5,
+    "indoor": {
+      "ambient": 0.55,
+      "color": "#fff3e2",
+      "intensity": 1.5
     }
   },
   {

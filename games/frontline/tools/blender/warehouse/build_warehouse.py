@@ -14,6 +14,8 @@
 #   벽 바깥면에서 1.2 m 이하 높이로는 0.15 m 이상 튀어나오지 않는다 (몸이 장식에 박혀 보이지 않게). 그 위(캐노피)는 자유.
 import bpy, bmesh, math, os, sys, random
 from mathutils import Vector, Euler
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd(), '..', 'env'))
+from envkit import *   # lin·mul·WHITE·GLASS·box·bar·cyl·quad·tri·grp·C·P·PN·M_·MN·CN·WD·GL·export (공통 도구)
 
 HERE = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
 args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]
@@ -30,11 +32,6 @@ BAND_Y0, BAND_Y1 = 3.0, 3.75               # 높은 곳 유리띠
 ROOF_T, ROOF_OVER = 0.25, 0.3
 
 # ───────────────────────── 색 (팔레트: docs/ENV_ART_BIBLE.md) ─────────────────────────
-def lin(h):
-    c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
-    return tuple((v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4) for v in c) + (1.0,)
-def mul(c, k): return (min(1, c[0] * k), min(1, c[1] * k), min(1, c[2] * k), 1.0)
-WHITE = (1, 1, 1, 1)
 PAINT_FRAME = lin('#56626b')      # 문틀·창틀·난간 (청회색)
 PAINT_DOOR = lin('#5b6a58')       # 문짝 (바랜 올리브)
 PAINT_DARK = lin('#2c3338')       # 유리띠 뒷판
@@ -43,91 +40,6 @@ PAINT_BEAM = lin('#4a545b')       # 천장 보
 PAINT_UNIT = lin('#a3a8a9')       # 옥상 설비
 BARE = WHITE
 GLASS = (0.55, 0.68, 0.72, 0.38)
-
-# ───────────────────────── 메쉬 모으기 ─────────────────────────
-class Group:
-    def __init__(s, name, mat):
-        s.name, s.mat, s.v, s.f, s.uv, s.col = name, mat, [], [], [], []
-        s.tris = 0
-GROUPS = {}
-def grp(name, mat):
-    if name not in GROUPS: GROUPS[name] = Group(name, mat)
-    return GROUPS[name]
-
-def B(x, y, z):  # 게임 좌표 → Blender
-    return Vector((x, -z, y))
-
-def add_face(g, pts, col, tile, off):
-    n = (pts[1] - pts[0]).cross(pts[2] - pts[0])
-    if n.length < 1e-12: return
-    n.normalize()
-    ax = max(range(3), key=lambda i: abs(n[i]))
-    base = len(g.v)
-    g.v.extend(pts); g.f.append(tuple(range(base, base + len(pts))))
-    for p in pts:
-        if ax == 2: u, v = p.x, p.y
-        elif ax == 0: u, v = p.y, p.z
-        else: u, v = p.x, p.z
-        g.uv.append((u / tile + off[0], v / tile + off[1]))
-        g.col.append(col)
-    g.tris += len(pts) - 2
-
-def box(g, cx, cy, cz, sx, sy, sz, col=WHITE, bevel=0.0, tile=3.0, off=(0, 0), skip=(), rot=None):
-    """게임 좌표 상자. 가운데 (cx, cy, cz), 크기 (sx, sy, sz). bevel = 모서리 깎기. skip = {'up','down'} 이면 그 면은 만들지 않는다"""
-    if sx < 1e-4 or sy < 1e-4 or sz < 1e-4: return
-    bm = bmesh.new()
-    bmesh.ops.create_cube(bm, size=1.0)
-    for v in bm.verts: v.co = Vector((v.co.x * sx, v.co.y * sz, v.co.z * sy))
-    if bevel > 0:
-        bmesh.ops.bevel(bm, geom=list(bm.edges), offset=min(bevel, min(sx, sy, sz) * 0.45), offset_type='OFFSET', segments=1, profile=0.5, affect='EDGES')
-    bm.normal_update()
-    M = None
-    if rot is not None: M = Euler(rot).to_matrix().to_4x4()
-    for f in bm.faces:
-        n = f.normal
-        if 'up' in skip and n.z > 0.99: continue
-        if 'down' in skip and n.z < -0.99: continue
-        pts = []
-        for v in f.verts:
-            p = v.co.copy()
-            if M is not None: p = M @ p
-            pts.append(p + B(cx, cy, cz))
-        add_face(g, pts, col, tile, off)
-    bm.free()
-
-def bar(g, p0, p1, w, h, col=WHITE, tile=1.0):
-    """두 점(게임 좌표)을 잇는 막대 (단면 w × h)"""
-    a, b = B(*p0), B(*p1)
-    d = b - a; L = d.length
-    q = Vector((1, 0, 0)).rotation_difference(d.normalized())
-    rot = q.to_euler()
-    c = (a + b) / 2
-    box(g, c.x, c.z, -c.y, L, h, w, col, 0, tile, rot=rot)
-
-def cyl(g, cx, y0, cz, r, h, seg=10, col=WHITE, tile=1.0, r2=None):
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=seg, radius1=r, radius2=r if r2 is None else r2, depth=h)
-    bm.normal_update()
-    for f in bm.faces:
-        pts = [v.co + B(cx, y0 + h / 2, cz) for v in f.verts]
-        add_face(g, pts, col, tile, (0, 0))
-    bm.free()
-
-def quad(g, p0, p1, p2, p3, col, tile=3.0):
-    add_face(g, [B(*p) for p in (p0, p1, p2, p3)], col, tile, (0, 0))
-
-def tri(g, p0, p1, p2, col):
-    add_face(g, [B(*p) for p in (p0, p1, p2)], col, 1.0, (0, 0))
-
-# 재질 묶음 (그림자 던짐 / 안 던짐 = NS_)
-C = lambda: grp('Concrete', 'concrete')
-CN = lambda: grp('NS_Concrete', 'concrete')
-P = lambda: grp('PaintedMetal', 'paint')
-PN = lambda: grp('NS_PaintedMetal', 'paint')
-M_ = lambda: grp('BareMetal', 'metal')
-MN = lambda: grp('NS_BareMetal', 'metal')
-WD = lambda: grp('NS_Wood', 'wood')
-GL = lambda: grp('NS_Glass', 'glass')
 
 rnd = random.Random(7)
 
@@ -341,89 +253,66 @@ def build_interior():
     for lx in (-6, -2, 2, 6):
         for lz in (-3.2, 3.2):
             box(pn, lx, 3.56, lz, 0.14, 0.07, 1.5, PAINT_UNIT, 0.0, 1.0)
+            box(pn, lx, 3.5235, lz, 0.1, 0.003, 1.44, lin('#f6f3e8'), 0.0, 1.0, skip=('up',))   # 등 갓 아래 밝은 확산판
             for s in (-1, 1): bar(mn, (lx, H - 0.5, lz + s * 0.5), (lx, 3.6, lz + s * 0.5), 0.02, 0.02, BARE, 0.5)
 
-# ───────────────────────── 재질 · 텍스처 ─────────────────────────
-def img(path, nc):
-    im = bpy.data.images.load(path)
-    if nc: im.colorspace_settings.name = 'Non-Color'
-    return im
-
-def make_mat(name, bc=None, n=None, orm=None, n_strength=1.0, rough=0.7, metal=0.0, glass=False, scale=1.0):
-    m = bpy.data.materials.new(name); m.use_nodes = True
-    nt = m.node_tree; nodes, links = nt.nodes, nt.links
-    for n_ in list(nodes): nodes.remove(n_)
-    out = nodes.new('ShaderNodeOutputMaterial')
-    bs = nodes.new('ShaderNodeBsdfPrincipled'); links.new(bs.outputs['BSDF'], out.inputs['Surface'])
-    bs.inputs['Roughness'].default_value = rough; bs.inputs['Metallic'].default_value = metal
-    if glass:
-        bs.inputs['Base Color'].default_value = GLASS[:3] + (1,)
-        bs.inputs['Alpha'].default_value = GLASS[3]
-        bs.inputs['Roughness'].default_value = 0.06
-        try: m.surface_render_method = 'BLENDED'
-        except Exception: pass
-        try: m.blend_method = 'BLEND'
-        except Exception: pass
-        m.use_backface_culling = False        # 유리는 양면
-        return m
-    m.use_backface_culling = True             # 닫힌 덩어리는 한 면만 (glTF doubleSided = false)
-    vc = nodes.new('ShaderNodeVertexColor'); vc.layer_name = 'Col'
-    tx = nodes.new('ShaderNodeTexImage'); tx.image = img(bc, False)
-    mix = nodes.new('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.blend_type = 'MULTIPLY'; mix.inputs['Factor'].default_value = 1.0
-    links.new(tx.outputs['Color'], mix.inputs['A']); links.new(vc.outputs['Color'], mix.inputs['B'])
-    links.new(mix.outputs['Result'], bs.inputs['Base Color'])
-    if n:
-        nm = nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value = n_strength
-        tn = nodes.new('ShaderNodeTexImage'); tn.image = img(n, True)
-        links.new(tn.outputs['Color'], nm.inputs['Color']); links.new(nm.outputs['Normal'], bs.inputs['Normal'])
-    if orm:
-        to = nodes.new('ShaderNodeTexImage'); to.image = img(orm, True)
-        sp = nodes.new('ShaderNodeSeparateColor')
-        links.new(to.outputs['Color'], sp.inputs['Color'])
-        links.new(sp.outputs['Green'], bs.inputs['Roughness']); links.new(sp.outputs['Blue'], bs.inputs['Metallic'])
-    return m
-
-def make_materials():
-    t = lambda f: os.path.join(TEX, f)
-    return {
-        'concrete': make_mat('Concrete', t('concrete_bc.jpg'), t('concrete_n.png'), t('concrete_orm.png'), 0.8),
-        'paint': make_mat('PaintedMetal', t('paint_bc.jpg'), t('paint_n.png'), t('paint_orm.png'), 0.5),
-        'metal': make_mat('BareMetal', t('metal_bc.jpg'), t('metal_n.png'), t('metal_orm.png'), 0.7),
-        'wood': make_mat('Wood', t('wood_bc.jpg'), None, None, rough=0.82),
-        'glass': make_mat('Glass', glass=True),
-    }
-
-# ───────────────────────── 조립 · 내보내기 ─────────────────────────
-def emit():
-    mats = make_materials()
-    stats = {}
-    for name, g in GROUPS.items():
-        if not g.f: continue
-        me = bpy.data.meshes.new(name)
-        me.from_pydata([tuple(v) for v in g.v], [], g.f)
-        me.update()
-        uvl = me.uv_layers.new(name='UVMap'); ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'CORNER')
-        i = 0
-        for poly in me.polygons:
-            for li in poly.loop_indices:
-                uvl.data[li].uv = g.uv[i]; ca.data[li].color = g.col[i]; i += 1
-        me.materials.append(mats[g.mat])
-        ob = bpy.data.objects.new(name, me)
-        bpy.context.scene.collection.objects.link(ob)
-        stats[name] = (len(me.polygons), g.tris)
-    return stats
+def build_floor():
+    """바닥 콘크리트 판 + 줄눈 + 노란 통로선·문 앞 빗금 + 문턱 쇠 + 문 밖 콘크리트 패드.
+    모두 1~2 cm 높이(충돌 없음, 발이 묻히는 정도)라 이동·시야와 무관하다. 땅(y 0)과 겹쳐 깜빡이지 않게 판 윗면은 1.2 cm."""
+    c, mn = C(), MN()
+    TOPF = 0.012
+    IX, IZ = X1 - T, Z1 - T                          # 안쪽 면 (±9.7, ±7.7)
+    box(c, 0, TOPF / 2, 0, W - 0.04, TOPF, D - 0.04, (0.44, 0.42, 0.38, 1), 0.0, 3.0, (0.37, 0.11), skip=('down',))   # 벽보다 어둡고 따뜻한 바닥 (선형값)
+    JOINT = mul(WHITE, 0.32); YEL = lin('#e0a53a'); LINE = 0.1
+    strip = lambda x, z, sx, sz, col, h: box(c, x, TOPF + h / 2, z, sx, h, sz, col, 0.0, 3.0, skip=('down',))
+    # 줄눈 (4 m 칸, 2 mm 위로): 통로선보다 높게 그려 페인트를 가로지른다
+    for x in (-8, -4, 0, 4, 8): strip(x, 0, 0.012, 2 * IZ, JOINT, 0.004)
+    for z in (-4, 0, 4): strip(0, z, 2 * IX, 0.012, JOINT, 0.004)
+    # 통로선: 벽 안쪽 1 m. 문 앞은 끊는다
+    def run(fixed, along_x, a, b, gaps):
+        cur = a
+        for g0, g1 in sorted(gaps) + [(b, b)]:
+            if g0 > cur:
+                m, L = (cur + g0) / 2, g0 - cur
+                if along_x: strip(m, fixed, L, LINE, YEL, 0.002)
+                else: strip(fixed, m, LINE, L, YEL, 0.002)
+            cur = max(cur, g1)
+    ex, ez = IX - 1.0, IZ - 1.0
+    ns_gaps = [(-6 - 1.3 - 0.3, -6 + 1.3 + 0.3), (6 - 1.3 - 0.3, 6 + 1.3 + 0.3)]
+    for sz in (-1, 1): run(sz * ez, True, -ex - LINE / 2, ex + LINE / 2, ns_gaps)
+    for sx in (-1, 1): run(sx * ex, False, -ez + LINE / 2, ez - LINE / 2, [(-1.2 - 0.3, 1.2 + 0.3)])
+    # 문 앞 빗금 구역 (문 폭 + 0.4, 깊이 1.0): 테두리 + 45° 빗금 3줄
+    def zone(cx, cz, along_x, width, inward):
+        depth = 0.95
+        if along_x:
+            zc = cz + inward * depth / 2
+            for sx_ in (-1, 1): strip(cx + sx_ * (width / 2 - LINE / 2), zc, LINE, depth, YEL, 0.002)
+            strip(cx, cz + inward * (depth - LINE / 2), width - 2 * LINE, LINE, YEL, 0.002)
+            for k in (-1, 0, 1):
+                box(c, cx + k * width / 4, TOPF + 0.001, zc, 0.08, 0.002, depth * 1.2, YEL, 0.0, 3.0, skip=('down',), rot=(0, 0, math.radians(45)))
+        else:
+            xc = cx + inward * depth / 2
+            for sz_ in (-1, 1): strip(xc, cz + sz_ * (width / 2 - LINE / 2), depth, LINE, YEL, 0.002)
+            strip(cx + inward * (depth - LINE / 2), cz, LINE, width - 2 * LINE, YEL, 0.002)
+            for k in (-1, 0, 1):
+                box(c, xc, TOPF + 0.001, cz + k * width / 4, depth * 1.2, 0.002, 0.08, YEL, 0.0, 3.0, skip=('down',), rot=(0, 0, math.radians(45)))
+    for dx in (-6, 6):
+        zone(dx, IZ, True, 3.0, -1); zone(dx, -IZ, True, 3.0, 1)
+    zone(-IX, 0, False, 2.8, 1); zone(IX, 0, False, 2.8, -1)
+    # 문턱 쇠 (문 구멍 안, 2 cm) · 문 밖 콘크리트 패드 (1.8 cm, 벽에서 0.9 m. 문짝 아래 쇠(1.4 cm)와 높이가 겹치지 않게)
+    for dx in (-6, 6):
+        for sz in (-1, 1):
+            box(mn, dx, 0.01, sz * (Z1 - T / 2), 2.6 - 0.02, 0.02, T - 0.02, lin('#8c9296'), 0.0, 0.5, skip=('down',))
+            box(c, dx, 0.009, sz * (Z1 + 0.45), 3.8, 0.018, 0.9, mul(WHITE, 0.7), 0.005, 3.0, (0.2, 0.6), skip=('down',))
+    for sx in (-1, 1):
+        box(mn, sx * (X1 - T / 2), 0.01, 0, T - 0.02, 0.02, 2.4 - 0.02, lin('#8c9296'), 0.0, 0.5, skip=('down',))
+        box(c, sx * (X1 + 0.45), 0.009, 0, 0.9, 0.018, 3.6, mul(WHITE, 0.7), 0.005, 3.0, (0.5, 0.3), skip=('down',))
 
 def main():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    reset()
     for w in WALLS:
         build_wall(w); build_openings(w); build_doors(w)
-    build_corners(); build_roof(); build_downspouts_and_extras(); build_interior()
-    st = emit()
-    bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', export_yup=True, export_apply=False, export_image_format='AUTO',
-                              export_cameras=False, export_lights=False, export_vertex_color='ACTIVE', export_extras=False, export_animations=False)
-    tot = sum(t for _, t in st.values())
-    print('=== 그룹별 (면 수, 삼각형 수) ===')
-    for k, v in st.items(): print(f'{k:20s} {v[0]:6d} {v[1]:6d}')
-    print(f'합계 삼각형 {tot}  →  {OUT}  ({os.path.getsize(OUT) / 1024:.0f} KB)')
+    build_corners(); build_roof(); build_downspouts_and_extras(); build_interior(); build_floor()
+    export(OUT, TEX)
 
 main()

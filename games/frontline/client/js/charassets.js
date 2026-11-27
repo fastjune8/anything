@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { COLOR_SLOTS } from '/shared/cosmetics.js';
 
-export const CHAR_FILES = { tp: 'hyperfps_thirdperson_v_7', fp: 'hyperfps_viewmodel_v_6' }; // v_7/v_6: 정점마다 몸 영역(_region, 옷 가리기용)
+export const CHAR_FILES = { tp: 'hyperfps_thirdperson_v_8', fp: 'hyperfps_viewmodel_v_7' }; // v_8/v_7: 아래팔 꼬임 뼈 (손목 비틀림을 아래팔에 나눔). v_7/v_6: // v_7/v_6: 정점마다 몸 영역(_region, 옷 가리기용)
 
 // 게임 상태 → 클립 이름 (실제 파일에 있는 이름. 모델링/character/animation_spec.md)
 export const TP_CLIPS = {
@@ -80,7 +80,7 @@ export function makeInstance(asset) {
   const root = cloneSkinned(asset.scene);
   const bones = new Map(), meshes = [], mats = [];
   root.traverse(o => {
-    if (o.isBone) bones.set(o.name, o);
+    if (o.isBone) { bones.set(o.name, o); o.userData.rest = o.quaternion.clone(); } // 쉬는 회전 (팔 IK 가 손목 꺾임을 잰다)
     if (o.isMesh) { o.material = o.material.clone(); meshes.push(o); mats.push(o.material); }
   });
   return { root, bones, meshes, mats };

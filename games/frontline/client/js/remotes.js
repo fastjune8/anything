@@ -11,7 +11,7 @@ import { clock } from './clock.js';
 import { sample } from './interp.js';
 import { diag } from './netdiag.js';
 import { buildGun, buildSoldier } from './guns.js';
-import { TPAnimator, RIFLE_WEAPONS, newCharState } from './charanim.js';
+import { TPAnimator, holdsGun, newCharState } from './charanim.js';
 import { scene, camera } from './scene.js';
 import { flashTex } from './textures.js';
 import { sfx, audioAt } from './sfx.js';
@@ -48,6 +48,7 @@ function makeRig(i) {
   const guns = WEAPONS.map(w => {
     const g = buildGun(w.id, false, {}, false); g.group.visible = false; // 작게 보이므로 질감 셰이더 없이
     if (!anim) soldier.gunSlot.add(g.group);
+    else if (w.kind === 'akimbo') { g.twin = buildGun(w.id, false, {}, false); g.twin.group.visible = false; g.twin.group.traverse(o => { if (o.isMesh) o.castShadow = true; }); }
     g.group.traverse(o => { if (o.isMesh) o.castShadow = true; });
     return g;
   });
@@ -150,10 +151,10 @@ export function remoteSpawn(id, p, yaw) {
   r.alive = true; r.hasPos = true; r.deadT = 0; r.hp = MAX_HP; r.buf.length = 0; r.pos.fromArray(p); r.yaw = yaw; r.reload = null; r.flags = PF.protect | PF.intro; r.introT = 0;
 }
 export function remoteDied(id) { const r = remotes.get(id); if (r) { r.alive = false; r.hp = 0; r.reload = null; r.hook = null; } }
-export function remoteFired(r) { r.shots++; r.shotAt = performance.now(); r.flags &= ~PF.protect; }
-export function remoteReload(r, wi) { const w = WEAPONS[wi]; if (!w || w.shell) return; r.reload = { start: performance.now(), total: w.reload, wi }; }
+export function remoteFired(r) { if (r.reload && r.reload.shell) r.reload = null; r.endAt = 0; r.shots++; r.shotAt = performance.now(); r.flags &= ~PF.protect; }
+export function remoteReload(r, wi) { const w = WEAPONS[wi]; if (!w) return; r.endAt = 0; r.reload = { start: performance.now(), total: w.reload, wi, shell: !!w.shell }; }
 export function remoteHook(id, p) { const r = remotes.get(id); if (r) r.hook = new V3().fromArray(p); }
-export const RIFLE_INDEX = new Set(WEAPONS.map((w, i) => (RIFLE_WEAPONS.has(w.id) ? i : -1)).filter(i => i >= 0));
+export const RIFLE_INDEX = new Set(WEAPONS.map((w, i) => (holdsGun(w) ? i : -1)).filter(i => i >= 0));
 
 // ───── 내가 쏠 때 예측 판정용: 지금 화면에 보이는 적 ─────
 export function liveTargets() {
@@ -174,8 +175,12 @@ function animateBody(e, dt) {
   e.adsT = lerp(e.adsT, e.flags & PF.ads ? 1 : 0, 1 - Math.exp(-dt * 12));
   cs.ads = e.adsT; cs.pitch = e.pitch; cs.alive = e.alive; cs.rifle = RIFLE_INDEX.has(e.weapon);
   const now = performance.now(), rf = e.reload ? (now - e.reload.start) / 1000 / e.reload.total : 0;
-  if (e.reload && (rf >= 1 || e.reload.wi !== e.weapon || !e.alive)) e.reload = null;
-  cs.reloadF = e.reload ? rf : null; cs.shots = e.shots;
+  if (e.reload && (e.reload.wi !== e.weapon || !e.alive)) { e.reload = null; e.endAt = 0; }
+  // 한 발씩 장전은 다음 발 소식이 조금 늦을 수 있어 잠깐 기다렸다가 마무리 동작으로 넘어간다
+  if (e.reload && rf >= (e.reload.shell ? 1.35 : 1)) { if (e.reload.shell) { e.endAt = now; e.endWi = e.reload.wi; } e.reload = null; }
+  const ef = e.endAt && e.endWi === e.weapon && e.alive ? (now - e.endAt) / 550 : 1;
+  if (ef >= 1) e.endAt = 0;
+  cs.reloadF = e.reload ? Math.min(1, rf) : null; cs.shell = !!(e.reload && e.reload.shell); cs.endF = ef < 1 ? ef : null; cs.shots = e.shots;
   if (rig.anim) rig.anim.setGun(rig.guns[e.weapon] || null);
   // 몸 자세: 슬라이딩(뒤로 눕듯), 넘어짐, 앉기, 쓰러짐 — 클립 위에 몸 전체 변형으로
   e.slideK = lerp(e.slideK, e.flags & PF.slide ? 1 : 0, 1 - Math.exp(-dt * 14));
@@ -187,7 +192,7 @@ function animateBody(e, dt) {
     e.deadT = Math.min(1, e.deadT + dt * 2.6);
     const t = smooth(0, 1, e.deadT);
     rx = t * Math.PI / 2; dy = t * 0.14;
-    cs.fwd = cs.side = 0; cs.ads = 0; cs.reloadF = null;
+    cs.fwd = cs.side = 0; cs.ads = 0; cs.reloadF = cs.endF = null;
   } else e.deadT = 0;
   root.rotation.x = rx; root.position.y = e.pos.y + dy;
   if (e.introT < 1) { e.introT = Math.min(1, e.introT + dt / 0.7); const k = smooth(0, 1, e.introT); root.scale.multiplyScalar(lerp(0.4, 1, k)); }
@@ -229,7 +234,7 @@ function setCasting(rig, on) {
     else if (o.castShadow) { o.castShadow = false; o.userData.csOff = true; }
   };
   rig.soldier.root.traverse(apply);
-  for (const g of rig.guns) g.group.traverse(apply);
+  for (const g of rig.guns) { g.group.traverse(apply); if (g.twin) g.twin.group.traverse(apply); }
 }
 export function cullRemoteShadows(casts) {
   for (const e of remotes.values()) {

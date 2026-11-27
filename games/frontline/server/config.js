@@ -20,6 +20,7 @@ export const STARTED_AT = Date.now();
 // 테스트에서 시간을 줄이려고 환경변수로 바꿀 수 있다
 export const goalFor = cfg => Number(process.env.GOAL) || cfg.goal;
 export const matchMsFor = cfg => (process.env.MATCH_SECONDS ? Number(process.env.MATCH_SECONDS) * 1000 : cfg.minutes * 60000);
+export const FORCE_MAP = process.env.FORCE_MAP || ''; // 개발·테스트: 맵 순환을 끄고 이 맵 하나만 쓴다 (테스트가 맵 좌표를 가정하므로 tests/helpers.mjs 가 기본으로 켠다)
 export const RESULTS_MS = process.env.RESULTS_SECONDS ? Number(process.env.RESULTS_SECONDS) * 1000 : 15000; // 결과 화면 (재매치/로비 선택)
 export const VICTORY_MS = process.env.VICTORY_SECONDS ? Number(process.env.VICTORY_SECONDS) * 1000 : 3500;  // 승리 연출
 export const botFillFor = cfg => (process.env.BOT_FILL !== undefined ? Number(process.env.BOT_FILL) : cfg.fill);

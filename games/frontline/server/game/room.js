@@ -4,7 +4,8 @@
 //   사격: 시뮬레이션이 낸 사격 사건을 서버가 히트스캔으로 판정한다. 다른 사람은 쏜 사람이 보던 순간(vt)으로 되감는다 (lagcomp.js)
 //   피해 → 처치 → 자동 부활 (모드별 대기), 부활 보호, 점수·승패 (modes/), 결과 화면 → 개인별 재매치/로비
 import { MODES } from '../../shared/modes.js';
-import { getMap } from '../../shared/maps/index.js';
+import { getMap, MAP_IDS } from '../../shared/maps/index.js';
+import { poolOf, pickMap } from '../../shared/maps/rotation.js';
 import { WEAPONS, calcDamage, isMelee } from '../../shared/weapons.js';
 import { packOutfit, botOutfit } from '../../shared/cosmetics.js';
 import { makeLoadout, loadoutWire, newPlayerSim, respawnSim, stepPlayer, decodeCmd } from '../../shared/sim/player.js';
@@ -23,7 +24,7 @@ import { launch, tickProjectiles } from './projectiles.js';
 import { KUNAI, KS, kunaiSlot, segSegDist, wireOn, segEnds, areaValid, areaShape, inArea, THREAD } from '../../shared/sim/kunai.js';
 import { allowChat } from '../chat.js';
 import { perf } from '../perf.js';
-import { goalFor, matchMsFor, botFillFor, respawnFor, RESULTS_MS, VICTORY_MS, APP_ENV, lanAddresses, PORT, INPUT_QUEUE } from '../config.js';
+import { FORCE_MAP, goalFor, matchMsFor, botFillFor, respawnFor, RESULTS_MS, VICTORY_MS, APP_ENV, lanAddresses, PORT, INPUT_QUEUE } from '../config.js';
 
 const BURST = 30, MAX_PER_MSG = 120;
 // 입력 큐: 한 tick 에 1개, 쌓인 게 CATCHUP_AT 를 넘으면 2개씩 따라잡는다 (남에게는 최대 2배속으로 보일 뿐 순간이동하지 않는다). MAX_QUEUE 를 넘으면 오래된 것부터 버린다 (0.6초)
@@ -36,9 +37,10 @@ export class Room {
   constructor({ number, mode, custom = null, hub }) {
     this.number = number; this.mode = mode; this.custom = custom; this.hub = hub;
     this.cfg = MODES[mode];
-    this.mapId = (custom && custom.map) || this.cfg.map;
-    this.map = getMap(this.mapId);
-    this.nav = navFor(this.mapId);
+    // 맵: 커스텀 방이 맵을 직접 골랐으면 그 맵 고정, 아니면 맵 풀에서 경기마다 무작위 (shared/maps/rotation.js)
+    this.pool = FORCE_MAP && MAP_IDS.includes(FORCE_MAP) ? [FORCE_MAP] : poolOf(this.cfg, MAP_IDS);
+    this.rotates = !(custom && custom.map) && this.pool.length > 1;
+    this.setMap((custom && custom.map) || pickMap(this.pool));
     this.goal = goalFor(this.cfg);
     this.matchMs = custom ? custom.matchMs : matchMsFor(this.cfg);
     this.maxPlayers = custom ? custom.max : this.cfg.max;
@@ -51,6 +53,8 @@ export class Room {
     this.lastHr = process.hrtime.bigint(); this.acc = 0;
     this.timer = setInterval(() => this.pump(), 4);
   }
+
+  setMap(id) { this.mapId = id; this.map = getMap(id); this.nav = navFor(id); }
 
   // ───── 시간: 4ms 마다 깨어나 밀린 tick 을 돌린다 (setInterval 의 들쭉날쭉함과 상관없이 1초에 60번) ─────
   pump() {
@@ -292,6 +296,7 @@ export class Room {
     if (ev.kuThrow) { const ks = kunaiSlot(P.lo); if (ks >= 0) this.wstat(P, P.lo[ks].w.id).shots += ev.kuThrow.length; this.noise(P, 'walk'); }
     if (ev.ku) this.kunaiHits(P, ev.ku, vt);
     if (ev.reload) { this.emit({ e: 'rl', id: P.id, w: P.lo[P.ps.cur].wi }, Q => Q !== P); this.noise(P, 'reload'); }
+    else if (ev.shell) this.emit({ e: 'rl', id: P.id, w: P.lo[P.ps.cur].wi, s: 1 }, Q => Q !== P); // 한 발씩 장전의 다음 발 (동작만, 소리 없음)
     if (ev.skills) for (const s of ev.skills) { this.emit({ e: 'sk', id: P.id, k: s.effect }, Q => Q !== P); this.noise(P, 'skill'); }
     if (ev.slash) P.slashHit = { dmg: ev.slash.dmg, wi: P.lo[ev.slash.slot].wi, ids: new Set() };
     if (ev.grenade) launch(this, P, ev.grenade, P.lo[ev.grenade.slot].skill, P.lo[ev.grenade.slot].wi);
@@ -546,11 +551,12 @@ export class Room {
     this.endsAt = this.time + this.matchMs / 1000;
     this.overtime = false; this.overtimeAt = 0;
     this.scores = [0, 0]; this.grenades = [];
+    if (!first && this.rotates) { this.setMap(pickMap(this.pool, this.mapId)); this.rules = createRules(this); } // 재매치: 다른 맵으로 (거점은 맵에서 오므로 규칙 객체도 새로)
     this.rules.reset();
     this.spawnUse.clear();
     for (const P of this.players.values()) { P.kills = P.deaths = P.assists = P.caps = 0; P.m = { weapons: {} }; P.rematch = null; P.joinedAt = this.time; P.inq = []; }
     if (!first) {
-      this.broadcast({ t: 'start', n: this.tickN, left: this.matchMs, goal: this.goal, sc: this.scores, players: [...this.players.values()].map(Q => this.info(Q)), ...this.rules.snapshot() });
+      this.broadcast({ t: 'start', n: this.tickN, map: this.mapId, left: this.matchMs, goal: this.goal, sc: this.scores, players: [...this.players.values()].map(Q => this.info(Q)), ...this.rules.snapshot() });
       for (const P of this.players.values()) this.spawn(P);
     }
   }

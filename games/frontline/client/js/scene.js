@@ -11,6 +11,7 @@ export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, power
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace; // 색 텍스처는 sRGB, Normal·Roughness 맵은 NoColorSpace (world.js). 톤 매핑 종류·노출은 분위기(look)가 정한다
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.62;
 renderer.autoClear = false;
@@ -43,6 +44,14 @@ function lightViewmodel(lk) {
   vmFill.color.set(lk.fill.sky); vmFill.groundColor.set(lk.fill.ground);
 }
 
+// 셰이더 미리 컴파일. 재질(P3-2 실내 조명 패치·glb 재질 포함)은 처음 화면에 들어올 때 컴파일되는데, 그 프레임이 수십~수백 ms 멈춘다
+//   (시점을 빠르게 돌리다 새 건물이 처음 보이는 순간과 겹치면 그 사이 쌓인 마우스 입력이 한 프레임에 몰려 시점이 튄다).
+//   compile 은 시야와 상관없이 장면의 모든 보이는 물체를 훑으므로 어디를 보든 미리 끝난다. compileAsync 는 병렬 컴파일 확장이 있으면 멈춤 없이 처리한다
+export function precompile() {
+  const run = (s, c) => { try { (renderer.compileAsync ? renderer.compileAsync(s, c) : Promise.resolve(renderer.compile(s, c))).catch(() => {}); } catch { /* 못 해도 첫 화면에 그릴 때 컴파일된다 */ } };
+  run(scene, camera); run(vmScene, vmCam);
+}
+
 // 맵을 새로고침 없이 바꾼다 (로비에서 모드를 고르거나, 다른 모드의 방에 들어갈 때). 분위기도 맵 것으로
 export function loadMap(id) {
   if (id === currentMap) return;
@@ -53,6 +62,7 @@ export function loadMap(id) {
   colliders.length = 0;
   colliders.push(...map.layout.colliders);
   currentMap = id;
+  precompile();
 }
 loadMap(MODE_CFG.map);
 

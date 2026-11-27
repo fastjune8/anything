@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const COLOR_SLOTS = ['fabric', 'fabric2', 'leather', 'metal', 'accent', 'team', 'core', 'hair'];
 export const BUDGET = { upper: 5000, lower: 4000, head: 2500, hair: 2500, hands: 2000, feet: 2000, back: 2500, waist: 2500, acc1: 1000, acc2: 1000, fp: 3500 };
-export const BODY = { tp: 'content/characters/hyperfps_thirdperson_v_7.glb', fp: 'content/characters/hyperfps_viewmodel_v_6.glb' };
+export const BODY = { tp: 'content/characters/hyperfps_thirdperson_v_8.glb', fp: 'content/characters/hyperfps_viewmodel_v_7.glb' };
 const CT = { 5120: [Int8Array, 1], 5121: [Uint8Array, 1], 5122: [Int16Array, 2], 5123: [Uint16Array, 2], 5125: [Uint32Array, 4], 5126: [Float32Array, 4] };
 const NCOMP = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 

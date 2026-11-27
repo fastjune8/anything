@@ -6,14 +6,31 @@ import { canvas, camera } from './scene.js';
 import { closeChat, openChat } from './chat.js';
 import { sfx } from './sfx.js';
 import { me, inp, game, PITCH_MAX } from './state.js';
-import { $, DEG, BASE_FOV, NOLOCK, clamp } from './util.js';
+import { $, DEG, BASE_FOV, NOLOCK, clamp, params } from './util.js';
 import { setDisplay } from './dom.js';
+import { lookDiag } from './lookdiag.js';
+import { createMouseFilter } from './mousefilter.js';
 
 export const isActive = () => game.joined && game.matchState === 'playing' && !inp.chatOpen && (NOLOCK || document.pointerLockElement === canvas);
-function lock() { if (!game.joined || game.matchState !== 'playing') return; sfx.init(); const p = canvas.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); }
+// Windows 의 Chrome·Edge 는 포인터 락일 때 커서를 화면 중앙으로 되돌리는 방식(warp)으로 이동량을 계산하는데, 고폴링 마우스에서 가끔 큰 값(movementX 스파이크)을 한 번씩 만든다
+//   → 시점이 한 프레임에 수십 도 튄다. unadjustedMovement(원시 입력)는 이 계산을 쓰지 않고 OS 마우스 가속("포인터 정확도 향상")도 없다.
+//   Mac 은 이 문제가 없고 가속을 끄면 마우스 느낌이 바뀌므로 Windows 에서만 쓴다. 주소에 ?unadj=0/1 로 강제할 수 있다. 지원하지 않는 브라우저면 예전 방식으로 대체한다
+const UNADJ = params.has('unadj') ? params.get('unadj') !== '0' : /Windows/i.test(navigator.userAgent);
+function lock() {
+  if (!game.joined || game.matchState !== 'playing') return;
+  sfx.init();
+  const plain = () => { try { const q = canvas.requestPointerLock?.(); if (q && q.catch) q.catch(() => {}); } catch { /* 락을 못 걸어도 다시 클릭하면 된다 */ } };
+  if (!UNADJ) { plain(); return; }
+  let p;
+  try { p = canvas.requestPointerLock?.({ unadjustedMovement: true }); } catch { plain(); return; } // 옵션을 모르는 브라우저
+  if (p && p.catch) p.catch(e => { if (lookDiag) console.info('[debuglook] unadjustedMovement 실패 → 기본 방식', e?.name); plain(); });
+  else if (!p) plain();
+}
 
+const mouseFilter = createMouseFilter();
 document.addEventListener('pointerlockchange', () => {
   const on = document.pointerLockElement === canvas;
+  if (on) mouseFilter.onLock();
   if (game.joined) setDisplay($('pause'), !on && game.matchState === 'playing', 'flex');
   if (!on) { inp.keys.clear(); inp.fireHeld = inp.adsHeld = false; if (inp.chatOpen) closeChat(); }
 });
@@ -49,8 +66,10 @@ addEventListener('mouseup', e => { if (e.button === 0) inp.fireHeld = false; els
 addEventListener('contextmenu', e => { if (game.joined) e.preventDefault(); });
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas || !me.alive || inp.chatOpen) return;
-  const dx = clamp(e.movementX, -400, 400), dy = clamp(e.movementY, -400, 400);
+  const [dx, dy, dropped] = mouseFilter.apply(e.movementX, e.movementY, e.timeStamp); // 고립된 스파이크·락 직후 이벤트는 버린다 (mousefilter.js)
   const k = 0.0022 * inp.sens * Math.tan(camera.fov * DEG / 2) / Math.tan(BASE_FOV * DEG / 2);
+  if (lookDiag) lookDiag.mouse(e, dx, dy, k, dropped);
+  if (dropped) return;
   me.yaw -= dx * k;
   me.pitch = clamp(me.pitch - dy * k, -PITCH_MAX, PITCH_MAX);
   inp.mdx += dx; inp.mdy += dy;

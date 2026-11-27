@@ -3,11 +3,15 @@
 import { WEAPONS } from '/shared/weapons.js';
 import { MODES } from '/shared/modes.js';
 import { MAP_IDS, getMap } from '/shared/maps/index.js';
+import { poolOf } from '/shared/maps/rotation.js';
 import { ITEMS, PALETTES, SKINS } from '/shared/cosmetics.js';
 import { lobby, net, game } from './state.js';
 import { loadout, equip, setSkill, skillChoices, outfit, equipOutfit, setOutfitChoice, onLoadoutChange } from './loadout.js';
 import { $, esc, MODE_CFG, setMode } from './util.js';
 import { setDisplay } from './dom.js';
+
+// 로비 모드 카드의 맵 표시: 맵 풀이 둘 이상이면 "맵 랜덤 N종", 하나면 그 맵 이름
+const mapLabel = m => { const pool = poolOf(m, MAP_IDS); return pool.length > 1 ? `맵 랜덤 ${pool.length}종` : getMap(pool[0]).name; };
 
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 let chatTab = 'lobby';
@@ -45,7 +49,7 @@ function renderStats() {
 function renderModes() {
   const box = $('modes'); box.replaceChildren();
   for (const m of Object.values(MODES)) {
-    const b = el('button', `mode${m.id === MODE_CFG.id ? ' on' : ''}`, `<b>${esc(m.name)}</b><span>${esc(m.desc)}</span><small>${esc(getMap(m.map).name)} · ${m.minutes}분${m.rules === 'domination' ? ' · 대표 모드' : ''}</small>`);
+    const b = el('button', `mode${m.id === MODE_CFG.id ? ' on' : ''}`, `<b>${esc(m.name)}</b><span>${esc(m.desc)}</span><small>${esc(mapLabel(m))} · ${m.minutes}분${m.rules === 'domination' ? ' · 대표 모드' : ''}</small>`);
     b.type = 'button'; b.onclick = () => { setMode(m.id); renderModes(); };
     box.append(b);
   }
@@ -173,9 +177,9 @@ $('roomRefresh').onclick = () => net.send({ t: 'rooms' });
 {
   const modeSel = $('cMode'), mapSel = $('cMap');
   for (const m of Object.values(MODES)) { const o = el('option'); o.value = m.id; o.textContent = m.name; modeSel.append(o); }
+  { const o = el('option'); o.value = ''; o.textContent = '랜덤 (경기마다 바뀜)'; mapSel.append(o); } // 기본값: 맵 풀에서 경기마다 무작위 (shared/maps/rotation.js)
   for (const id of MAP_IDS) { const o = el('option'); o.value = id; o.textContent = getMap(id).name; mapSel.append(o); }
-  modeSel.onchange = () => { mapSel.value = MODES[modeSel.value].map; };
-  mapSel.value = MODES[modeSel.value].map;
+  mapSel.value = '';
 }
 $('createForm').onsubmit = e => {
   e.preventDefault();

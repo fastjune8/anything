@@ -1,7 +1,7 @@
 // 서버 통신: 연결 하나로 로비와 경기를 모두 (docs/PROTOCOL.md). 페이지를 열면 바로 접속해 손님 계정으로 로그인한다.
 import { WEAPONS } from '/shared/weapons.js';
 import { HEALTH } from '/shared/sim/config.js';
-import { me, wp, inp, game, roster, net, lobby } from './state.js';
+import { me, inp, game, roster, net, lobby } from './state.js';
 import { fromServer } from './loadout.js';
 import { makeLoadout } from '/shared/sim/player.js';
 import { addChatLine, clearChat, closeChat } from './chat.js';
@@ -16,6 +16,7 @@ import { sfx, audioAt } from './sfx.js';
 import { clock } from './clock.js';
 import { diag } from './netdiag.js';
 import { takeCmds, reconcile, resetSession, placeMe, bindSend, teleport } from './predict.js';
+import { flinch } from './recoil.js';
 import { lobbyUpdate, lobbyNote, showLobby } from './lobby.js';
 import { $, V3, NOLOCK, setMode, START_AT, esc } from './util.js';
 import { setDisplay } from './dom.js';
@@ -103,6 +104,7 @@ function onMessage(m) {
       break;
     }
     case 'start':
+      if (m.map) loadMap(m.map); // 재매치는 다른 맵일 수 있다 (loadMap 은 같은 맵이면 아무것도 안 한다)
       roster.clear(); rosterSet({ id: me.id, name: me.name, team: me.team });
       for (const p of m.players) { rosterSet(p); if (p.id !== me.id) addRemote(p); }
       startMatchState(m);
@@ -146,7 +148,7 @@ function onEvent(e) {
       break;
     }
     case 'mel': { const r = remotes.get(e.id); if (r) { remoteFired(r); sfx.whoosh(audioAt(r.pos).pan); } break; }
-    case 'rl': { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.mech('magout', a.att, a.pan, 0.2); sfx.mech('magin', a.att, a.pan, 1.0); remoteReload(r, e.w); } break; }
+    case 'rl': { const r = remotes.get(e.id); if (r) { if (!e.s) { const a = audioAt(r.pos); sfx.mech('magout', a.att, a.pan, 0.2); sfx.mech('magin', a.att, a.pan, 1.0); } remoteReload(r, e.w); } break; }
     case 'sk': { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.whoosh(a.pan); if (e.k === 'adrenaline') playFx('skill_adrenaline', r.pos); } break; }
     case 'sw': { const r = remotes.get(e.id); if (r) { r.weapon = e.w; r.reload = null; } break; }
     case 'hook': remoteHook(e.id, e.p); break;
@@ -156,7 +158,7 @@ function onEvent(e) {
       if (e.to === me.id) {
         const src = remotes.get(e.from);
         me.hp = e.hp; hurt(e.d, src ? src.pos : null); sfx.hurt();
-        wp.kickP += (Math.random() - 0.3) * 0.02; wp.kickY += (Math.random() - 0.5) * 0.02;
+        flinch((Math.random() - 0.3) * 0.02, (Math.random() - 0.5) * 0.02);
       } else {
         const r = remotes.get(e.to);
         if (r) { r.hp = e.hp; if (e.k !== 'bleed') { _v.copy(r.pos); _v.y += 1.1; impact(_v, 6); } }
@@ -174,7 +176,7 @@ function onEvent(e) {
       break;
     }
     case 'shove':
-      if (e.id === me.id) { sfx.hurt(); wp.kickP += 0.06; }
+      if (e.id === me.id) { sfx.hurt(); flinch(0.06); }
       else { const r = remotes.get(e.id); if (r) { const a = audioAt(r.pos); sfx.land(1 / (1 + a.dist / 10)); playFx('skill_shove_hit', _v.copy(r.pos).setY(r.pos.y + 1.2)); } }
       break;
     case 'bleed': if (e.id === me.id) banner('출혈!', 'e'); break;

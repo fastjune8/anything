@@ -47,8 +47,8 @@ function glbJson(file) {
   const b = fs.readFileSync(file); const len = b.readUInt32LE(12);
   return JSON.parse(b.subarray(20, 20 + len).toString('utf8'));
 }
-const bodyTP = glbJson(path.join(ROOT, 'content/characters/hyperfps_thirdperson_v_7.glb'));
-const bodyFP = glbJson(path.join(ROOT, 'content/characters/hyperfps_viewmodel_v_6.glb'));
+const bodyTP = glbJson(path.join(ROOT, 'content/characters/hyperfps_thirdperson_v_8.glb'));
+const bodyFP = glbJson(path.join(ROOT, 'content/characters/hyperfps_viewmodel_v_7.glb'));
 const joints = g => g.skins[0].joints.map(j => g.nodes[j].name);
 check(bodyTP.meshes[0].primitives[0].attributes._REGION !== undefined && bodyFP.meshes[0].primitives[0].attributes._REGION !== undefined, '몸·1인칭 팔 GLB 에 몸 영역(_REGION)이 있다');
 const BUDGET = { upper: 5000, lower: 4000, head: 2500, hair: 2500, hands: 2000, feet: 2000, back: 2500 };

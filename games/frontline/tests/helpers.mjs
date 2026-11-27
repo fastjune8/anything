@@ -27,7 +27,7 @@ export const failed = () => failures;
 export async function startServer(extraEnv = {}) {
   const port = 3200 + Math.floor(Math.random() * 700);
   const child = spawn(process.execPath, ['server/index.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', PERSIST: 'off', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: ROOT, env: { ...process.env, PORT: String(port), APP_ENV: 'test', PERSIST: 'off', FORCE_MAP: 'courtyard', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
   child.stdout.on('data', d => { log += d; });

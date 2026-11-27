@@ -9,7 +9,7 @@
 |---|---|---|
 | 3인칭 뼈대 / 몸 | `HyperFPS_Skeleton` (뼈 59, 변형 뼈 52) / `Body_Mesh` | `모델링/character/hyperfps_character_rigged_V.9.blend` |
 | 1인칭 뼈대 / 팔 | `Viewmodel_Skeleton` (뼈 44, 변형 39) / `Viewmodel_Mesh` | 같은 파일 |
-| 게임용 몸 GLB | `content/characters/hyperfps_thirdperson_v_7.glb` (관절 59), `hyperfps_viewmodel_v_6.glb` (관절 44) | `tests/cosmetics.test.mjs` |
+| 게임용 몸 GLB | `content/characters/hyperfps_thirdperson_v_8.glb` (관절 61), `hyperfps_viewmodel_v_7.glb` (관절 46, 아래팔 꼬임 뼈 포함) | `tests/cosmetics.test.mjs` |
 | 좌표 | Blender Z 위, 캐릭터는 -Y 를 본다, 왼쪽 = +X, 키 약 1.6 m, 1 단위 = 1 m, T 자세 REST | 몸 파일 |
 | 내보내기 축 | glTF Y 위 (`export_yup=True`) | `frontier_wear.export_wearable` |
 
