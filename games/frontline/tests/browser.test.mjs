@@ -22,11 +22,11 @@ try {
   await page.waitForFunction(() => window.__g && window.__g.lobby.me, null, { timeout: 20000 });
   check(await page.isVisible('#menu') && (await page.textContent('#meTag')).startsWith('#'), '로비: 내 이름·친구 코드·레벨');
   check(await page.locator('#modes .mode').count() === 3, '모드 3개 (점령전·팀 데스매치·개인전)');
-  check(await page.locator('#slot0 .wgrid .w').count() === 9, '출전 무기 9종(8종 + 듀얼 쿠나이)에서 고른다');
-  await page.click('#slot0 .wgrid .w:has-text("호넷 SMG")');
+  check(await page.locator('#wList .w').count() === 9, '출전 무기 9종(8종 + 듀얼 쿠나이)에서 고른다');
+  await page.click('#wList .w:has-text("호넷 SMG")');
   check(await g(page, () => window.__g.loadout.wire[0].id) === 'mp5', '주무기를 SMG 로 바꾼다');
-  await page.click('#slot0 .wgrid .w:has-text("랜서 AR")');
-  await page.click('#slot0 .skc:has-text("대쉬")');
+  await page.click('#wList .w:has-text("랜서 AR")');
+  await page.click('#skillBox .skc:has-text("대쉬")');
   check(await g(page, () => window.__g.loadout.wire[0].skill) === 'dash', '자리별 스킬을 고른다 (AR → 대쉬)');
   await page.click('[data-lt="outfit"]');
   check(await page.isVisible('#outfitBox select'), '외형 패널 (의상 색·피부·헤어/의상/액세서리)');

@@ -45,6 +45,7 @@ games/frontline/
 │   ├── playerfx.js         내 사건 연출: 소리·궤적·탄흔·총구 불빛·총 모델 반동   recoil.js  시선·화면 반동 수치
 │   ├── net.js              통신 (로비 + 경기)        input.js  키·마우스 → inp
 │   ├── lobby.js            로비 화면                 loadout.js  출전 무기·스킬·외형 저장
+│   ├── lobbyview.js        로비 가운데의 무기 3D 미리보기 (등록된 .glb 모델 + 총기 스킨)   lobbyart.js  3D 를 못 쓸 때의 그림·스킨 색 (프리셋은 modelrules.js SKINS)
 │   ├── hud.js              전투 HUD 진입점 → hud/ (common·vitals·skills·combat·match·feed·screens: 이름·체력/탄약·스킬 바·맞힘/조준선/도트·점수/거점·킬피드·사망/점수판/결과)
 │   ├── minimap.js          미니맵·전술 지도·소리 방향  objective.js  거점 3D 표시·화면 표식
 │   ├── remotes.js          다른 사람: 스냅샷 보간·모델·상태 연출·이름표

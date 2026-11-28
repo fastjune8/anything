@@ -72,5 +72,6 @@ export function createOffhands({ guns, vm, newFlash }) {
     pose(cur, P, ctx) { const h = hands.get(cur); if (h) h.pose(P, ctx); },
     gun(cur) { const h = hands.get(cur); return h && h.reload ? h.gun : null; }, // 왼손에 든 두 번째 "총" (아킴보)
     reload(cur, f) { const h = hands.get(cur); if (h && h.reload) h.reload(f); },
+    each(fn) { for (const [wi, h] of hands) fn(wi, h.gun); }, // 왼손 총 전부 (무기 번호, 총) — 스킨 입히기 같은 일괄 처리용
   };
 }

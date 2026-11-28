@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { WEAPONS } from '/shared/weapons.js';
 import { buildGun } from './guns.js';
-import { onLoadoutChange, outfit, onOutfitChange } from './loadout.js';
+import { onLoadoutChange, outfit, onOutfitChange, gunSkin } from './loadout.js';
 import { passive } from '/shared/sim/player.js';
 import { dress, setOutfit } from './outfit.js';
 import { camera, vm, vmSun, world } from './scene.js';
@@ -15,6 +15,7 @@ import { $, V3, lerp, clamp, smooth } from './util.js';
 import { setDisplay } from './dom.js';
 import { setGunFx } from './gunmat.js';
 import { viewOf, bindSight, sightFor, defaultParts } from './weaponview.js';
+import { applySkin, SKINS } from './modelrules.js';
 import { poseClip, hasClip, reloadMotion } from './gunanim.js';
 import { createHands } from './viewmodel/hands.js';
 import { createOffhands } from './viewmodel/offhand.js';
@@ -89,8 +90,14 @@ export function showGun() {
 // 왼손 무기 (아킴보 권총·쿠나이): 종류별 규칙은 viewmodel/offhand.js
 const offhands = createOffhands({ guns, vm, newFlash });
 
-// 출전 무기를 바꾸면 손에 든 무기도 바꾼다
-onLoadoutChange(() => showGun());
+// 로비에서 고른 총기 스킨(loadout.js gunSkin)을 1인칭 총 모델에 입힌다. 오른손 총 · 팔이 드는 총 · 왼손 총이 모두 대상
+function applyGunSkins() {
+  const paint = (g, i) => { if (g) applySkin(g.group, SKINS[gunSkin.choice[WEAPONS[i].id]] || null); };
+  guns.forEach(paint); arms.guns.forEach(paint); offhands.each((wi, g) => paint(g, wi));
+}
+// 출전 무기·스킨을 바꾸면 손에 든 무기도 바꾼다
+onLoadoutChange(() => { applyGunSkins(); showGun(); });
+applyGunSkins();
 showGun();
 
 const _hip = new V3(), _ads = new V3(), _q = new THREE.Quaternion(), _pose = { p: null, rx: 0, ry: 0, rz: 0 };

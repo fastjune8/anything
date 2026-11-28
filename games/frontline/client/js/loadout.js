@@ -45,6 +45,21 @@ export function setSkill(slot, skillId) {
 }
 export const skillChoices = slot => skillsFor(WEAPONS.find(w => w.id === loadout.wire[slot].id), slot);
 
+// ───── 총기 스킨 (로비에서 무기마다 고르는 색 프리셋 — 이름은 modelrules.js 의 SKINS) ─────
+//   이 브라우저에만 저장한다. 로비 미리보기(lobbyview.js)와 내 1인칭 총 모델(viewmodel.js applyGunSkins)에 입힌다. 다른 플레이어 화면에는 아직 보이지 않는다 (서버로 보내지 않음).
+const GUNSKIN_KEY = 'fd_gunskin';
+export const gunSkin = { choice: {} };
+{
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(GUNSKIN_KEY)); } catch { /* 깨진 값 */ }
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) gunSkin.choice = saved;
+}
+export function setGunSkin(weaponId, name) {
+  gunSkin.choice = { ...gunSkin.choice, [weaponId]: name };
+  try { localStorage.setItem(GUNSKIN_KEY, JSON.stringify(gunSkin.choice)); } catch { /* 저장 불가면 이번 접속만 */ }
+  notify();
+}
+
 // ───── 외형 (기획 11.3: 헤어·의상·의상 색·액세서리) ─────
 export const outfit = { choice: { items: {} } };
 const outfitListeners = [];
